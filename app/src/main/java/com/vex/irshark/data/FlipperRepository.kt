@@ -1,6 +1,7 @@
 package com.vex.irshark.data
 
 import android.content.Context
+import android.hardware.ConsumerIrManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -35,7 +36,8 @@ data class SavedRemote(
     val profilePath: String,
     val commands: List<String>,
     val buttons: List<SavedRemoteButton> = emptyList(),
-    val sourceProfilePath: String? = null
+    val sourceProfilePath: String? = null,
+    val favorite: Boolean = false
 )
 
 data class SavedRemoteButton(
@@ -214,65 +216,7 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
         return emptyList()
     }
 
-    val trimmed = raw.trim()
-    if (trimmed.startsWith("[")) {
-        return runCatching {
-            val arr = JSONArray(trimmed)
-            buildList {
-                for (i in 0 until arr.length()) {
-                    val obj = arr.optJSONObject(i) ?: continue
-                    val name = obj.optString("name").trim()
-                    if (name.isBlank()) continue
-
-                    val profilePath = obj.optString("profilePath").trim()
-                    val commands = obj.optJSONArray("commands")?.let { list ->
-                        buildList {
-                            for (j in 0 until list.length()) {
-                                val cmd = list.optString(j).trim()
-                                if (cmd.isNotBlank()) add(cmd)
-                            }
-                        }
-                    }.orEmpty()
-
-                    val buttons = obj.optJSONArray("buttons")?.let { list ->
-                        buildList {
-                            for (j in 0 until list.length()) {
-                                val b = list.optJSONObject(j) ?: continue
-                                val label = b.optString("label").trim()
-                                if (label.isBlank()) continue
-                                add(
-                                    SavedRemoteButton(
-                                        label = label,
-                                        code = b.optString("code").trim()
-                                    )
-                                )
-                            }
-                        }
-                    }.orEmpty()
-
-                    val sourceProfilePath = obj.optString("sourceProfilePath").trim().ifBlank {
-                        if (profilePath.startsWith(DB_ROOT)) profilePath else ""
-                    }.ifBlank { null }
-
-                    val resolvedButtons = if (buttons.isNotEmpty()) {
-                        buttons
-                    } else {
-                        commands.map { SavedRemoteButton(label = it, code = "") }
-                    }
-
-                    add(
-                        SavedRemote(
-                            name = name,
-                            profilePath = profilePath,
-                            commands = if (commands.isNotEmpty()) commands else resolvedButtons.map { it.label },
-                            buttons = resolvedButtons,
-                            sourceProfilePath = sourceProfilePath
-                        )
-                    )
-                }
-            }
-        }.getOrElse { emptyList() }
-    }
+    parseSavedRemotesJson(raw)?.let { return it }
 
     return raw.split(REMOTE_DELIMITER)
         .mapNotNull { token ->
@@ -288,7 +232,8 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
                         profilePath = parts[1].trim(),
                         commands = commands,
                         buttons = commands.map { SavedRemoteButton(label = it, code = "") },
-                        sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) }
+                        sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) },
+                        favorite = false
                     )
                 }
                 parts.size == 2 -> {
@@ -297,11 +242,12 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
                         profilePath = parts[1].trim(),
                         commands = emptyList(),
                         buttons = emptyList(),
-                        sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) }
+                        sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) },
+                        favorite = false
                     )
                 }
                 else -> {
-                    SavedRemote(name = row, profilePath = "", commands = emptyList(), buttons = emptyList())
+                    SavedRemote(name = row, profilePath = "", commands = emptyList(), buttons = emptyList(), favorite = false)
                 }
             }
         }
@@ -309,13 +255,19 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
 
 fun saveSavedRemotes(context: Context, remotes: List<SavedRemote>) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val serialized = JSONArray().apply {
+    val serialized = serializeSavedRemotesJson(remotes)
+    prefs.edit().putString(KEY_SAVED_REMOTES, serialized.toString()).apply()
+}
+
+fun serializeSavedRemotesJson(remotes: List<SavedRemote>): String {
+    return JSONArray().apply {
         remotes.forEach { remote ->
             put(
                 JSONObject().apply {
                     put("name", remote.name)
                     put("profilePath", remote.profilePath)
                     put("sourceProfilePath", remote.sourceProfilePath ?: "")
+                    put("favorite", remote.favorite)
                     put(
                         "commands",
                         JSONArray().apply {
@@ -338,8 +290,70 @@ fun saveSavedRemotes(context: Context, remotes: List<SavedRemote>) {
                 }
             )
         }
-    }
-    prefs.edit().putString(KEY_SAVED_REMOTES, serialized.toString()).apply()
+    }.toString()
+}
+
+fun parseSavedRemotesJson(raw: String): List<SavedRemote>? {
+    val trimmed = raw.trim()
+    if (!trimmed.startsWith("[")) return null
+
+    return runCatching {
+        val arr = JSONArray(trimmed)
+        buildList {
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val name = obj.optString("name").trim()
+                if (name.isBlank()) continue
+
+                val profilePath = obj.optString("profilePath").trim()
+                val commands = obj.optJSONArray("commands")?.let { list ->
+                    buildList {
+                        for (j in 0 until list.length()) {
+                            val cmd = list.optString(j).trim()
+                            if (cmd.isNotBlank()) add(cmd)
+                        }
+                    }
+                }.orEmpty()
+
+                val buttons = obj.optJSONArray("buttons")?.let { list ->
+                    buildList {
+                        for (j in 0 until list.length()) {
+                            val b = list.optJSONObject(j) ?: continue
+                            val label = b.optString("label").trim()
+                            if (label.isBlank()) continue
+                            add(
+                                SavedRemoteButton(
+                                    label = label,
+                                    code = b.optString("code").trim()
+                                )
+                            )
+                        }
+                    }
+                }.orEmpty()
+
+                val sourceProfilePath = obj.optString("sourceProfilePath").trim().ifBlank {
+                    if (profilePath.startsWith(DB_ROOT)) profilePath else ""
+                }.ifBlank { null }
+
+                val resolvedButtons = if (buttons.isNotEmpty()) {
+                    buttons
+                } else {
+                    commands.map { SavedRemoteButton(label = it, code = "") }
+                }
+
+                add(
+                    SavedRemote(
+                        name = name,
+                        profilePath = profilePath,
+                        commands = if (commands.isNotEmpty()) commands else resolvedButtons.map { it.label },
+                        buttons = resolvedButtons,
+                        sourceProfilePath = sourceProfilePath,
+                        favorite = obj.optBoolean("favorite", false)
+                    )
+                )
+            }
+        }
+    }.getOrElse { emptyList() }
 }
 
 fun loadAppSettings(context: Context): AppSettings {
@@ -586,4 +600,134 @@ private fun normalizeDisplayName(raw: String): String {
         .replace('_', ' ')
         .replace('-', ' ')
         .uppercase()
+}
+
+// ── Import / Export ───────────────────────────────────────────────────────────
+
+fun exportRemotesToJson(remotes: List<SavedRemote>): String {
+    val array = JSONArray()
+    for (remote in remotes) {
+        val obj = JSONObject()
+        obj.put("name", remote.name)
+        obj.put("profilePath", remote.profilePath)
+        obj.put("sourceProfilePath", remote.sourceProfilePath ?: "")
+        obj.put("favorite", remote.favorite)
+        val buttonsArray = JSONArray()
+        for (button in remote.buttons) {
+            val b = JSONObject()
+            b.put("label", button.label)
+            b.put("code", button.code)
+            buttonsArray.put(b)
+        }
+        obj.put("buttons", buttonsArray)
+        array.put(obj)
+    }
+    return array.toString(2)
+}
+
+fun importRemotesFromJson(json: String): List<SavedRemote> {
+    return try {
+        val array = JSONArray(json)
+        (0 until array.length()).mapNotNull { i ->
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+            val name = obj.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val buttonsArray = obj.optJSONArray("buttons") ?: JSONArray()
+            val buttons = (0 until buttonsArray.length()).mapNotNull { j ->
+                val b = buttonsArray.optJSONObject(j) ?: return@mapNotNull null
+                val label = b.optString("label").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                SavedRemoteButton(label = label, code = b.optString("code"))
+            }
+            SavedRemote(
+                name = name,
+                profilePath = obj.optString("profilePath"),
+                commands = buttons.map { it.label },
+                buttons = buttons,
+                sourceProfilePath = obj.optString("sourceProfilePath").takeIf { it.isNotBlank() },
+                favorite = obj.optBoolean("favorite", false)
+            )
+        }
+    } catch (_: Exception) {
+        emptyList()
+    }
+}
+
+// ── IR Transmission ───────────────────────────────────────────────────────────
+
+/**
+ * Transmits an IR code payload via ConsumerIrManager.
+ * Supports two formats:
+ *  - Parsed: "protocol=NEC; address=0x00FF; command=0x20DF"
+ *  - Raw:    space-separated integer durations (microseconds, alternating mark/space)
+ *
+ * Returns true if transmission was attempted, false if IR hardware unavailable.
+ */
+fun transmitIrCode(context: Context, codePayload: String): Boolean {
+    val irManager = context.getSystemService(Context.CONSUMER_IR_SERVICE) as? ConsumerIrManager
+        ?: return false
+    if (!irManager.hasIrEmitter()) return false
+
+    val payload = codePayload.trim()
+
+    // Try parsed format: extract frequency from protocol mapping + encode NEC/etc
+    val parsedMatch = Regex("""(?i)protocol\s*=\s*(\S+).*address\s*=\s*(\S+).*command\s*=\s*(\S+)""")
+        .find(payload)
+    if (parsedMatch != null) {
+        val protocol = parsedMatch.groupValues[1].uppercase()
+        val address = parsedMatch.groupValues[2].removePrefix("0x").removePrefix("0X")
+            .toLongOrNull(16) ?: return false
+        val command = parsedMatch.groupValues[3].removePrefix("0x").removePrefix("0X")
+            .toLongOrNull(16) ?: return false
+
+        // Encode as NEC protocol (38kHz carrier, standard timing)
+        val frequency = when (protocol) {
+            "NEC" -> 38000
+            "RC5" -> 36000
+            "RC6" -> 36000
+            "SAMSUNG" -> 38000
+            "SONY" -> 40000
+            else -> 38000
+        }
+        val pattern = encodeNec(address.toInt(), command.toInt())
+        if (pattern.isNotEmpty()) {
+            irManager.transmit(frequency, pattern)
+            return true
+        }
+        return false
+    }
+
+    // Try raw format: space-separated integers
+    val parts = payload.split(Regex("\\s+")).mapNotNull { it.toIntOrNull() }
+    if (parts.size >= 4) {
+        irManager.transmit(38000, parts.toIntArray())
+        return true
+    }
+
+    return false
+}
+
+private fun encodeNec(address: Int, command: Int): IntArray {
+    // NEC protocol: 9ms lead + 4.5ms space, then 32 bits LSB first, then stop
+    val lead = intArrayOf(9000, 4500)
+    val one = intArrayOf(560, 1690)
+    val zero = intArrayOf(560, 560)
+    val stop = intArrayOf(560)
+
+    val bits = mutableListOf<Int>()
+    bits.addAll(lead.toList())
+
+    // 8 bits address, 8 bits ~address, 8 bits command, 8 bits ~command
+    val data = listOf(
+        address and 0xFF,
+        (address and 0xFF).inv() and 0xFF,
+        command and 0xFF,
+        (command and 0xFF).inv() and 0xFF
+    )
+    for (byte in data) {
+        for (i in 0 until 8) {
+            if ((byte shr i) and 1 == 1) bits.addAll(one.toList())
+            else bits.addAll(zero.toList())
+        }
+    }
+    bits.addAll(stop.toList())
+    return bits.toIntArray()
 }

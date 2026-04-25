@@ -2,8 +2,10 @@ package com.vex.irshark
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +13,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,7 +44,10 @@ import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.countProfilesForCommand
 import com.vex.irshark.data.dbRootPath
+import com.vex.irshark.data.exportRemotesToJson
+import com.vex.irshark.data.importRemotesFromJson
 import com.vex.irshark.data.loadAppSettings
+import com.vex.irshark.data.transmitIrCode
 import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.data.loadFlipperDbIndex
 import com.vex.irshark.data.loadSavedRemotes
@@ -60,6 +70,8 @@ import com.vex.irshark.ui.theme.IRSharkTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -115,6 +127,43 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var txPulseJob by remember { mutableStateOf<Job?>(null) }
     val toastController = remember { AppToastController() }
     val scope = rememberCoroutineScope()
+
+    // ── Import / Export launchers ─────────────────────────────────────────────
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val json = exportRemotesToJson(savedRemotes)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { stream -> stream.write(json.toByteArray()) }
+                }
+                toastController.show("Exported ${savedRemotes.size} remotes")
+            }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val json = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { stream -> stream.readBytes().toString(Charsets.UTF_8) }
+                }
+                if (json != null) {
+                    val imported = importRemotesFromJson(json)
+                    if (imported.isEmpty()) {
+                        toastController.show("No valid remotes in file")
+                    } else {
+                        val existingNames = savedRemotes.map { it.name.lowercase() }.toSet()
+                        val newOnes = imported.filter { it.name.lowercase() !in existingNames }
+                        savedRemotes = savedRemotes + newOnes
+                        toastController.show("Imported ${newOnes.size} remotes (${imported.size - newOnes.size} skipped)")
+                    }
+                }
+            }
+        }
+    }
 
     fun emitTxPulse(durationMs: Long = 180L) {
         txPulseJob?.cancel()
@@ -289,7 +338,29 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         }
                     } else {
                         null
-                    }
+                    },
+                    trailingContent = if (screen == Screen.MY_REMOTES) {
+                        {
+                            IconButton(onClick = {
+                                importLauncher.launch(arrayOf("application/json", "text/plain"))
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Download,
+                                    contentDescription = "Import",
+                                    tint = androidx.compose.ui.graphics.Color(0xFF9B6DFF)
+                                )
+                            }
+                            IconButton(onClick = {
+                                exportLauncher.launch("irshark_remotes.json")
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Filled.Upload,
+                                    contentDescription = "Export",
+                                    tint = androidx.compose.ui.graphics.Color(0xFF9B6DFF)
+                                )
+                            }
+                        }
+                    } else null
                 )
             }
             if (screen != Screen.UNIVERSAL) {
@@ -366,7 +437,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             myRemotesQuery.isBlank() ||
                                 it.value.name.contains(myRemotesQuery, ignoreCase = true) ||
                                 prettyPath(it.value.profilePath).contains(myRemotesQuery, ignoreCase = true)
-                        }
+                        }.sortedByDescending { it.value.favorite }
                         RemotesListScreen(
                             query = myRemotesQuery,
                             queryLabel = "Search saved remotes",
@@ -379,6 +450,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     else -> "Custom remote"
                                 }
                                 remote.name to subtitle
+                            },
+                            isFavoriteForItem = { idx -> indexedFiltered[idx].value.favorite },
+                            onFavoriteToggleForItem = { idx ->
+                                val originalIndex = indexedFiltered[idx].index
+                                val remote = indexedFiltered[idx].value
+                                savedRemotes = savedRemotes.toMutableList().also {
+                                    it[originalIndex] = remote.copy(favorite = !remote.favorite)
+                                }
+                            },
+                            onDuplicateForItem = { idx ->
+                                val remote = indexedFiltered[idx].value
+                                val newName = uniqueRemoteName(remote.name + " copy")
+                                savedRemotes = savedRemotes + remote.copy(name = newName, favorite = false)
+                                toastController.show("Duplicated as \"$newName\"")
                             },
                             onOpen = { index ->
                                 val originalIndex = indexedFiltered[index].index
@@ -526,10 +611,17 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 controlRemoteIndex = -1
                                 screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
                             },
-                            onCommandClick = { _ ->
+                            onCommandClick = { cmdLabel ->
                                 controlSelectedCommand = null
                                 controlTxCount += 1
                                 emitTxPulse()
+                                // Find the IR code for this button and transmit
+                                val button = controlButtons.firstOrNull { it.label.equals(cmdLabel, ignoreCase = true) }
+                                if (button != null && button.code.isNotBlank()) {
+                                    scope.launch(Dispatchers.IO) {
+                                        transmitIrCode(context, button.code)
+                                    }
+                                }
                             },
                             onEdit = {
                                 if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {

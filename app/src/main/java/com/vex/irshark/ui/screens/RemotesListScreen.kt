@@ -39,7 +39,10 @@ fun RemotesListScreen(
     topActionLabel: String? = null,
     onTopAction: (() -> Unit)? = null,
     secondaryActionLabelForItem: ((Int) -> String)? = null,
-    secondaryActionEnabledForItem: ((Int) -> Boolean)? = null
+    secondaryActionEnabledForItem: ((Int) -> Boolean)? = null,
+    isFavoriteForItem: ((Int) -> Boolean)? = null,
+    onFavoriteToggleForItem: ((Int) -> Unit)? = null,
+    onDuplicateForItem: ((Int) -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -87,7 +90,10 @@ fun RemotesListScreen(
                         actionLabel = secondaryActionLabelForItem?.invoke(index) ?: secondaryActionLabel,
                         actionEnabled = secondaryActionEnabledForItem?.invoke(index) ?: true,
                         onOpen = { onOpen(index) },
-                        onAction = { onSecondaryAction(index) }
+                        onAction = { onSecondaryAction(index) },
+                        isFavorite = isFavoriteForItem?.invoke(index) ?: false,
+                        onFavoriteToggle = onFavoriteToggleForItem?.let { { it(index) } },
+                        onDuplicate = onDuplicateForItem?.let { { it(index) } }
                     )
                 }
             }

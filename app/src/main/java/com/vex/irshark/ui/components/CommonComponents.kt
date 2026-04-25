@@ -23,7 +23,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -140,7 +143,10 @@ fun ListRow(
     actionLabel: String,
     actionEnabled: Boolean = true,
     onOpen: () -> Unit,
-    onAction: () -> Unit
+    onAction: () -> Unit,
+    isFavorite: Boolean = false,
+    onFavoriteToggle: (() -> Unit)? = null,
+    onDuplicate: (() -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     Column {
@@ -151,6 +157,16 @@ fun ListRow(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onFavoriteToggle != null) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    contentDescription = if (isFavorite) "Unpin" else "Pin",
+                    tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF5A5870),
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clickable(onClick = onFavoriteToggle)
+                )
+            }
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -160,6 +176,16 @@ fun ListRow(
             ) {
                 Text(title, color = Color.White, fontSize = 12.sp)
                 Text(subtitle, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
+            }
+            if (onDuplicate != null) {
+                Icon(
+                    imageVector = Icons.Filled.ContentCopy,
+                    contentDescription = "Duplicate",
+                    tint = Color(0xFF8A8899),
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable(onClick = onDuplicate)
+                )
             }
             Box(
                 modifier = Modifier
@@ -303,7 +329,8 @@ fun SectionNavBar(
     onHome: () -> Unit,
     modifier: Modifier = Modifier,
     actionLabel: String? = null,
-    onAction: (() -> Unit)? = null
+    onAction: (() -> Unit)? = null,
+    trailingContent: (@Composable () -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
@@ -337,7 +364,10 @@ fun SectionNavBar(
                 ) {
                     Text(actionLabel, color = violet, fontSize = 12.sp)
                 }
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
             }
+            trailingContent?.invoke()
         }
     }
 }

@@ -22,7 +22,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryAdd
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -65,6 +68,13 @@ fun RemoteEditorDialog(
     var buttons by remember { mutableStateOf(initialButtons) }
     var editingButtonIndex by remember { mutableIntStateOf(-1) }
     var showButtonDialog by remember { mutableStateOf(false) }
+    var showDiscardConfirm by remember { mutableStateOf(false) }
+
+    val isDirty = remoteName != initialName || buttons != initialButtons
+
+    fun requestDismiss() {
+        if (isDirty) showDiscardConfirm = true else onDismiss()
+    }
 
     val normalizedName = remoteName.trim()
     val originalLower = originalName?.trim()?.lowercase().orEmpty()
@@ -89,7 +99,21 @@ fun RemoteEditorDialog(
         )
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    if (showDiscardConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            title = { Text("Discard changes?") },
+            text = { Text("You have unsaved changes. Discard them?") },
+            confirmButton = {
+                TextButton(onClick = { showDiscardConfirm = false; onDismiss() }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardConfirm = false }) { Text("Keep editing") }
+            }
+        )
+    }
+
+    Dialog(onDismissRequest = { requestDismiss() }) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -168,6 +192,34 @@ fun RemoteEditorDialog(
                                                 showButtonDialog = true
                                             }
                                     )
+                                    if (index > 0) {
+                                        Icon(
+                                            imageVector = Icons.Filled.KeyboardArrowUp,
+                                            contentDescription = "Move up",
+                                            tint = Color(0xFF8A8899),
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .clickable {
+                                                    buttons = buttons.toMutableList().also {
+                                                        val tmp = it[index - 1]; it[index - 1] = it[index]; it[index] = tmp
+                                                    }
+                                                }
+                                        )
+                                    }
+                                    if (index < buttons.lastIndex) {
+                                        Icon(
+                                            imageVector = Icons.Filled.KeyboardArrowDown,
+                                            contentDescription = "Move down",
+                                            tint = Color(0xFF8A8899),
+                                            modifier = Modifier
+                                                .size(18.dp)
+                                                .clickable {
+                                                    buttons = buttons.toMutableList().also {
+                                                        val tmp = it[index + 1]; it[index + 1] = it[index]; it[index] = tmp
+                                                    }
+                                                }
+                                        )
+                                    }
                                     Icon(
                                         imageVector = Icons.Filled.Delete,
                                         contentDescription = "Delete",
@@ -201,7 +253,7 @@ fun RemoteEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
                 ) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    TextButton(onClick = { requestDismiss() }) { Text("Cancel") }
                     TextButton(
                         enabled = canSave,
                         onClick = {
@@ -255,6 +307,21 @@ private fun IrButtonEditorDialog(
     }
 
     val canSave = label.trim().isNotBlank() && code.trim().isNotBlank()
+    var codeError by remember { mutableStateOf<String?>(null) }
+
+    // Validates Flipper-style IR code formats:
+    // 1. Parsed: protocol=X; address=0x...; command=0x...
+    // 2. Raw: RAW_Data: <int> <int> ...  OR  raw_data hex/decimal sequences
+    fun validateIrCode(raw: String): String? {
+        val s = raw.trim()
+        if (s.isBlank()) return "Code cannot be empty"
+        val parsedPattern = Regex("""(?i)protocol\s*=\s*\S+.*address\s*=\s*\S+.*command\s*=\s*\S+""")
+        if (parsedPattern.containsMatchIn(s)) return null
+        // raw: space-separated integers (positive+negative), at least 4 values
+        val rawPattern = Regex("""^-?\d+(\s+-?\d+){3,}$""")
+        if (rawPattern.matches(s)) return null
+        return "Invalid IR code format. Use: protocol=NEC; address=0x..; command=0x.. or raw integers."
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Box(
@@ -283,12 +350,20 @@ private fun IrButtonEditorDialog(
 
                 OutlinedTextField(
                     value = code,
-                    onValueChange = { code = it },
+                    onValueChange = { code = it; codeError = null },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(82.dp),
-                    label = { Text("IR code payload") }
+                    label = { Text("IR code payload") },
+                    isError = codeError != null
                 )
+                if (codeError != null) {
+                    Text(
+                        text = codeError!!,
+                        color = Color(0xFFFF8A80),
+                        fontSize = 11.sp
+                    )
+                }
 
                 Text("Import code from database", color = Color(0xFFB699FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
 
@@ -378,12 +453,17 @@ private fun IrButtonEditorDialog(
                     TextButton(
                         enabled = canSave,
                         onClick = {
-                            onSave(
-                                SavedRemoteButton(
-                                    label = label.trim(),
-                                    code = code.trim()
+                            val err = validateIrCode(code)
+                            if (err != null) {
+                                codeError = err
+                            } else {
+                                onSave(
+                                    SavedRemoteButton(
+                                        label = label.trim(),
+                                        code = code.trim()
+                                    )
                                 )
-                            )
+                            }
                         }
                     ) { Text("Apply") }
                 }
