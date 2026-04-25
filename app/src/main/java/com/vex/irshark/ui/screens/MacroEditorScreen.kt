@@ -27,6 +27,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -270,7 +271,8 @@ private fun NodeParamDialog(
 
     var delayMs  by remember { mutableStateOf(((node.params as? BlockParams.Delay)?.ms ?: 500L).toString()) }
     var showTxt  by remember { mutableStateOf((node.params as? BlockParams.ShowText)?.text ?: "") }
-    var showDur  by remember { mutableStateOf(((node.params as? BlockParams.ShowText)?.durationMs ?: 3000L).toString()) }
+    var showDur   by remember { mutableStateOf(((node.params as? BlockParams.ShowText)?.durationMs ?: 3000L).toString()) }
+    var showAsync by remember { mutableStateOf((node.params as? BlockParams.ShowText)?.async ?: false) }
     var waitMsg  by remember { mutableStateOf((node.params as? BlockParams.WaitConfirm)?.message ?: "Press OK to continue") }
     var ifMsg    by remember { mutableStateOf((node.params as? BlockParams.IfElse)?.message ?: "Continue?") }
 
@@ -301,6 +303,14 @@ private fun NodeParamDialog(
                         label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
                         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     Text("3000 = 3 sec", color = Color(0xFF8A8899), fontSize = 11.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Don't wait (async)", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                        Switch(checked = showAsync, onCheckedChange = { showAsync = it })
+                    }
                 }
                 MacroBlockType.WAIT_CONFIRM -> {
                     OutlinedTextField(value = waitMsg, onValueChange = { waitMsg = it },
@@ -336,7 +346,7 @@ private fun NodeParamDialog(
                 TextButton(onClick = {
                     val params: BlockParams = when (node.type) {
                         MacroBlockType.DELAY        -> BlockParams.Delay(delayMs.toLongOrNull()?.coerceAtLeast(1) ?: 500L)
-                        MacroBlockType.SHOW_TEXT    -> BlockParams.ShowText(showTxt.ifBlank { "Hello!" }, showDur.toLongOrNull()?.coerceAtLeast(100) ?: 3000L)
+                        MacroBlockType.SHOW_TEXT    -> BlockParams.ShowText(showTxt.ifBlank { "Hello!" }, showDur.toLongOrNull()?.coerceAtLeast(100) ?: 3000L, showAsync)
                         MacroBlockType.WAIT_CONFIRM -> BlockParams.WaitConfirm(waitMsg.ifBlank { "Continue?" })
                         MacroBlockType.IF_ELSE      -> BlockParams.IfElse(ifMsg.ifBlank { "Continue?" })
                         MacroBlockType.IR_SEND, MacroBlockType.END, MacroBlockType.START -> node.params

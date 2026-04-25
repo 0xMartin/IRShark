@@ -20,7 +20,7 @@ sealed class MacroStep {
     data class Delay(val ms: Long) : MacroStep()
 
     /** Show a text message on the run screen. */
-    data class ShowText(val text: String, val durationMs: Long = 3000L) : MacroStep()
+    data class ShowText(val text: String, val durationMs: Long = 3000L, val async: Boolean = false) : MacroStep()
 
     /** Pause and wait for the user to tap OK (or Stop). */
     data class WaitConfirm(val message: String) : MacroStep()
@@ -92,7 +92,7 @@ private fun stepToObj(s: MacroStep): JSONObject = JSONObject().apply {
             put("irCode", s.irCode)
         }
         is MacroStep.Delay -> { put("type", "delay"); put("ms", s.ms) }
-        is MacroStep.ShowText -> { put("type", "show_text"); put("text", s.text); put("durationMs", s.durationMs) }
+        is MacroStep.ShowText -> { put("type", "show_text"); put("text", s.text); put("durationMs", s.durationMs); put("async", s.async) }
         is MacroStep.WaitConfirm -> { put("type", "wait_confirm"); put("message", s.message) }
         is MacroStep.RepeatBlock -> { put("type", "repeat"); put("count", s.count); put("steps", stepsToArr(s.steps)) }
         is MacroStep.LoopUntilStop -> { put("type", "loop_until_stop"); put("steps", stepsToArr(s.steps)) }
@@ -129,7 +129,7 @@ private fun parseStepObj(o: JSONObject): MacroStep? = when (o.optString("type"))
         irCode       = o.optString("irCode")
     )
     "delay"         -> MacroStep.Delay(o.optLong("ms", 500L))
-    "show_text"     -> MacroStep.ShowText(o.optString("text"), o.optLong("durationMs", 3000L))
+    "show_text"     -> MacroStep.ShowText(o.optString("text"), o.optLong("durationMs", 3000L), o.optBoolean("async", false))
     "wait_confirm"  -> MacroStep.WaitConfirm(o.optString("message", "Continue?"))
     "repeat"        -> MacroStep.RepeatBlock(o.optInt("count", 1), parseStepsArr(o.optJSONArray("steps") ?: JSONArray()))
     "loop_until_stop" -> MacroStep.LoopUntilStop(parseStepsArr(o.optJSONArray("steps") ?: JSONArray()))

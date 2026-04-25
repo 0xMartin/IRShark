@@ -210,6 +210,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     val macroEngine = remember { MacroEngine(context) }
     val macroState by macroEngine.state.collectAsState()
 
+    // Blink TX LED whenever the macro engine transmits an IR command
+    LaunchedEffect(macroEngine) {
+        macroEngine.irTransmitEvent.collect { emitTxPulse() }
+    }
+
     fun uniqueRemoteName(baseName: String, excludeIndex: Int? = null): String {
         val taken = savedRemotes
             .filterIndexed { idx, _ -> excludeIndex == null || idx != excludeIndex }

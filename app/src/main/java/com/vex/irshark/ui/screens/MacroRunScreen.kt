@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -33,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
 import com.vex.irshark.macro.ConfirmRequest
+import com.vex.irshark.macro.IrLogEntry
 import com.vex.irshark.macro.MacroRunState
 
 @Composable
@@ -57,7 +61,9 @@ fun MacroRunScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp)
+            .padding(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Spacer(modifier = Modifier.height(4.dp))
@@ -150,7 +156,54 @@ fun MacroRunScreen(
         state.confirm?.let { req ->
             ConfirmCard(req = req, onYes = onYes, onNo = onNo)
         }
-    }
+        // ── IR transmission log ─────────────────────────────────────────────────────
+        if (state.irLog.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF0D0A1A))
+                    .border(1.dp, Color(0xFF9B6DFF).copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                    .padding(12.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("IR Log", color = Color(0xFF9B6DFF), fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    state.irLog.takeLast(10).reversed().forEach { entry ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF9B6DFF).copy(alpha = 0.70f))
+                                )
+                                Text(
+                                    entry.displayLabel,
+                                    color    = Color.White.copy(alpha = 0.90f),
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Text(
+                                entry.remoteName,
+                                color    = Color(0xFF9B6DFF).copy(alpha = 0.65f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }    }
 }
 
 @Composable

@@ -108,10 +108,13 @@ fun MacroNode.blockW(): Float = when (type) {
 }
 
 fun MacroNode.blockH(): Float = when (type) {
-    MacroBlockType.START, MacroBlockType.END -> 100f
-    MacroBlockType.DELAY                     -> 120f
-    MacroBlockType.SHOW_TEXT                 -> 180f
-    else                                     -> 150f   // IR_SEND, WAIT_CONFIRM, IF_ELSE
+    MacroBlockType.START, MacroBlockType.END -> 120f
+    MacroBlockType.DELAY                     -> 160f
+    MacroBlockType.SHOW_TEXT                 -> 220f
+    MacroBlockType.WAIT_CONFIRM              -> 200f
+    MacroBlockType.IR_SEND                   -> 220f
+    MacroBlockType.IF_ELSE                   -> 260f
+    else                                     -> 200f
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,6 +206,9 @@ fun MacroGraphCanvas(
     var selStart by remember { mutableStateOf<Offset?>(null) }
     var selEnd   by remember { mutableStateOf<Offset?>(null) }
 
+    // ── Canvas interaction mode
+    var isSelectMode by remember { mutableStateOf(false) }
+
     var showAddMenu by remember { mutableStateOf(false) }
     val violet = MaterialTheme.colorScheme.primary
 
@@ -263,9 +269,11 @@ fun MacroGraphCanvas(
                                 dragNodeOffset = cDown - nodeHit.pos
                             }
                             else -> {
-                                // Empty space — start selection rect
-                                selStart = cDown
-                                selEnd   = cDown
+                                // Empty space — start selection rect only in SELECT mode
+                                if (isSelectMode) {
+                                    selStart = cDown
+                                    selEnd   = cDown
+                                }
                             }
                         }
 
@@ -279,14 +287,14 @@ fun MacroGraphCanvas(
                                     val ch    = pressed.first()
                                     val delta = ch.position - lastPos
                                     if (delta.getDistance() > viewConfiguration.touchSlop) moved = true
-                                    if (moved) {
-                                        val cPos = screenToCanvas(ch.position, pan, zoom)
+                                    val cPos = screenToCanvas(ch.position, pan, zoom)
+                                    if (connectFromId != null) {
+                                        // Wire mode: always update cursor without waiting for touchSlop
+                                        connectCursor  = cPos
+                                        hoveredInputId = findInputPinHit(cPos)
+                                            ?.takeIf { it.id != connectFromId && it.hasInput() }?.id
+                                    } else if (moved) {
                                         when {
-                                            connectFromId != null -> {
-                                                connectCursor  = cPos
-                                                hoveredInputId = findInputPinHit(cPos)
-                                                    ?.takeIf { it.id != connectFromId && it.hasInput() }?.id
-                                            }
                                             draggingId != null -> {
                                                 val node = graph.nodes.firstOrNull { it.id == draggingId }
                                                 if (node != null) {
@@ -460,37 +468,60 @@ fun MacroGraphCanvas(
             }
         }
 
-        // ── Multiselect / wire overlay (floating, top of canvas) ──────────
-        val selCount    = graph.nodes.count { it.selected }
-        val wireHint    = connectFromId != null
-        if (selCount > 0 || wireHint) {
-            Row(
+        // ── Overlay row (always visible) ──────────────────────────────────
+        val selCount = graph.nodes.count { it.selected }
+        val wireHint = connectFromId != null
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .zIndex(20f),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Select / Pan mode toggle
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
-                    .zIndex(20f),
-                verticalAlignment     = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                if (selCount > 0) {
-                    ToolbarBtn(icon = Icons.Filled.Delete, tint = Color(0xFFFF7B9D), label = "Delete ($selCount)") {
-                        onDeleteSelected()
-                    }
-                    ToolbarBtn(icon = Icons.Filled.Close, tint = Color(0xFF8A8899), label = "Deselect") {
-                        graph.setSelected(emptySet())
-                    }
-                }
-                if (wireHint) {
-                    Text(
-                        "Drag to input pin  •  lift to cancel",
-                        color    = Color(0xFF9B6DFF),
-                        fontSize = 10.sp,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF0E0B1A).copy(alpha = 0.85f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(
+                        if (isSelectMode) Color(0xFF9B6DFF).copy(alpha = 0.18f)
+                        else Color(0xFF0E0B1A).copy(alpha = 0.85f)
                     )
+                    .border(
+                        1.dp,
+                        if (isSelectMode) Color(0xFF9B6DFF) else Color(0xFF3A3460),
+                        RoundedCornerShape(6.dp)
+                    )
+                    .clickable { isSelectMode = !isSelectMode }
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (isSelectMode) "SELECT" else "PAN",
+                    color      = if (isSelectMode) Color(0xFF9B6DFF) else Color(0xFF8A8899),
+                    fontSize   = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            if (selCount > 0) {
+                ToolbarBtn(icon = Icons.Filled.Delete, tint = Color(0xFFFF7B9D), label = "Delete ($selCount)") {
+                    onDeleteSelected()
                 }
+                ToolbarBtn(icon = Icons.Filled.Close, tint = Color(0xFF8A8899), label = "Deselect") {
+                    graph.setSelected(emptySet())
+                }
+            }
+            if (wireHint) {
+                Text(
+                    "Drag to input pin  \u2022  lift to cancel",
+                    color    = Color(0xFF9B6DFF),
+                    fontSize = 10.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF0E0B1A).copy(alpha = 0.85f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
             }
         }
 
@@ -652,8 +683,9 @@ private fun blockSummary(node: MacroNode): String = when (val p = node.params) {
     is BlockParams.IrSend      -> p.displayLabel.ifEmpty { "Tap ⚙ to pick IR button" }
     is BlockParams.Delay       -> "${p.ms} ms"
     is BlockParams.ShowText    -> {
-        val dur = "${p.durationMs / 1000}s"
-        if (p.text.isEmpty()) "duration: $dur" else "\"${p.text.take(28)}\"\n$dur"
+        val dur      = "${p.durationMs / 1000}s"
+        val asyncTag = if (p.async) " (async)" else ""
+        if (p.text.isEmpty()) "duration: $dur$asyncTag" else "\"${p.text.take(28)}\"\n$dur$asyncTag"
     }
     is BlockParams.WaitConfirm -> p.message.ifEmpty { "Press OK to continue" }
     is BlockParams.IfElse      -> p.message.ifEmpty { "Continue?" }

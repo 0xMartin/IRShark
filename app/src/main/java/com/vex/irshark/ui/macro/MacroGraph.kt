@@ -32,7 +32,7 @@ sealed class BlockParams {
 
     data class Delay(val ms: Long = 500L) : BlockParams()
 
-    data class ShowText(val text: String = "", val durationMs: Long = 3000L) : BlockParams()
+    data class ShowText(val text: String = "", val durationMs: Long = 3000L, val async: Boolean = false) : BlockParams()
 
     data class WaitConfirm(val message: String = "Press OK to continue") : BlockParams()
 
@@ -209,7 +209,7 @@ class MacroGraph {
             }
             MacroBlockType.SHOW_TEXT -> {
                 val p = node.params as? BlockParams.ShowText ?: BlockParams.ShowText()
-                out.add(MacroStep.ShowText(p.text, p.durationMs))
+                out.add(MacroStep.ShowText(p.text, p.durationMs, p.async))
             }
             MacroBlockType.WAIT_CONFIRM -> {
                 val p = node.params as? BlockParams.WaitConfirm ?: BlockParams.WaitConfirm()
@@ -270,7 +270,7 @@ class MacroGraph {
         is BlockParams.None        -> "null"
         is BlockParams.IrSend      -> "{\"kind\":\"ir\",\"label\":${jsonStr(p.displayLabel)},\"remote\":${jsonStr(p.remoteName)},\"button\":${jsonStr(p.buttonLabel)},\"code\":${jsonStr(p.irCode)}}"
         is BlockParams.Delay       -> "{\"kind\":\"delay\",\"ms\":${p.ms}}"
-        is BlockParams.ShowText    -> "{\"kind\":\"show\",\"text\":${jsonStr(p.text)},\"dur\":${p.durationMs}}"
+        is BlockParams.ShowText    -> "{\"kind\":\"show\",\"text\":${jsonStr(p.text)},\"dur\":${p.durationMs},\"async\":${p.async}}"
         is BlockParams.WaitConfirm -> "{\"kind\":\"wait\",\"msg\":${jsonStr(p.message)}}"
         is BlockParams.IfElse      -> "{\"kind\":\"if\",\"msg\":${jsonStr(p.message)}}"
     }
@@ -292,7 +292,7 @@ class MacroGraph {
                             pObj.optString("label"), pObj.optString("remote"),
                             pObj.optString("button"), pObj.optString("code"))
                         "delay" -> BlockParams.Delay(pObj.optLong("ms", 500))
-                        "show"  -> BlockParams.ShowText(pObj.optString("text"), pObj.optLong("dur", 3000L))
+                        "show"  -> BlockParams.ShowText(pObj.optString("text"), pObj.optLong("dur", 3000L), pObj.optBoolean("async", false))
                         "wait"  -> BlockParams.WaitConfirm(pObj.optString("msg"))
                         "if"    -> BlockParams.IfElse(pObj.optString("msg"))
                         else    -> BlockParams.None
