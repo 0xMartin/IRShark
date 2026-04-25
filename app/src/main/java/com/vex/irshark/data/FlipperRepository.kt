@@ -33,7 +33,21 @@ data class FlipperProfile(
 data class SavedRemote(
     val name: String,
     val profilePath: String,
-    val commands: List<String>
+    val commands: List<String>,
+    val buttons: List<SavedRemoteButton> = emptyList(),
+    val sourceProfilePath: String? = null
+)
+
+data class SavedRemoteButton(
+    val label: String,
+    val code: String,
+    val details: String = ""
+)
+
+data class DbIrCodeOption(
+    val label: String,
+    val code: String,
+    val details: String
 )
 
 data class FlipperLintConfig(
@@ -201,31 +215,95 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
         return emptyList()
     }
 
+    val trimmed = raw.trim()
+    if (trimmed.startsWith("[")) {
+        return runCatching {
+            val arr = JSONArray(trimmed)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val name = obj.optString("name").trim()
+                    if (name.isBlank()) continue
+
+                    val profilePath = obj.optString("profilePath").trim()
+                    val commands = obj.optJSONArray("commands")?.let { list ->
+                        buildList {
+                            for (j in 0 until list.length()) {
+                                val cmd = list.optString(j).trim()
+                                if (cmd.isNotBlank()) add(cmd)
+                            }
+                        }
+                    }.orEmpty()
+
+                    val buttons = obj.optJSONArray("buttons")?.let { list ->
+                        buildList {
+                            for (j in 0 until list.length()) {
+                                val b = list.optJSONObject(j) ?: continue
+                                val label = b.optString("label").trim()
+                                if (label.isBlank()) continue
+                                add(
+                                    SavedRemoteButton(
+                                        label = label,
+                                        code = b.optString("code").trim(),
+                                        details = b.optString("details").trim()
+                                    )
+                                )
+                            }
+                        }
+                    }.orEmpty()
+
+                    val sourceProfilePath = obj.optString("sourceProfilePath").trim().ifBlank {
+                        if (profilePath.startsWith(DB_ROOT)) profilePath else ""
+                    }.ifBlank { null }
+
+                    val resolvedButtons = if (buttons.isNotEmpty()) {
+                        buttons
+                    } else {
+                        commands.map { SavedRemoteButton(label = it, code = "") }
+                    }
+
+                    add(
+                        SavedRemote(
+                            name = name,
+                            profilePath = profilePath,
+                            commands = if (commands.isNotEmpty()) commands else resolvedButtons.map { it.label },
+                            buttons = resolvedButtons,
+                            sourceProfilePath = sourceProfilePath
+                        )
+                    )
+                }
+            }
+        }.getOrElse { emptyList() }
+    }
+
     return raw.split(REMOTE_DELIMITER)
         .mapNotNull { token ->
-            val trimmed = token.trim()
-            if (trimmed.isBlank()) {
-                return@mapNotNull null
-            }
+            val row = token.trim()
+            if (row.isBlank()) return@mapNotNull null
 
-            val parts = trimmed.split("::")
-            return@mapNotNull when {
+            val parts = row.split("::")
+            when {
                 parts.size >= 3 -> {
+                    val commands = parts[2].split(";;").map { it.trim() }.filter { it.isNotBlank() }
                     SavedRemote(
                         name = parts[0].trim(),
                         profilePath = parts[1].trim(),
-                        commands = parts[2].split(";;").map { it.trim() }.filter { it.isNotBlank() }
+                        commands = commands,
+                        buttons = commands.map { SavedRemoteButton(label = it, code = "") },
+                        sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) }
                     )
                 }
                 parts.size == 2 -> {
                     SavedRemote(
                         name = parts[0].trim(),
                         profilePath = parts[1].trim(),
-                        commands = emptyList()
+                        commands = emptyList(),
+                        buttons = emptyList(),
+                        sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) }
                     )
                 }
                 else -> {
-                    SavedRemote(name = trimmed, profilePath = "", commands = emptyList())
+                    SavedRemote(name = row, profilePath = "", commands = emptyList(), buttons = emptyList())
                 }
             }
         }
@@ -233,10 +311,38 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
 
 fun saveSavedRemotes(context: Context, remotes: List<SavedRemote>) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val serialized = remotes.joinToString(REMOTE_DELIMITER) {
-        "${it.name}::${it.profilePath}::${it.commands.joinToString(";;")}" 
+    val serialized = JSONArray().apply {
+        remotes.forEach { remote ->
+            put(
+                JSONObject().apply {
+                    put("name", remote.name)
+                    put("profilePath", remote.profilePath)
+                    put("sourceProfilePath", remote.sourceProfilePath ?: "")
+                    put(
+                        "commands",
+                        JSONArray().apply {
+                            remote.commands.forEach { put(it) }
+                        }
+                    )
+                    put(
+                        "buttons",
+                        JSONArray().apply {
+                            remote.buttons.forEach { button ->
+                                put(
+                                    JSONObject().apply {
+                                        put("label", button.label)
+                                        put("code", button.code)
+                                        put("details", button.details)
+                                    }
+                                )
+                            }
+                        }
+                    )
+                }
+            )
+        }
     }
-    prefs.edit().putString(KEY_SAVED_REMOTES, serialized).apply()
+    prefs.edit().putString(KEY_SAVED_REMOTES, serialized.toString()).apply()
 }
 
 fun loadAppSettings(context: Context): AppSettings {
@@ -257,24 +363,80 @@ fun saveAppSettings(context: Context, settings: AppSettings) {
         .apply()
 }
 
+suspend fun loadDbIrCodeOptions(context: Context, assetPath: String): List<DbIrCodeOption> {
+    return withContext(Dispatchers.IO) {
+        parseIrCodeBlocks(context, assetPath).map { block ->
+            val data = block.fields["data"].orEmpty()
+            val protocol = block.fields["protocol"].orEmpty()
+            val address = block.fields["address"].orEmpty()
+            val command = block.fields["command"].orEmpty()
+
+            val codeValue = when {
+                data.isNotBlank() -> data
+                protocol.isNotBlank() || address.isNotBlank() || command.isNotBlank() -> {
+                    listOf(
+                        "protocol=$protocol",
+                        "address=$address",
+                        "command=$command"
+                    ).joinToString("; ")
+                }
+                else -> block.fields.entries.joinToString("; ") { "${it.key}=${it.value}" }
+            }
+
+            val details = block.fields.entries.joinToString("\n") { "${it.key}: ${it.value}" }
+
+            DbIrCodeOption(
+                label = block.displayName,
+                code = codeValue,
+                details = details
+            )
+        }
+    }
+}
+
 private fun parseIrCommands(context: Context, assetPath: String): List<String> {
+    return parseIrCodeBlocks(context, assetPath).map { it.displayName }
+}
+
+private data class ParsedIrCodeBlock(
+    val displayName: String,
+    val fields: Map<String, String>
+)
+
+private fun parseIrCodeBlocks(context: Context, assetPath: String): List<ParsedIrCodeBlock> {
     return runCatching {
-        val commands = LinkedHashSet<String>()
+        val blocks = mutableListOf<ParsedIrCodeBlock>()
+        var currentName: String? = null
+        val currentFields = linkedMapOf<String, String>()
+
+        fun flushCurrent() {
+            val name = currentName ?: return
+            blocks += ParsedIrCodeBlock(
+                displayName = normalizeDisplayName(name),
+                fields = currentFields.toMap()
+            )
+            currentName = null
+            currentFields.clear()
+        }
+
         context.assets.open(assetPath).bufferedReader().useLines { lines ->
             lines.forEach { rawLine ->
                 val line = rawLine.trim()
                 if (line.startsWith("name:", ignoreCase = true)) {
-                    val command = line.substringAfter(':').trim()
-                        .replace('_', ' ')
-                        .replace('-', ' ')
-                        .uppercase()
-                    if (command.isNotBlank()) {
-                        commands += command
+                    flushCurrent()
+                    currentName = line.substringAfter(':').trim()
+                } else if (currentName != null && ':' in line) {
+                    val key = line.substringBefore(':').trim().lowercase()
+                    val value = line.substringAfter(':').trim()
+                    if (key.isNotBlank() && value.isNotBlank()) {
+                        currentFields[key] = value
                     }
                 }
             }
         }
-        commands.toList()
+
+        flushCurrent()
+        blocks
     }.getOrElse { emptyList() }
 }
 

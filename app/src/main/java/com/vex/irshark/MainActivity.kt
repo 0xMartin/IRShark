@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import com.vex.irshark.data.FlipperDbIndex
 import com.vex.irshark.data.SavedRemote
+import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.countProfilesForCommand
 import com.vex.irshark.data.dbRootPath
@@ -41,6 +42,7 @@ import com.vex.irshark.data.prettyPath
 import com.vex.irshark.data.saveAppSettings
 import com.vex.irshark.data.saveSavedRemotes
 import com.vex.irshark.ui.components.AppHeader
+import com.vex.irshark.ui.components.RemoteEditorDialog
 import com.vex.irshark.ui.components.AppToastController
 import com.vex.irshark.ui.components.AppToastHost
 import com.vex.irshark.ui.components.SectionNavBar
@@ -126,10 +128,31 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     // Remote Control state
     var controlProfilePath by rememberSaveable { mutableStateOf<String?>(null) }
     var controlName by rememberSaveable { mutableStateOf<String?>(null) }
-    var controlCommandsCsv by rememberSaveable { mutableStateOf("") }
+    var controlRemoteIndex by rememberSaveable { mutableIntStateOf(-1) }
+    var controlButtons by remember { mutableStateOf(listOf<SavedRemoteButton>()) }
     var controlSource by rememberSaveable { mutableStateOf(ControlSource.REMOTE_DB) }
     var controlSelectedCommand by rememberSaveable { mutableStateOf<String?>(null) }
     var controlTxCount by rememberSaveable { mutableIntStateOf(0) }
+
+    // Editor state for custom/editable remotes
+    var showRemoteEditor by remember { mutableStateOf(false) }
+    var editingRemoteIndex by remember { mutableStateOf<Int?>(null) }
+
+    fun uniqueRemoteName(baseName: String, excludeIndex: Int? = null): String {
+        val taken = savedRemotes
+            .filterIndexed { idx, _ -> excludeIndex == null || idx != excludeIndex }
+            .map { it.name.lowercase() }
+            .toSet()
+
+        val base = baseName.trim().ifBlank { "Custom Remote" }
+        if (!taken.contains(base.lowercase())) return base
+
+        var suffix = 2
+        while (taken.contains("$base $suffix".lowercase())) {
+            suffix += 1
+        }
+        return "$base $suffix"
+    }
 
     // Load data
     LaunchedEffect(Unit) {
@@ -199,8 +222,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
-    // Control auto-send loop
-    val controlCommands = controlCommandsCsv.split(";;").map { it.trim() }.filter { it.isNotBlank() }
+    // Control command labels
+    val controlCommands = controlButtons.map { it.label }.filter { it.isNotBlank() }
     // Show splash while loading
     if (!settingsLoaded) {
         SplashScreen()
@@ -303,33 +326,51 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     }
 
                     Screen.MY_REMOTES -> {
-                        val filtered = savedRemotes.filter {
+                        val indexedFiltered = savedRemotes.withIndex().filter {
                             myRemotesQuery.isBlank() ||
-                                it.name.contains(myRemotesQuery, ignoreCase = true) ||
-                                prettyPath(it.profilePath).contains(myRemotesQuery, ignoreCase = true)
+                                it.value.name.contains(myRemotesQuery, ignoreCase = true) ||
+                                prettyPath(it.value.profilePath).contains(myRemotesQuery, ignoreCase = true)
                         }
                         RemotesListScreen(
                             query = myRemotesQuery,
                             queryLabel = "Search saved remotes",
                             onQueryChange = { myRemotesQuery = it },
                             emptyText = "No saved remotes.",
-                            items = filtered.map { it.name to prettyPath(it.profilePath) },
+                            items = indexedFiltered.map { (_, remote) ->
+                                val subtitle = when {
+                                    remote.sourceProfilePath != null -> "From DB: ${prettyPath(remote.sourceProfilePath)}"
+                                    remote.profilePath.isNotBlank() -> prettyPath(remote.profilePath)
+                                    else -> "Custom remote"
+                                }
+                                remote.name to subtitle
+                            },
                             onOpen = { index ->
-                                val remote = filtered[index]
+                                val originalIndex = indexedFiltered[index].index
+                                val remote = indexedFiltered[index].value
                                 controlProfilePath = remote.profilePath
                                 controlName = remote.name
-                                controlCommandsCsv = remote.commands.joinToString(";;")
+                                controlButtons = if (remote.buttons.isNotEmpty()) {
+                                    remote.buttons
+                                } else {
+                                    remote.commands.map { SavedRemoteButton(label = it, code = "") }
+                                }
+                                controlRemoteIndex = originalIndex
                                 controlSource = ControlSource.MY_REMOTES
                                 controlSelectedCommand = null
                                 controlTxCount = 0
                                 screen = Screen.REMOTE_CONTROL
                             },
                             onSecondaryAction = { index ->
-                                val remote = filtered[index]
-                                savedRemotes = savedRemotes.filterNot { it.profilePath == remote.profilePath }
+                                val originalIndex = indexedFiltered[index].index
+                                savedRemotes = savedRemotes.toMutableList().also { it.removeAt(originalIndex) }
                                 toastController.show("Removed from My Remotes")
                             },
-                            secondaryActionLabel = "Delete"
+                            secondaryActionLabel = "Delete",
+                            topActionLabel = "Create custom remote",
+                            onTopAction = {
+                                editingRemoteIndex = null
+                                showRemoteEditor = true
+                            }
                         )
                     }
 
@@ -349,7 +390,14 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 val profile = filtered[index]
                                 controlProfilePath = profile.path
                                 controlName = profile.name
-                                controlCommandsCsv = profile.commands.joinToString(";;")
+                                controlButtons = profile.commands.map {
+                                    SavedRemoteButton(
+                                        label = it,
+                                        code = "",
+                                        details = "Imported from DB command name"
+                                    )
+                                }
+                                controlRemoteIndex = -1
                                 controlSource = ControlSource.REMOTE_DB
                                 controlSelectedCommand = null
                                 controlTxCount = 0
@@ -357,11 +405,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             },
                             onSecondaryAction = { index ->
                                 val profile = filtered[index]
-                                if (savedRemotes.none { it.profilePath == profile.path }) {
+                                if (savedRemotes.none { it.sourceProfilePath == profile.path }) {
+                                    val resolvedName = uniqueRemoteName(profile.name)
                                     savedRemotes = savedRemotes + SavedRemote(
-                                        name = profile.name,
+                                        name = resolvedName,
                                         profilePath = profile.path,
-                                        commands = profile.commands
+                                        commands = profile.commands,
+                                        buttons = profile.commands.map {
+                                            SavedRemoteButton(
+                                                label = it,
+                                                code = "",
+                                                details = "Imported from DB command name"
+                                            )
+                                        },
+                                        sourceProfilePath = profile.path
                                     )
                                     toastController.show("Added to My Remotes")
                                 }
@@ -369,11 +426,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             secondaryActionLabel = "Add",
                             secondaryActionLabelForItem = { idx ->
                                 val path = filtered[idx].path
-                                if (savedRemotes.any { it.profilePath == path }) "Added" else "Add"
+                                if (savedRemotes.any { it.sourceProfilePath == path }) "Added" else "Add"
                             },
                             secondaryActionEnabledForItem = { idx ->
                                 val path = filtered[idx].path
-                                savedRemotes.none { it.profilePath == path }
+                                savedRemotes.none { it.sourceProfilePath == path }
                             }
                         )
                     }
@@ -392,6 +449,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             selectedCommand = controlSelectedCommand,
                             txCount = controlTxCount,
                             onBack = {
+                                controlRemoteIndex = -1
                                 screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
                             },
                             onCommandClick = { _ ->
@@ -399,16 +457,26 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 controlTxCount += 1
                                 emitTxPulse()
                             },
+                            onEdit = {
+                                if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
+                                    editingRemoteIndex = controlRemoteIndex
+                                    showRemoteEditor = true
+                                }
+                            },
                             onSave = {
-                                if (profilePath.isNotBlank() && savedRemotes.none { it.profilePath == profilePath }) {
+                                if (profilePath.isNotBlank() && savedRemotes.none { it.sourceProfilePath == profilePath }) {
+                                    val resolvedName = uniqueRemoteName(title)
                                     savedRemotes = savedRemotes + SavedRemote(
-                                        name = title,
+                                        name = resolvedName,
                                         profilePath = profilePath,
-                                        commands = commands
+                                        commands = commands,
+                                        buttons = controlButtons,
+                                        sourceProfilePath = profilePath
                                     )
                                 }
                             },
-                            showSaveButton = controlSource == ControlSource.REMOTE_DB
+                            showSaveButton = controlSource == ControlSource.REMOTE_DB,
+                            showEditButton = controlSource == ControlSource.MY_REMOTES
                         )
                     }
 
@@ -444,6 +512,68 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 }
             }
 
+        }
+
+        if (showRemoteEditor) {
+            val editIndex = editingRemoteIndex
+            val existing = editIndex?.let { savedRemotes.getOrNull(it) }
+            RemoteEditorDialog(
+                initialName = existing?.name.orEmpty(),
+                initialButtons = existing?.buttons.orEmpty(),
+                existingNames = savedRemotes.map { it.name }.toSet(),
+                originalName = existing?.name,
+                dbProfiles = dbIndex.profiles,
+                onDismiss = {
+                    showRemoteEditor = false
+                    editingRemoteIndex = null
+                },
+                onSave = { rawName, buttons ->
+                    val normalizedButtons = buttons.map {
+                        it.copy(
+                            label = it.label.trim(),
+                            code = it.code.trim(),
+                            details = it.details.trim()
+                        )
+                    }.filter { it.label.isNotBlank() }
+
+                    val resolvedName = uniqueRemoteName(rawName, excludeIndex = editIndex)
+
+                    if (editIndex != null && editIndex in savedRemotes.indices) {
+                        val previous = savedRemotes[editIndex]
+                        val changed = previous.name != resolvedName || previous.buttons != normalizedButtons
+                        val detachFromDb = previous.sourceProfilePath != null && changed
+
+                        val updated = previous.copy(
+                            name = resolvedName,
+                            profilePath = if (detachFromDb) "" else previous.profilePath,
+                            commands = normalizedButtons.map { it.label },
+                            buttons = normalizedButtons,
+                            sourceProfilePath = if (detachFromDb) null else previous.sourceProfilePath
+                        )
+
+                        savedRemotes = savedRemotes.toMutableList().also { it[editIndex] = updated }
+
+                        if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex == editIndex) {
+                            controlName = updated.name
+                            controlButtons = updated.buttons
+                            controlProfilePath = updated.profilePath
+                        }
+                        toastController.show("Remote updated")
+                    } else {
+                        savedRemotes = savedRemotes + SavedRemote(
+                            name = resolvedName,
+                            profilePath = "",
+                            commands = normalizedButtons.map { it.label },
+                            buttons = normalizedButtons,
+                            sourceProfilePath = null
+                        )
+                        toastController.show("Remote created")
+                    }
+
+                    showRemoteEditor = false
+                    editingRemoteIndex = null
+                }
+            )
         }
 
         AppToastHost(

@@ -45,8 +45,10 @@ fun RemoteControlScreen(
     txCount: Int,
     onBack: () -> Unit,
     onCommandClick: (String) -> Unit,
+    onEdit: () -> Unit,
     onSave: () -> Unit,
-    showSaveButton: Boolean
+    showSaveButton: Boolean,
+    showEditButton: Boolean
 ) {
     val violet = MaterialTheme.colorScheme.primary
     var flashedCommand by remember { mutableStateOf<String?>(null) }
@@ -60,6 +62,20 @@ fun RemoteControlScreen(
         // Top navigation row
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp))
+            if (showEditButton) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF13101E))
+                        .border(1.dp, violet.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                        .clickable(onClick = onEdit),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Edit", color = violet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
             if (showSaveButton) {
                 Box(
                     modifier = Modifier
