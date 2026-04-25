@@ -50,13 +50,22 @@ fun SettingsScreen(
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp))
-            Text(
-                text = "Settings",
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.align(Alignment.CenterVertically)
-            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF0F0D1A))
+                    .border(1.dp, violet.copy(alpha = 0.20f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    text = "Settings",
+                    color = Color.White,
+                    fontSize = 13.sp
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
