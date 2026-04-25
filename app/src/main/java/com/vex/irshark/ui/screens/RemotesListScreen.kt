@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vex.irshark.ui.components.EmptyCard
@@ -42,7 +43,8 @@ fun RemotesListScreen(
     secondaryActionEnabledForItem: ((Int) -> Boolean)? = null,
     isFavoriteForItem: ((Int) -> Boolean)? = null,
     onFavoriteToggleForItem: ((Int) -> Unit)? = null,
-    onDuplicateForItem: ((Int) -> Unit)? = null
+    onDuplicateForItem: ((Int) -> Unit)? = null,
+    secondaryActionIcon: ImageVector? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -89,6 +91,7 @@ fun RemotesListScreen(
                         subtitle = item.second,
                         actionLabel = secondaryActionLabelForItem?.invoke(index) ?: secondaryActionLabel,
                         actionEnabled = secondaryActionEnabledForItem?.invoke(index) ?: true,
+                        actionIcon = secondaryActionIcon,
                         onOpen = { onOpen(index) },
                         onAction = { onSecondaryAction(index) },
                         isFavorite = isFavoriteForItem?.invoke(index) ?: false,

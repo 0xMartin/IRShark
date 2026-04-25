@@ -14,11 +14,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -330,37 +330,18 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS)) {
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
-                    actionLabel = if (screen == Screen.MY_REMOTES) "Create custom remote" else null,
-                    onAction = if (screen == Screen.MY_REMOTES) {
-                        {
+                    actions = if (screen == Screen.MY_REMOTES) listOf(
+                        Icons.Filled.Add to {
                             editingRemoteIndex = null
                             showRemoteEditor = true
+                        },
+                        Icons.Filled.Download to {
+                            importLauncher.launch(arrayOf("application/json", "text/plain"))
+                        },
+                        Icons.Filled.Upload to {
+                            exportLauncher.launch("irshark_remotes.json")
                         }
-                    } else {
-                        null
-                    },
-                    trailingContent = if (screen == Screen.MY_REMOTES) {
-                        {
-                            IconButton(onClick = {
-                                importLauncher.launch(arrayOf("application/json", "text/plain"))
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Download,
-                                    contentDescription = "Import",
-                                    tint = androidx.compose.ui.graphics.Color(0xFF9B6DFF)
-                                )
-                            }
-                            IconButton(onClick = {
-                                exportLauncher.launch("irshark_remotes.json")
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Upload,
-                                    contentDescription = "Export",
-                                    tint = androidx.compose.ui.graphics.Color(0xFF9B6DFF)
-                                )
-                            }
-                        }
-                    } else null
+                    ) else emptyList()
                 )
             }
             if (screen != Screen.UNIVERSAL) {
@@ -504,7 +485,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 val originalIndex = indexedFiltered[index].index
                                 pendingDeleteRemoteIndex = originalIndex
                             },
-                            secondaryActionLabel = "Delete"
+                            secondaryActionLabel = "Delete",
+                            secondaryActionIcon = Icons.Filled.Delete
                         )
                     }
 

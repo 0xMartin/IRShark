@@ -23,10 +23,13 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -142,6 +145,7 @@ fun ListRow(
     subtitle: String,
     actionLabel: String,
     actionEnabled: Boolean = true,
+    actionIcon: ImageVector? = null,
     onOpen: () -> Unit,
     onAction: () -> Unit,
     isFavorite: Boolean = false,
@@ -177,36 +181,57 @@ fun ListRow(
                 Text(title, color = Color.White, fontSize = 12.sp)
                 Text(subtitle, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
             }
-            if (onDuplicate != null) {
-                Icon(
-                    imageVector = Icons.Filled.ContentCopy,
-                    contentDescription = "Duplicate",
-                    tint = Color(0xFF8A8899),
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clickable(onClick = onDuplicate)
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .height(28.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (actionEnabled) violet.copy(alpha = 0.18f) else Color(0xFF1A1726))
-                    .border(
-                        1.dp,
-                        if (actionEnabled) violet else Color.White.copy(alpha = 0.12f),
-                        RoundedCornerShape(8.dp)
-                    )
-                    .clickable(enabled = actionEnabled, onClick = onAction)
-                    .padding(horizontal = 10.dp),
-                contentAlignment = Alignment.Center
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    actionLabel,
-                    color = if (actionEnabled) violet else Color(0xFF8A8899),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                if (onDuplicate != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF1A1726))
+                            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                            .clickable(onClick = onDuplicate),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ContentCopy,
+                            contentDescription = "Duplicate",
+                            tint = Color(0xFF8A8899),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (actionEnabled) violet.copy(alpha = 0.18f) else Color(0xFF1A1726))
+                        .border(
+                            1.dp,
+                            if (actionEnabled) violet else Color.White.copy(alpha = 0.12f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable(enabled = actionEnabled, onClick = onAction),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (actionIcon != null) {
+                        Icon(
+                            imageVector = actionIcon,
+                            contentDescription = actionLabel,
+                            tint = if (actionEnabled) violet else Color(0xFF8A8899),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    } else {
+                        Text(
+                            actionLabel,
+                            color = if (actionEnabled) violet else Color(0xFF8A8899),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
             }
         }
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f))
@@ -328,9 +353,8 @@ fun Badge(text: String, modifier: Modifier = Modifier) {
 fun SectionNavBar(
     onHome: () -> Unit,
     modifier: Modifier = Modifier,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null,
-    trailingContent: (@Composable () -> Unit)? = null
+    // Each action: Pair<icon, onClick>. Rendered left-to-right as bordered icon boxes.
+    actions: List<Pair<ImageVector, () -> Unit>> = emptyList()
 ) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
@@ -350,24 +374,25 @@ fun SectionNavBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
-            if (!actionLabel.isNullOrBlank() && onAction != null) {
+            Spacer(modifier = Modifier.weight(1f))
+            actions.forEach { (icon, onClick) ->
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp)
+                        .size(40.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(violet.copy(alpha = 0.14f))
                         .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                        .clickable(onClick = onAction)
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.CenterStart
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(actionLabel, color = violet, fontSize = 12.sp)
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = violet,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
-            } else {
-                Spacer(modifier = Modifier.weight(1f))
             }
-            trailingContent?.invoke()
         }
     }
 }
