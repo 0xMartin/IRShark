@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -37,8 +38,9 @@ import androidx.compose.ui.unit.sp
 fun HomeScreen(
     onUniversal: () -> Unit,
     onMyRemotes: () -> Unit,
-    onRemoteDb: () -> Unit,
-    onSettings: () -> Unit
+    onRemoteDb:  () -> Unit,
+    onSettings:  () -> Unit,
+    onMacros:    () -> Unit = {}
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -53,6 +55,7 @@ fun HomeScreen(
         HomeEntryButton("UNIVERSAL REMOTE", "Pick device category and auto test commands", Icons.Filled.SettingsRemote, onUniversal)
         HomeEntryButton("MY REMOTES", "Your saved and reusable remotes", Icons.Filled.Folder, onMyRemotes)
         HomeEntryButton("REMOTE DB", "Browse all remotes from Flipper-IRDB", Icons.Filled.Search, onRemoteDb)
+        HomeEntryButton("MACROS", "Visual block macros for IR sequences", Icons.Filled.AutoAwesome, onMacros)
         HomeEntryButton("SETTINGS", "Global speed, TX LED and behavior", Icons.Filled.Settings, onSettings)
     }
 }

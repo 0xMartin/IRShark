@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,9 @@ import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.exportRemotesToJson
 import com.vex.irshark.data.importRemotesFromJson
 import com.vex.irshark.data.loadAppSettings
+import com.vex.irshark.data.loadSavedMacros
+import com.vex.irshark.data.saveSavedMacros
+import com.vex.irshark.data.SavedMacro
 import com.vex.irshark.data.transmitIrCode
 import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.data.loadFlipperDbIndex
@@ -61,12 +65,17 @@ import com.vex.irshark.ui.components.AppToastController
 import com.vex.irshark.ui.components.AppToastHost
 import com.vex.irshark.ui.components.SectionNavBar
 import com.vex.irshark.ui.screens.HomeScreen
+import com.vex.irshark.ui.screens.MacroEditorScreen
+import com.vex.irshark.ui.screens.MacroListScreen
+import com.vex.irshark.ui.screens.MacroRunScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
 import com.vex.irshark.ui.screens.SettingsScreen
 import com.vex.irshark.ui.screens.SplashScreen
 import com.vex.irshark.ui.screens.UniversalRemoteScreen
 import com.vex.irshark.ui.theme.IRSharkTheme
+import com.vex.irshark.macro.MacroEngine
+import com.vex.irshark.macro.MacroRunState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -95,7 +104,7 @@ class MainActivity : ComponentActivity() {
 // ── Navigation state ──────────────────────────────────────────────────────────
 
 private enum class Screen {
-    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS
+    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS, MACROS, MACRO_EDITOR, MACRO_RUN
 }
 
 private enum class ControlSource { MY_REMOTES, REMOTE_DB }
@@ -192,6 +201,15 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var editingRemoteIndex by remember { mutableStateOf<Int?>(null) }
     var pendingDeleteRemoteIndex by remember { mutableStateOf<Int?>(null) }
 
+    // Macros
+    var savedMacros by remember { mutableStateOf(listOf<SavedMacro>()) }
+    var macrosLoaded by remember { mutableStateOf(false) }
+    var editingMacroId by remember { mutableStateOf<String?>(null) }
+    var macrosQuery by remember { mutableStateOf("") }
+    var pendingDeleteMacroId by remember { mutableStateOf<String?>(null) }
+    val macroEngine = remember { MacroEngine(context) }
+    val macroState by macroEngine.state.collectAsState()
+
     fun uniqueRemoteName(baseName: String, excludeIndex: Int? = null): String {
         val taken = savedRemotes
             .filterIndexed { idx, _ -> excludeIndex == null || idx != excludeIndex }
@@ -233,6 +251,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         dbIndex = loadFlipperDbIndex(context)
         savedRemotes = loadSavedRemotes(context)
         remotesLoaded = true
+        savedMacros = loadSavedMacros(context)
+        macrosLoaded = true
         val settings = loadAppSettings(context)
         universalIntervalMs = settings.globalIntervalMs
         autoStopAtEnd = settings.autoStopAtEnd
@@ -243,6 +263,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     LaunchedEffect(savedRemotes) {
         if (!remotesLoaded) return@LaunchedEffect
         saveSavedRemotes(context, savedRemotes)
+    }
+
+    LaunchedEffect(savedMacros) {
+        if (!macrosLoaded) return@LaunchedEffect
+        saveSavedMacros(context, savedMacros)
     }
 
     LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed) {
@@ -320,6 +345,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 Screen.MY_REMOTES -> "My Remotes"
                 Screen.REMOTE_DB -> "Remote DB"
                 Screen.SETTINGS -> "Settings"
+                Screen.MACROS -> "Macros"
+                Screen.MACRO_EDITOR -> "Macro Editor"
+                Screen.MACRO_RUN -> "Running Macro"
             }
             AppHeader(
                 txActive = txPulseActive || universalAutoSend,
@@ -327,21 +355,30 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 fastBlink = universalAutoSend,
                 screenTitle = screenTitle
             )
-            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS)) {
+            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS)) {
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
-                    actions = if (screen == Screen.MY_REMOTES) listOf(
-                        Icons.Filled.Add to {
-                            editingRemoteIndex = null
-                            showRemoteEditor = true
-                        },
-                        Icons.Filled.Download to {
-                            importLauncher.launch(arrayOf("application/json", "text/plain"))
-                        },
-                        Icons.Filled.Upload to {
-                            exportLauncher.launch("irshark_remotes.json")
-                        }
-                    ) else emptyList()
+                    actions = when (screen) {
+                        Screen.MY_REMOTES -> listOf(
+                            Icons.Filled.Add to {
+                                editingRemoteIndex = null
+                                showRemoteEditor = true
+                            },
+                            Icons.Filled.Download to {
+                                importLauncher.launch(arrayOf("application/json", "text/plain"))
+                            },
+                            Icons.Filled.Upload to {
+                                exportLauncher.launch("irshark_remotes.json")
+                            }
+                        )
+                        Screen.MACROS -> listOf(
+                            Icons.Filled.Add to {
+                                editingMacroId = null
+                                screen = Screen.MACRO_EDITOR
+                            }
+                        )
+                        else -> emptyList()
+                    }
                 )
             }
             if (screen != Screen.UNIVERSAL) {
@@ -354,8 +391,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         HomeScreen(
                             onUniversal = { screen = Screen.UNIVERSAL },
                             onMyRemotes = { screen = Screen.MY_REMOTES },
-                            onRemoteDb = { screen = Screen.REMOTE_DB },
-                            onSettings = { screen = Screen.SETTINGS }
+                            onRemoteDb  = { screen = Screen.REMOTE_DB },
+                            onSettings  = { screen = Screen.SETTINGS },
+                            onMacros    = { screen = Screen.MACROS }
                         )
                     }
 
@@ -657,6 +695,82 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             }
                         )
                     }
+
+                    Screen.MACROS -> {
+                        val macroFiltered = savedMacros.filter {
+                            macrosQuery.isBlank() || it.name.contains(macrosQuery, ignoreCase = true)
+                        }
+                        MacroListScreen(
+                            query    = macrosQuery,
+                            onQuery  = { macrosQuery = it },
+                            macros   = macroFiltered,
+                            onPlay   = { macro ->
+                                macroEngine.launch(macro, scope)
+                                screen = Screen.MACRO_RUN
+                            },
+                            onEdit   = { macro ->
+                                editingMacroId = macro.id
+                                screen = Screen.MACRO_EDITOR
+                            },
+                            onDelete = { macro -> pendingDeleteMacroId = macro.id }
+                        )
+                    }
+
+                    Screen.MACRO_EDITOR -> {
+                        val initialMacro = editingMacroId?.let { id -> savedMacros.find { it.id == id } }
+                        MacroEditorScreen(
+                            dbProfiles    = dbIndex.profiles,
+                            savedRemotes  = savedRemotes,
+                            initialMacro  = initialMacro,
+                            existingNames = savedMacros.filter { it.id != initialMacro?.id }.map { it.name }.toSet(),
+                            onSave        = { macro ->
+                                savedMacros = if (savedMacros.any { it.id == macro.id }) {
+                                    savedMacros.map { if (it.id == macro.id) macro else it }
+                                } else {
+                                    savedMacros + macro
+                                }
+                                editingMacroId = null
+                                screen = Screen.MACROS
+                            },
+                            onDismiss     = {
+                                editingMacroId = null
+                                screen = Screen.MACROS
+                            }
+                        )
+                    }
+
+                    Screen.MACRO_RUN -> {
+                        val running = macroState as? MacroRunState.Running
+                        if (running != null) {
+                            MacroRunScreen(
+                                state  = running,
+                                onStop = { macroEngine.stop(); screen = Screen.MACROS },
+                                onYes  = { macroEngine.respondYes() },
+                                onNo   = { macroEngine.respondNo() }
+                            )
+                        } else {
+                            // Finished or Cancelled
+                            val msg = when (macroState) {
+                                is MacroRunState.Finished  -> "Macro complete: ${(macroState as MacroRunState.Finished).macroName}"
+                                is MacroRunState.Cancelled -> "Macro stopped: ${(macroState as MacroRunState.Cancelled).macroName}"
+                                else -> "Macro done"
+                            }
+                            androidx.compose.foundation.layout.Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.foundation.layout.Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Text(msg, color = androidx.compose.ui.graphics.Color.White)
+                                    TextButton(onClick = { screen = Screen.MACROS }) {
+                                        Text("Done")
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -746,6 +860,27 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         TextButton(onClick = { pendingDeleteRemoteIndex = null }) {
                             Text("Cancel")
                         }
+                    }
+                )
+            }
+        }
+
+        if (pendingDeleteMacroId != null) {
+            val target = savedMacros.find { it.id == pendingDeleteMacroId }
+            if (target != null) {
+                AlertDialog(
+                    onDismissRequest = { pendingDeleteMacroId = null },
+                    title = { Text("Delete macro") },
+                    text = { Text("Delete '${target.name}'?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            savedMacros = savedMacros.filter { it.id != target.id }
+                            pendingDeleteMacroId = null
+                            toastController.show("Macro deleted")
+                        }) { Text("Delete") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingDeleteMacroId = null }) { Text("Cancel") }
                     }
                 )
             }
