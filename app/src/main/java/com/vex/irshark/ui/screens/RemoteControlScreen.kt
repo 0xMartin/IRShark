@@ -3,8 +3,8 @@ package com.vex.irshark.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -98,23 +99,38 @@ fun RemoteControlScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(54.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF0F0D1A))
+                            .height(62.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(Color(0xFF181327), Color(0xFF0F0D1A))
+                                )
+                            )
                             .border(
                                 1.dp,
-                                Color.White.copy(alpha = 0.12f),
-                                RoundedCornerShape(12.dp)
+                                violet.copy(alpha = 0.22f),
+                                RoundedCornerShape(16.dp)
                             )
-                            .clickable { onCommandClick(cmd) },
-                        contentAlignment = Alignment.Center
+                            .clickable { onCommandClick(cmd) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
-                        Text(
-                            text = cmd,
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Normal
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 22.dp, height = 4.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(violet.copy(alpha = 0.7f))
+                            )
+                            Text(
+                                text = cmd,
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
                 repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -119,7 +120,14 @@ fun UniversalRemoteScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Search categories") },
-                        textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp)
+                        textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
+                        shape = RoundedCornerShape(999.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = violet.copy(alpha = 0.45f),
+                            unfocusedBorderColor = violet.copy(alpha = 0.2f),
+                            focusedContainerColor = Color(0xFF13101E),
+                            unfocusedContainerColor = Color(0xFF13101E)
+                        )
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -128,7 +136,7 @@ fun UniversalRemoteScreen(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp)
+                            .height(260.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .border(1.dp, violet.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
                         verticalArrangement = Arrangement.spacedBy(6.dp),

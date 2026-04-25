@@ -289,7 +289,7 @@ fun UniversalRemoteHeader(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .height(56.dp)
             .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
             .background(Color(0xFF121024))
             .border(1.dp, violet.copy(alpha = 0.12f), RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
@@ -298,40 +298,76 @@ fun UniversalRemoteHeader(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(50.dp),
+                .height(56.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp),
+                horizontalArrangement = Arrangement.spacedBy(0.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HomeIconButton(
+                    onClick = onHome,
+                    modifier = Modifier.size(40.dp)
+                )
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
+                        .background(violet.copy(alpha = 0.08f))
+                        .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        text = currentPath,
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
+            }
 
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(0.dp, 18.dp, 18.dp, 0.dp))
-                    .background(violet.copy(alpha = 0.08f))
-                    .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(0.dp, 18.dp, 18.dp, 0.dp))
-                    .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(violet.copy(alpha = 0.15f))
+                    .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = currentPath,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
+                    text = "Count: $count",
+                    color = violet,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
-            Badge(
-                text = "Count: $count",
-                modifier = Modifier.height(38.dp)
-            )
-
             if (canGoBack) {
-                BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp), enabled = true)
-            } else {
-                Spacer(modifier = Modifier.size(40.dp))
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFF13101E))
+                        .border(1.dp, violet.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = violet,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
     }
