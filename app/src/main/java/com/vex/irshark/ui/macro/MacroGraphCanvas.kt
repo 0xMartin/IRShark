@@ -23,6 +23,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOut
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -64,8 +72,8 @@ import kotlin.math.roundToInt
 // dp→px conversion (×density) cancels and physical pixel width = BLOCK_W px.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const val BLOCK_W   = 220f  // block width  (canvas px)
-const val BLOCK_H   = 72f   // block height (canvas px)
+const val BLOCK_W   = 300f  // block width  (canvas px)
+const val BLOCK_H   = 180f  // block height (canvas px)
 const val PIN_R     = 10f   // visual pin radius (canvas px)
 const val GRID_STEP = 32f   // snap-to-grid step (canvas px)
 
@@ -121,7 +129,7 @@ private fun DrawScope.drawEdge(from: Offset, to: Offset, color: Color, strokeW: 
 
 fun blockColor(type: MacroBlockType): Color = when (type) {
     MacroBlockType.START        -> Color(0xFF1E8A5E)
-    MacroBlockType.STOP         -> Color(0xFFBF3B3B)
+    MacroBlockType.END          -> Color(0xFFBF3B3B)
     MacroBlockType.IR_SEND      -> Color(0xFF7B4DDF)
     MacroBlockType.DELAY        -> Color(0xFF2E7ADB)
     MacroBlockType.SHOW_TEXT    -> Color(0xFF1E9A6E)
@@ -131,11 +139,11 @@ fun blockColor(type: MacroBlockType): Color = when (type) {
 
 fun blockLabel(type: MacroBlockType): String = when (type) {
     MacroBlockType.START        -> "START"
-    MacroBlockType.STOP         -> "STOP"
+    MacroBlockType.END          -> "END"
     MacroBlockType.IR_SEND      -> "IR Send"
     MacroBlockType.DELAY        -> "Delay"
     MacroBlockType.SHOW_TEXT    -> "Show Text"
-    MacroBlockType.WAIT_CONFIRM -> "Wait OK"
+    MacroBlockType.WAIT_CONFIRM -> "Wait for OK"
     MacroBlockType.IF_ELSE      -> "If / Else"
 }
 
@@ -347,7 +355,7 @@ fun MacroGraphCanvas(
             // Draw grid + edges on Canvas layer
             Canvas(modifier = Modifier.fillMaxSize()) {
                 // Grid dots
-                val gridColor = Color(0xFF1A1726)
+                val gridColor = Color(0xFF2E2845)
                 val startX = ((-pan.x / zoom) / GRID_STEP).toInt() - 1
                 val startY = ((-pan.y / zoom) / GRID_STEP).toInt() - 1
                 val endX   = startX + (size.width  / (GRID_STEP * zoom)).toInt() + 2
@@ -355,7 +363,7 @@ fun MacroGraphCanvas(
                 for (gx in startX..endX) for (gy in startY..endY) {
                     val sx = gx * GRID_STEP * zoom + pan.x
                     val sy = gy * GRID_STEP * zoom + pan.y
-                    drawCircle(gridColor, radius = 1.5f, center = Offset(sx, sy))
+                    drawCircle(gridColor, radius = 2.5f, center = Offset(sx, sy))
                 }
 
                 // Edges
@@ -425,13 +433,13 @@ fun MacroGraphCanvas(
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            NavBtn("−")  { zoom = (zoom / 1.3f).coerceAtLeast(0.25f) }
-            NavBtn("+")  { zoom = (zoom * 1.3f).coerceAtMost(4f) }
-            NavBtn("←")  { pan += Offset( 80f, 0f) }
-            NavBtn("→")  { pan -= Offset( 80f, 0f) }
-            NavBtn("↑")  { pan += Offset(0f,  80f) }
-            NavBtn("↓")  { pan -= Offset(0f,  80f) }
-            NavBtn("⊙")  { pan = Offset(40f, 60f); zoom = 1f }
+            NavBtn(Icons.Filled.ZoomOut)  { zoom = (zoom / 1.3f).coerceAtLeast(0.25f) }
+            NavBtn(Icons.Filled.ZoomIn)   { zoom = (zoom * 1.3f).coerceAtMost(4f) }
+            NavBtn(Icons.Filled.KeyboardArrowLeft)  { pan += Offset( 80f, 0f) }
+            NavBtn(Icons.Filled.KeyboardArrowRight) { pan -= Offset( 80f, 0f) }
+            NavBtn(Icons.Filled.KeyboardArrowUp)    { pan += Offset(0f,  80f) }
+            NavBtn(Icons.Filled.KeyboardArrowDown)  { pan -= Offset(0f,  80f) }
+            NavBtn(Icons.Filled.CenterFocusStrong)  { pan = Offset(40f, 60f); zoom = 1f }
         }
     }
 }
@@ -475,18 +483,35 @@ fun BlockView(
                 )
         ) {
             Column(
-                modifier            = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 6.dp),
+                modifier            = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.Center
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-                    Text(label, color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
+                Text(label, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    lineHeight = 15.sp)
                 val summary = blockSummary(node)
                 if (summary.isNotEmpty()) {
-                    Text(summary, color = Color.White, fontSize = 11.sp, maxLines = 1,
-                        modifier = Modifier.padding(top = 2.dp))
+                    Text(
+                        text     = summary,
+                        color    = Color.White.copy(alpha = 0.88f),
+                        fontSize = 13.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 3,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
+            }
+            // Settings gear — top-right, only for configurable blocks
+            val hasSettings = node.type !in listOf(MacroBlockType.START, MacroBlockType.END)
+            if (hasSettings) {
+                Icon(
+                    imageVector        = Icons.Filled.Settings,
+                    contentDescription = "Settings",
+                    tint               = color.copy(alpha = 0.65f),
+                    modifier           = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(16.dp)
+                )
             }
         }
 
@@ -527,7 +552,7 @@ fun BlockView(
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = noPad)
                         .offset(y = -(pinDp + 1.dp)))
             }
-            MacroBlockType.STOP -> { /* no output pin */ }
+            MacroBlockType.END -> { /* no output pin */ }
             else -> {
                 Box(modifier = Modifier.align(Alignment.BottomCenter).offset(y = pinOutDp)
                     .size(pinDp).clip(CircleShape)
@@ -538,11 +563,14 @@ fun BlockView(
 }
 
 private fun blockSummary(node: MacroNode): String = when (val p = node.params) {
-    is BlockParams.IrSend      -> p.displayLabel.ifEmpty { "Tap to pick IR button" }
+    is BlockParams.IrSend      -> p.displayLabel.ifEmpty { "Tap ⚙ to pick IR button" }
     is BlockParams.Delay       -> "${p.ms} ms"
-    is BlockParams.ShowText    -> "\"${p.text.take(24)}\""
-    is BlockParams.WaitConfirm -> p.message.take(26)
-    is BlockParams.IfElse      -> p.message.take(26)
+    is BlockParams.ShowText    -> {
+        val dur = "${p.durationMs / 1000}s"
+        if (p.text.isEmpty()) "duration: $dur" else "\"${p.text.take(28)}\"\n$dur"
+    }
+    is BlockParams.WaitConfirm -> p.message.ifEmpty { "Press OK to continue" }
+    is BlockParams.IfElse      -> p.message.ifEmpty { "Continue?" }
     else                       -> ""
 }
 
@@ -577,7 +605,7 @@ private fun ToolbarBtn(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun NavBtn(label: String, onClick: () -> Unit) {
+private fun NavBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(40.dp)
@@ -587,7 +615,7 @@ private fun NavBtn(label: String, onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, color = Color(0xFF9B6DFF), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Icon(icon, contentDescription = null, tint = Color(0xFF9B6DFF), modifier = Modifier.size(22.dp))
     }
 }
 
@@ -601,7 +629,7 @@ private val addableBlockTypes = listOf(
     MacroBlockType.SHOW_TEXT,
     MacroBlockType.WAIT_CONFIRM,
     MacroBlockType.IF_ELSE,
-    MacroBlockType.STOP
+    MacroBlockType.END
 )
 
 @Composable

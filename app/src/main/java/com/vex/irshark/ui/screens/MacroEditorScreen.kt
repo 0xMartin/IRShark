@@ -266,10 +266,11 @@ private fun NodeParamDialog(
 ) {
     val violet = MaterialTheme.colorScheme.primary
 
-    var delayMs by remember { mutableStateOf(((node.params as? BlockParams.Delay)?.ms ?: 500L).toString()) }
-    var showTxt by remember { mutableStateOf((node.params as? BlockParams.ShowText)?.text ?: "") }
-    var waitMsg by remember { mutableStateOf((node.params as? BlockParams.WaitConfirm)?.message ?: "Press OK to continue") }
-    var ifMsg   by remember { mutableStateOf((node.params as? BlockParams.IfElse)?.message ?: "Continue?") }
+    var delayMs  by remember { mutableStateOf(((node.params as? BlockParams.Delay)?.ms ?: 500L).toString()) }
+    var showTxt  by remember { mutableStateOf((node.params as? BlockParams.ShowText)?.text ?: "") }
+    var showDur  by remember { mutableStateOf(((node.params as? BlockParams.ShowText)?.durationMs ?: 3000L).toString()) }
+    var waitMsg  by remember { mutableStateOf((node.params as? BlockParams.WaitConfirm)?.message ?: "Press OK to continue") }
+    var ifMsg    by remember { mutableStateOf((node.params as? BlockParams.IfElse)?.message ?: "Continue?") }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -294,6 +295,10 @@ private fun NodeParamDialog(
                 MacroBlockType.SHOW_TEXT -> {
                     OutlinedTextField(value = showTxt, onValueChange = { showTxt = it },
                         label = { Text("Message") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    OutlinedTextField(value = showDur, onValueChange = { showDur = it },
+                        label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    Text("3000 = 3 sec", color = Color(0xFF8A8899), fontSize = 11.sp)
                 }
                 MacroBlockType.WAIT_CONFIRM -> {
                     OutlinedTextField(value = waitMsg, onValueChange = { waitMsg = it },
@@ -313,7 +318,7 @@ private fun NodeParamDialog(
                         Text("Pick IR button...")
                     }
                 }
-                MacroBlockType.STOP -> {
+                MacroBlockType.END -> {
                     Text("Terminates the macro immediately.", color = Color(0xFF8A8899), fontSize = 12.sp)
                 }
                 else -> {}
@@ -321,7 +326,7 @@ private fun NodeParamDialog(
 
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (node.type != MacroBlockType.START && node.type != MacroBlockType.STOP) {
+                if (node.type != MacroBlockType.START && node.type != MacroBlockType.END) {
                     TextButton(onClick = onDelete) { Text("Delete block", color = Color(0xFFFF7B9D)) }
                 }
                 Spacer(modifier = Modifier.weight(1f))
@@ -329,10 +334,10 @@ private fun NodeParamDialog(
                 TextButton(onClick = {
                     val params: BlockParams = when (node.type) {
                         MacroBlockType.DELAY        -> BlockParams.Delay(delayMs.toLongOrNull()?.coerceAtLeast(1) ?: 500L)
-                        MacroBlockType.SHOW_TEXT    -> BlockParams.ShowText(showTxt.ifBlank { "Hello!" })
+                        MacroBlockType.SHOW_TEXT    -> BlockParams.ShowText(showTxt.ifBlank { "Hello!" }, showDur.toLongOrNull()?.coerceAtLeast(100) ?: 3000L)
                         MacroBlockType.WAIT_CONFIRM -> BlockParams.WaitConfirm(waitMsg.ifBlank { "Continue?" })
                         MacroBlockType.IF_ELSE      -> BlockParams.IfElse(ifMsg.ifBlank { "Continue?" })
-                        MacroBlockType.IR_SEND, MacroBlockType.STOP, MacroBlockType.START -> node.params
+                        MacroBlockType.IR_SEND, MacroBlockType.END, MacroBlockType.START -> node.params
                     }
                     onSave(params)
                 }) { Text("OK") }

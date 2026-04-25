@@ -118,6 +118,9 @@ class MacroEngine(private val context: Context) {
             is MacroStep.ShowText -> {
                 displayText = step.text
                 pushProgress()
+                delay(step.durationMs.coerceAtLeast(100L))
+                displayText = null
+                pushProgress()
             }
             is MacroStep.WaitConfirm -> {
                 val ok = suspendConfirm(step.message, hasNo = false)

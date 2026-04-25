@@ -12,7 +12,7 @@ import java.util.UUID
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum class MacroBlockType {
-    START, STOP,
+    START, END,
     IR_SEND, DELAY, SHOW_TEXT, WAIT_CONFIRM, IF_ELSE
 }
 
@@ -32,7 +32,7 @@ sealed class BlockParams {
 
     data class Delay(val ms: Long = 500L) : BlockParams()
 
-    data class ShowText(val text: String = "") : BlockParams()
+    data class ShowText(val text: String = "", val durationMs: Long = 3000L) : BlockParams()
 
     data class WaitConfirm(val message: String = "Press OK to continue") : BlockParams()
 
@@ -59,7 +59,7 @@ data class MacroNode(
     /** Returns available output PinIds for this block type. */
     fun outputPins(): List<PinId> = when (type) {
         MacroBlockType.START      -> listOf(PinId.OUT)
-        MacroBlockType.STOP       -> emptyList()
+        MacroBlockType.END        -> emptyList()
         MacroBlockType.IF_ELSE    -> listOf(PinId.YES, PinId.NO)
         else                      -> listOf(PinId.OUT)
     }
@@ -132,7 +132,7 @@ class MacroGraph {
         val fromNode = nodes.firstOrNull { it.id == fromId } ?: return "Source not found"
         val toNode   = nodes.firstOrNull { it.id == toId }   ?: return "Target not found"
         if (!toNode.hasInput()) return "This block has no input"
-        if (fromNode.type == MacroBlockType.STOP) return "Stop has no outputs"
+        if (fromNode.type == MacroBlockType.END) return "End has no outputs"
 
         // One output pin → max one target
         if (edges.any { it.fromId == fromId && it.fromPin == fromPin }) return "Output already connected"
@@ -197,7 +197,7 @@ class MacroGraph {
 
         when (node.type) {
             MacroBlockType.START -> { /* no step emitted */ }
-            MacroBlockType.STOP  -> { out.add(MacroStep.Stop); return null }
+            MacroBlockType.END   -> { out.add(MacroStep.Stop); return null }
 
             MacroBlockType.IR_SEND -> {
                 val p = node.params as? BlockParams.IrSend ?: BlockParams.IrSend()
@@ -209,7 +209,7 @@ class MacroGraph {
             }
             MacroBlockType.SHOW_TEXT -> {
                 val p = node.params as? BlockParams.ShowText ?: BlockParams.ShowText()
-                out.add(MacroStep.ShowText(p.text))
+                out.add(MacroStep.ShowText(p.text, p.durationMs))
             }
             MacroBlockType.WAIT_CONFIRM -> {
                 val p = node.params as? BlockParams.WaitConfirm ?: BlockParams.WaitConfirm()
@@ -270,7 +270,7 @@ class MacroGraph {
         is BlockParams.None        -> "null"
         is BlockParams.IrSend      -> "{\"kind\":\"ir\",\"label\":${jsonStr(p.displayLabel)},\"remote\":${jsonStr(p.remoteName)},\"button\":${jsonStr(p.buttonLabel)},\"code\":${jsonStr(p.irCode)}}"
         is BlockParams.Delay       -> "{\"kind\":\"delay\",\"ms\":${p.ms}}"
-        is BlockParams.ShowText    -> "{\"kind\":\"show\",\"text\":${jsonStr(p.text)}}"
+        is BlockParams.ShowText    -> "{\"kind\":\"show\",\"text\":${jsonStr(p.text)},\"dur\":${p.durationMs}}"
         is BlockParams.WaitConfirm -> "{\"kind\":\"wait\",\"msg\":${jsonStr(p.message)}}"
         is BlockParams.IfElse      -> "{\"kind\":\"if\",\"msg\":${jsonStr(p.message)}}"
     }
@@ -292,7 +292,7 @@ class MacroGraph {
                             pObj.optString("label"), pObj.optString("remote"),
                             pObj.optString("button"), pObj.optString("code"))
                         "delay" -> BlockParams.Delay(pObj.optLong("ms", 500))
-                        "show"  -> BlockParams.ShowText(pObj.optString("text"))
+                        "show"  -> BlockParams.ShowText(pObj.optString("text"), pObj.optLong("dur", 3000L))
                         "wait"  -> BlockParams.WaitConfirm(pObj.optString("msg"))
                         "if"    -> BlockParams.IfElse(pObj.optString("msg"))
                         else    -> BlockParams.None
