@@ -17,10 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -30,7 +32,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
-import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.TransformOrigin
@@ -176,6 +178,10 @@ fun MacroGraphCanvas(
     var connectCursor  by remember { mutableStateOf(Offset.Zero) }
     var hoveredInputId by remember { mutableStateOf<String?>(null) }
 
+    // ── Selection rect (canvas-px)
+    var selStart by remember { mutableStateOf<Offset?>(null) }
+    var selEnd   by remember { mutableStateOf<Offset?>(null) }
+
     var showAddMenu by remember { mutableStateOf(false) }
     val violet = MaterialTheme.colorScheme.primary
 
@@ -200,55 +206,11 @@ fun MacroGraphCanvas(
 
     Box(modifier = modifier.fillMaxSize().background(Color(0xFF08060F))) {
 
-        // ── Top toolbar ───────────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .background(Color(0xFF0E0B1A))
-                .padding(horizontal = 10.dp)
-                .zIndex(10f),
-            verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            val selCount = graph.nodes.count { it.selected }
-
-            Box {
-                ToolbarBtn(icon = Icons.Filled.Add, tint = violet, label = "Add") {
-                    showAddMenu = true
-                }
-                AddBlockMenu(
-                    expanded = showAddMenu,
-                    onDismiss = { showAddMenu = false },
-                    onPick = { type ->
-                        showAddMenu = false
-                        val center = snapToGrid(screenToCanvas(Offset(400f, 300f), pan, zoom))
-                        onAddBlock(type, center)
-                    }
-                )
-            }
-
-            if (selCount > 0) {
-                ToolbarBtn(icon = Icons.Filled.Delete, tint = Color(0xFFFF7B9D), label = "Delete ($selCount)") {
-                    onDeleteSelected()
-                }
-                ToolbarBtn(icon = Icons.Filled.Close, tint = Color(0xFF8A8899), label = "Deselect") {
-                    graph.setSelected(emptySet())
-                }
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-            if (connectFromId != null) {
-                Text("Drag to input pin • release to cancel",
-                    color = Color(0xFF9B6DFF), fontSize = 10.sp, modifier = Modifier.padding(end = 6.dp))
-            }
-        }
-
-        // ── Canvas area ───────────────────────────────────────────────────
+        // ── Canvas area (full screen, no top padding) ─────────────────────
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 48.dp, bottom = 52.dp)
+                .padding(bottom = 52.dp)
                 .pointerInput(graph) {
                     awaitEachGesture {
                         // 1) First touch
@@ -258,8 +220,8 @@ fun MacroGraphCanvas(
                         var moved    = false
 
                         // 2) Hit-test
-                        val cDown  = screenToCanvas(down.position, pan, zoom)
-                        val pinHit = findOutputPinHit(cDown)
+                        val cDown   = screenToCanvas(down.position, pan, zoom)
+                        val pinHit  = findOutputPinHit(cDown)
                         val nodeHit = if (pinHit == null) findNodeHit(cDown) else null
                         when {
                             pinHit != null -> {
@@ -270,6 +232,11 @@ fun MacroGraphCanvas(
                             nodeHit != null -> {
                                 draggingId     = nodeHit.id
                                 dragNodeOffset = cDown - nodeHit.pos
+                            }
+                            else -> {
+                                // Empty space — start selection rect
+                                selStart = cDown
+                                selEnd   = cDown
                             }
                         }
 
@@ -302,6 +269,21 @@ fun MacroGraphCanvas(
                                                         graph.moveNode(draggingId!!, newPos)
                                                     }
                                                 }
+                                            }
+                                            selStart != null -> {
+                                                // Expanding selection rectangle
+                                                selEnd = cPos
+                                                val s = selStart!!
+                                                val e = selEnd!!
+                                                val rect = Rect(
+                                                    left   = minOf(s.x, e.x), top    = minOf(s.y, e.y),
+                                                    right  = maxOf(s.x, e.x), bottom = maxOf(s.y, e.y)
+                                                )
+                                                val ids = graph.nodes.filter { n ->
+                                                    n.pos.x < rect.right  && (n.pos.x + BLOCK_W) > rect.left &&
+                                                    n.pos.y < rect.bottom && (n.pos.y + BLOCK_H) > rect.top
+                                                }.map { it.id }.toSet()
+                                                graph.setSelected(ids)
                                             }
                                             else -> pan += delta
                                         }
@@ -339,6 +321,14 @@ fun MacroGraphCanvas(
                             if (target != null) graph.tryConnect(connectFromId!!, connectFromPin, target.id)
                             connectFromId  = null
                             hoveredInputId = null
+                        } else if (selStart != null) {
+                            // Finished selection rect drag
+                            if (!moved) {
+                                // Tap on empty space → deselect all
+                                graph.setSelected(emptySet())
+                            }
+                            selStart = null
+                            selEnd   = null
                         } else if (!moved) {
                             val cPos   = screenToCanvas(lastPos, pan, zoom)
                             val tapped = findNodeHit(cPos)
@@ -396,6 +386,24 @@ fun MacroGraphCanvas(
                         )
                     }
                 }
+
+                // Selection rect
+                val ss = selStart; val se = selEnd
+                if (ss != null && se != null) {
+                    val rL = canvasToScreen(Offset(minOf(ss.x, se.x), minOf(ss.y, se.y)), pan, zoom)
+                    val rR = canvasToScreen(Offset(maxOf(ss.x, se.x), maxOf(ss.y, se.y)), pan, zoom)
+                    drawRect(
+                        color   = Color(0xFF9B6DFF).copy(alpha = 0.18f),
+                        topLeft = rL,
+                        size    = androidx.compose.ui.geometry.Size(rR.x - rL.x, rR.y - rL.y)
+                    )
+                    drawRect(
+                        color   = Color(0xFF9B6DFF).copy(alpha = 0.75f),
+                        topLeft = rL,
+                        size    = androidx.compose.ui.geometry.Size(rR.x - rL.x, rR.y - rL.y),
+                        style   = Stroke(width = 2f)
+                    )
+                }
             }
 
             // Block nodes — size uses density so canvas-px = block physical px
@@ -422,6 +430,40 @@ fun MacroGraphCanvas(
             }
         }
 
+        // ── Multiselect / wire overlay (floating, top of canvas) ──────────
+        val selCount    = graph.nodes.count { it.selected }
+        val wireHint    = connectFromId != null
+        if (selCount > 0 || wireHint) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .zIndex(20f),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (selCount > 0) {
+                    ToolbarBtn(icon = Icons.Filled.Delete, tint = Color(0xFFFF7B9D), label = "Delete ($selCount)") {
+                        onDeleteSelected()
+                    }
+                    ToolbarBtn(icon = Icons.Filled.Close, tint = Color(0xFF8A8899), label = "Deselect") {
+                        graph.setSelected(emptySet())
+                    }
+                }
+                if (wireHint) {
+                    Text(
+                        "Drag to input pin  •  lift to cancel",
+                        color    = Color(0xFF9B6DFF),
+                        fontSize = 10.sp,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF0E0B1A).copy(alpha = 0.85f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
         // ── Bottom nav bar ────────────────────────────────────────────────
         Row(
             modifier = Modifier
@@ -433,8 +475,21 @@ fun MacroGraphCanvas(
             verticalAlignment     = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            NavBtn(Icons.Filled.ZoomOut)  { zoom = (zoom / 1.3f).coerceAtLeast(0.25f) }
-            NavBtn(Icons.Filled.ZoomIn)   { zoom = (zoom * 1.3f).coerceAtMost(4f) }
+            // Add button — first position
+            Box {
+                NavBtn(Icons.Filled.Add) { showAddMenu = true }
+                AddBlockMenu(
+                    expanded  = showAddMenu,
+                    onDismiss = { showAddMenu = false },
+                    onPick    = { type ->
+                        showAddMenu = false
+                        val center = snapToGrid(screenToCanvas(Offset(400f, 300f), pan, zoom))
+                        onAddBlock(type, center)
+                    }
+                )
+            }
+            NavBtn(Icons.Filled.ZoomOut)            { zoom = (zoom / 1.3f).coerceAtLeast(0.25f) }
+            NavBtn(Icons.Filled.ZoomIn)             { zoom = (zoom * 1.3f).coerceAtMost(4f) }
             NavBtn(Icons.Filled.KeyboardArrowLeft)  { pan += Offset( 80f, 0f) }
             NavBtn(Icons.Filled.KeyboardArrowRight) { pan -= Offset( 80f, 0f) }
             NavBtn(Icons.Filled.KeyboardArrowUp)    { pan += Offset(0f,  80f) }
