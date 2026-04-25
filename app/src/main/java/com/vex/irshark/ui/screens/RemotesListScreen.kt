@@ -13,7 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,9 +28,6 @@ import com.vex.irshark.ui.components.ListRow
 
 @Composable
 fun RemotesListScreen(
-    query: String,
-    queryLabel: String,
-    onQueryChange: (String) -> Unit,
     emptyText: String,
     items: List<Pair<String, String>>,
     onOpen: (Int) -> Unit,
@@ -64,16 +60,6 @@ fun RemotesListScreen(
             }
             Spacer(modifier = Modifier.height(10.dp))
         }
-
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(queryLabel) }
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
 
         if (items.isEmpty()) {
             EmptyCard(emptyText)

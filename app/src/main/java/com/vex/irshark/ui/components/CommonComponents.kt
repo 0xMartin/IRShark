@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.animation.core.keyframes
@@ -31,6 +32,9 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.vex.irshark.R
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -259,16 +263,13 @@ fun AppHeader(txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean, screenT
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(
+                Image(
+                    painter = painterResource(R.drawable.app_icon),
+                    contentDescription = "IRShark",
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(violet.copy(alpha = 0.20f))
-                        .border(1.dp, violet, RoundedCornerShape(10.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "IR", color = violet, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
-                }
+                )
                 Text(
                     text = screenTitle,
                     color = Color.White,
@@ -387,6 +388,7 @@ fun SectionNavBar(
                     value = searchQuery,
                     onValueChange = onSearchQuery,
                     singleLine = true,
+                    cursorBrush = SolidColor(Color.White),
                     textStyle = androidx.compose.ui.text.TextStyle(
                         color = Color.White,
                         fontSize = 13.sp

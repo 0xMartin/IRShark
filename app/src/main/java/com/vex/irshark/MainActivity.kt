@@ -363,9 +363,23 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS)) {
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
-                    searchQuery = if (screen == Screen.MACROS) macrosQuery else null,
-                    searchPlaceholder = "Search macros",
-                    onSearchQuery = if (screen == Screen.MACROS) ({ macrosQuery = it }) else null,
+                    searchQuery = when (screen) {
+                        Screen.MACROS -> macrosQuery
+                        Screen.MY_REMOTES -> myRemotesQuery
+                        Screen.REMOTE_DB -> remoteDbQuery
+                        else -> null
+                    },
+                    searchPlaceholder = when (screen) {
+                        Screen.MY_REMOTES -> "Search saved remotes"
+                        Screen.REMOTE_DB -> "Search all database remotes"
+                        else -> "Search macros"
+                    },
+                    onSearchQuery = when (screen) {
+                        Screen.MACROS -> ({ macrosQuery = it })
+                        Screen.MY_REMOTES -> ({ myRemotesQuery = it })
+                        Screen.REMOTE_DB -> ({ remoteDbQuery = it })
+                        else -> null
+                    },
                     actions = when (screen) {
                         Screen.MY_REMOTES -> listOf(
                             Icons.Filled.Add to {
@@ -389,11 +403,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     }
                 )
             }
-            if (screen != Screen.UNIVERSAL) {
+            if (screen !in listOf(Screen.UNIVERSAL, Screen.MACRO_EDITOR)) {
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            Box(modifier = Modifier.padding(horizontal = if (screen == Screen.UNIVERSAL) 0.dp else 14.dp)) {
+            Box(modifier = Modifier.padding(horizontal = if (screen in listOf(Screen.UNIVERSAL, Screen.MACRO_EDITOR)) 0.dp else 14.dp)) {
                 when (screen) {
                     Screen.HOME -> {
                         HomeScreen(
@@ -466,9 +480,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 prettyPath(it.value.profilePath).contains(myRemotesQuery, ignoreCase = true)
                         }.sortedByDescending { it.value.favorite }
                         RemotesListScreen(
-                            query = myRemotesQuery,
-                            queryLabel = "Search saved remotes",
-                            onQueryChange = { myRemotesQuery = it },
                             emptyText = "No saved remotes.",
                             items = indexedFiltered.map { (_, remote) ->
                                 val subtitle = when {
@@ -543,9 +554,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 prettyPath(it.parentPath).contains(remoteDbQuery, ignoreCase = true)
                         }.take(300)
                         RemotesListScreen(
-                            query = remoteDbQuery,
-                            queryLabel = "Search all database remotes",
-                            onQueryChange = { remoteDbQuery = it },
                             emptyText = "No matching remotes in database.",
                             items = filtered.map { it.name to prettyPath(it.parentPath) },
                             onOpen = { index ->

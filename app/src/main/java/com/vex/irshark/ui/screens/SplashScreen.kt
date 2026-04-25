@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -26,9 +27,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vex.irshark.R
 
 @Composable
 fun SplashScreen() {
@@ -55,22 +59,15 @@ fun SplashScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Logo box
-            Box(
+            // Logo
+            Image(
+                painter = painterResource(R.drawable.app_icon),
+                contentDescription = "IRShark",
                 modifier = Modifier
-                    .size(80.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(violet.copy(alpha = 0.15f * logoAlpha.value))
-                    .border(2.dp, violet.copy(alpha = logoAlpha.value), RoundedCornerShape(22.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "IR",
-                    color = violet.copy(alpha = logoAlpha.value),
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 32.sp
-                )
-            }
+                    .size(100.dp)
+                    .clip(RoundedCornerShape(26.dp))
+                    .graphicsLayer { alpha = logoAlpha.value }
+            )
 
             Spacer(modifier = Modifier.height(20.dp))
 
