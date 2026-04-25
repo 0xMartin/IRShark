@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,7 +21,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,22 +37,12 @@ import com.vex.irshark.ui.components.EmptyCard
 
 @Composable
 fun MacroListScreen(
-    query:      String,
-    onQuery:    (String) -> Unit,
-    macros:     List<SavedMacro>,
-    onPlay:     (SavedMacro) -> Unit,
-    onEdit:     (SavedMacro) -> Unit,
-    onDelete:   (SavedMacro) -> Unit
+    macros:   List<SavedMacro>,
+    onPlay:   (SavedMacro) -> Unit,
+    onEdit:   (SavedMacro) -> Unit,
+    onDelete: (SavedMacro) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value           = query,
-            onValueChange   = onQuery,
-            modifier        = Modifier.fillMaxWidth(),
-            singleLine      = true,
-            label           = { Text("Search macros") }
-        )
-        Spacer(modifier = Modifier.height(10.dp))
         if (macros.isEmpty()) {
             EmptyCard("No macros yet. Tap + to create one.")
         } else {

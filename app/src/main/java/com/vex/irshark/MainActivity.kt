@@ -363,6 +363,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS)) {
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
+                    searchQuery = if (screen == Screen.MACROS) macrosQuery else null,
+                    searchPlaceholder = "Search macros",
+                    onSearchQuery = if (screen == Screen.MACROS) ({ macrosQuery = it }) else null,
                     actions = when (screen) {
                         Screen.MY_REMOTES -> listOf(
                             Icons.Filled.Add to {
@@ -706,8 +709,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             macrosQuery.isBlank() || it.name.contains(macrosQuery, ignoreCase = true)
                         }
                         MacroListScreen(
-                            query    = macrosQuery,
-                            onQuery  = { macrosQuery = it },
                             macros   = macroFiltered,
                             onPlay   = { macro ->
                                 macroEngine.launch(macro, scope)

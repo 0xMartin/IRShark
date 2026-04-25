@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -161,56 +162,77 @@ fun MacroEditorScreen(
     // ── Full-screen layout ────────────────────────────────────────────────
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // Top bar: name + save/cancel
+        // Top bar: name + save/cancel — matches SectionNavBar style
+        val violet = MaterialTheme.colorScheme.primary
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF0E0B1A))
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .height(56.dp)
+                .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+                .background(Color(0xFF121024))
+                .border(1.dp, violet.copy(alpha = 0.12f), RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+                .padding(horizontal = 14.dp),
             verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedTextField(
+            // Name field
+            BasicTextField(
                 value         = macroName,
                 onValueChange = { macroName = it; nameError = false },
                 modifier      = Modifier.weight(1f),
                 singleLine    = true,
-                isError       = nameError,
-                placeholder   = { Text("Macro name", fontSize = 13.sp) }
+                textStyle     = androidx.compose.ui.text.TextStyle(
+                    color    = Color.White,
+                    fontSize = 13.sp
+                ),
+                decorationBox = { inner ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (nameError) Color(0xFF2A1010) else Color(0xFF0E0B1A))
+                            .border(
+                                1.dp,
+                                if (nameError) Color(0xFFFF5555).copy(alpha = 0.70f) else violet.copy(alpha = 0.25f),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    ) {
+                        if (macroName.isEmpty()) {
+                            Text("Macro name", color = Color(0xFF8A8899), fontSize = 13.sp)
+                        }
+                        inner()
+                    }
+                }
             )
-            // Save
+            // Save button
             Box(
                 modifier = Modifier
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
-                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(violet.copy(alpha = 0.14f))
+                    .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
                     .clickable {
                         if (macroName.isBlank()) { nameError = true; return@clickable }
                         val result = graph.compile()
                         orphanWarning = result.orphans
                         showSaveDialog = true
-                    }
-                    .padding(horizontal = 12.dp),
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
-                    Text("Save", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
+                Icon(Icons.Filled.Check, null, tint = violet, modifier = Modifier.size(20.dp))
             }
-            // Cancel
+            // Cancel button
             Box(
                 modifier = Modifier
-                    .height(48.dp)
-                    .width(40.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFF1A1726))
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
                     .clickable(onClick = onDismiss),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Close, null, tint = Color(0xFF8A8899), modifier = Modifier.size(14.dp))
+                Icon(Icons.Filled.Close, null, tint = Color(0xFF8A8899), modifier = Modifier.size(20.dp))
             }
         }
 

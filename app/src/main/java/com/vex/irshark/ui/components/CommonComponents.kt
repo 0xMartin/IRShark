@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.animation.core.keyframes
@@ -34,6 +35,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -354,7 +357,11 @@ fun SectionNavBar(
     onHome: () -> Unit,
     modifier: Modifier = Modifier,
     // Each action: Pair<icon, onClick>. Rendered left-to-right as bordered icon boxes.
-    actions: List<Pair<ImageVector, () -> Unit>> = emptyList()
+    actions: List<Pair<ImageVector, () -> Unit>> = emptyList(),
+    // Optional search field between home button and actions
+    searchQuery: String? = null,
+    searchPlaceholder: String = "Search",
+    onSearchQuery: ((String) -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
@@ -374,7 +381,36 @@ fun SectionNavBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
-            Spacer(modifier = Modifier.weight(1f))
+            // Search field (if provided)
+            if (searchQuery != null && onSearchQuery != null) {
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQuery,
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = Color.White,
+                        fontSize = 13.sp
+                    ),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF0E0B1A))
+                                .border(1.dp, violet.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(searchPlaceholder, color = Color(0xFF8A8899), fontSize = 13.sp)
+                            }
+                            inner()
+                        }
+                    }
+                )
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
             actions.forEach { (icon, onClick) ->
                 Box(
                     modifier = Modifier

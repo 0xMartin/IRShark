@@ -268,7 +268,11 @@ fun MacroGraphCanvas(
                             }
                             nodeHit != null -> {
                                 draggingId     = nodeHit.id
-                                dragNodeOffset = cDown - nodeHit.pos
+                                dragNodeOffset = cDown - nodeHit.pos  // raw canvas offset, no snap
+                                // Auto-select the node being dragged
+                                if (!nodeHit.selected) {
+                                    graph.setSelected(setOf(nodeHit.id))
+                                }
                             }
                             else -> {
                                 // Empty space — start selection rect only in SELECT mode
@@ -300,7 +304,9 @@ fun MacroGraphCanvas(
                                             draggingId != null -> {
                                                 val node = graph.nodes.firstOrNull { it.id == draggingId }
                                                 if (node != null) {
-                                                    val newPos = snapToGrid(cPos - dragNodeOffset)
+                                                    // Apply snap only to the final position, keep dragNodeOffset raw
+                                                    val rawPos = cPos - dragNodeOffset
+                                                    val newPos = snapToGrid(rawPos)
                                                     if (graph.nodes.count { it.selected } > 1 && node.selected) {
                                                         val d = newPos - node.pos
                                                         graph.moveNodes(graph.nodes.filter { it.selected }.map { it.id }.toSet(), d)
@@ -708,8 +714,8 @@ private fun ToolbarBtn(
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(tint.copy(alpha = 0.12f))
-            .border(1.dp, tint.copy(alpha = 0.40f), RoundedCornerShape(8.dp))
+            .background(Color(0xFF1A1730))
+            .border(1.dp, tint.copy(alpha = 0.70f), RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment     = Alignment.CenterVertically,
