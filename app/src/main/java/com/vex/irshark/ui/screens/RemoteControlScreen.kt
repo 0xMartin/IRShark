@@ -19,6 +19,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +49,8 @@ fun RemoteControlScreen(
     showSaveButton: Boolean
 ) {
     val violet = MaterialTheme.colorScheme.primary
+    var flashedCommand by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -96,6 +105,8 @@ fun RemoteControlScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 row.forEach { cmd ->
+                    val isFlashed = flashedCommand == cmd
+                    val stripeColor = if (isFlashed) Color(0xFF4CAF50) else violet.copy(alpha = 0.7f)
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -111,7 +122,11 @@ fun RemoteControlScreen(
                                 violet.copy(alpha = 0.22f),
                                 RoundedCornerShape(16.dp)
                             )
-                            .clickable { onCommandClick(cmd) }
+                            .clickable {
+                                flashedCommand = cmd
+                                scope.launch { delay(220); flashedCommand = null }
+                                onCommandClick(cmd)
+                            }
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         Column(
@@ -122,7 +137,7 @@ fun RemoteControlScreen(
                                 modifier = Modifier
                                     .size(width = 22.dp, height = 4.dp)
                                     .clip(RoundedCornerShape(999.dp))
-                                    .background(violet.copy(alpha = 0.7f))
+                                    .background(stripeColor)
                             )
                             Text(
                                 text = cmd,

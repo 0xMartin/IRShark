@@ -26,13 +26,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -76,7 +80,9 @@ fun UniversalRemoteScreen(
     val violet = MaterialTheme.colorScheme.primary
     
     var folderSearchQuery by remember { mutableStateOf("") }
-    
+    var flashedCommand by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
     val estimatedTimeMs = if (autoSend && activeItem != null && activeCoverage > 0) {
         ((activeCoverage - codeStep) * intervalMs.roundToInt()).toLong()
     } else 0L
@@ -182,40 +188,55 @@ fun UniversalRemoteScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             row.forEach { item ->
-                                val selected = activeItem?.actualCommand == item.actualCommand
+                                val isFlashed = flashedCommand == item.actualCommand
+                                val stripeColor = if (isFlashed) Color(0xFF4CAF50) else violet.copy(alpha = 0.7f)
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(56.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (selected) violet.copy(alpha = 0.28f) else Color(0xFF0F0D1A))
+                                        .height(62.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(Color(0xFF181327), Color(0xFF0F0D1A))
+                                            )
+                                        )
                                         .border(
                                             1.dp,
-                                            if (selected) violet else Color.White.copy(alpha = 0.12f),
-                                            RoundedCornerShape(12.dp)
+                                            violet.copy(alpha = 0.22f),
+                                            RoundedCornerShape(16.dp)
                                         )
-                                        .clickable { onCommandClick(item) }
-                                        .padding(horizontal = 8.dp),
-                                    contentAlignment = Alignment.Center
+                                        .clickable {
+                                            flashedCommand = item.actualCommand
+                                            scope.launch { delay(220); flashedCommand = null }
+                                            onCommandClick(item)
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp)
                                 ) {
                                     Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text(
-                                            text = item.displayLabel,
-                                            color = if (selected) violet else Color.White,
-                                            fontSize = 11.sp,
-                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                            textAlign = TextAlign.Center,
-                                            maxLines = 1
+                                        Box(
+                                            modifier = Modifier
+                                                .size(width = 22.dp, height = 4.dp)
+                                                .clip(RoundedCornerShape(999.dp))
+                                                .background(stripeColor)
                                         )
-                                        if (item.profileCoverage > 1) {
+                                        Column {
                                             Text(
-                                                text = "${item.profileCoverage}x",
-                                                color = if (selected) violet else Color(0xFF8A8899),
-                                                fontSize = 9.sp
+                                                text = item.displayLabel,
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1
                                             )
+                                            if (item.profileCoverage > 1) {
+                                                Text(
+                                                    text = "${item.profileCoverage}x",
+                                                    color = Color(0xFF8A8899),
+                                                    fontSize = 9.sp
+                                                )
+                                            }
                                         }
                                     }
                                 }
