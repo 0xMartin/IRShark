@@ -94,6 +94,27 @@ fun snapToGrid(pos: Offset): Offset =
            (pos.y / GRID_STEP).roundToInt() * GRID_STEP)
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Per-node block dimensions (canvas-px)
+// ─────────────────────────────────────────────────────────────────────────────
+
+fun MacroNode.blockW(): Float = when (type) {
+    MacroBlockType.START, MacroBlockType.END -> 200f
+    MacroBlockType.IR_SEND -> {
+        val len = (params as? BlockParams.IrSend)?.displayLabel?.length ?: 0
+        (240f + len * 8f).coerceIn(240f, 480f)
+    }
+    MacroBlockType.DELAY   -> 240f
+    else                   -> 300f   // SHOW_TEXT, WAIT_CONFIRM, IF_ELSE
+}
+
+fun MacroNode.blockH(): Float = when (type) {
+    MacroBlockType.START, MacroBlockType.END -> 100f
+    MacroBlockType.DELAY                     -> 120f
+    MacroBlockType.SHOW_TEXT                 -> 180f
+    else                                     -> 150f   // IR_SEND, WAIT_CONFIRM, IF_ELSE
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Pin position helpers (canvas-local, relative to node.pos = top-left)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -106,8 +127,8 @@ fun outputPinOffset(pin: PinId, blockW: Float = BLOCK_W, blockH: Float = BLOCK_H
         PinId.NO  -> Offset(blockW * 0.72f, blockH)
     }
 
-fun absoluteOutPin(node: MacroNode, pin: PinId): Offset = node.pos + outputPinOffset(pin)
-fun absoluteInPin(node: MacroNode): Offset             = node.pos + inputPinOffset()
+fun absoluteOutPin(node: MacroNode, pin: PinId): Offset = node.pos + outputPinOffset(pin, node.blockW(), node.blockH())
+fun absoluteInPin(node: MacroNode): Offset             = node.pos + inputPinOffset(node.blockW())
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Edge drawing (cubic bezier)
@@ -200,9 +221,17 @@ fun MacroGraphCanvas(
         }
     fun findNodeHit(cPos: Offset): MacroNode? =
         graph.nodes.lastOrNull { n ->
-            cPos.x in n.pos.x..(n.pos.x + BLOCK_W) &&
-            cPos.y in n.pos.y..(n.pos.y + BLOCK_H)
+            cPos.x in n.pos.x..(n.pos.x + n.blockW()) &&
+            cPos.y in n.pos.y..(n.pos.y + n.blockH())
         }
+
+    // Settings icon hit zone: top-right ~48dp area of block
+    fun isSettingsIconHit(cPos: Offset, node: MacroNode): Boolean {
+        if (node.type == MacroBlockType.START || node.type == MacroBlockType.END) return false
+        val hitSize = 52f * density
+        return cPos.x >= node.pos.x + node.blockW() - hitSize &&
+               cPos.y <= node.pos.y + hitSize
+    }
 
     Box(modifier = modifier.fillMaxSize().background(Color(0xFF08060F))) {
 
@@ -280,8 +309,8 @@ fun MacroGraphCanvas(
                                                     right  = maxOf(s.x, e.x), bottom = maxOf(s.y, e.y)
                                                 )
                                                 val ids = graph.nodes.filter { n ->
-                                                    n.pos.x < rect.right  && (n.pos.x + BLOCK_W) > rect.left &&
-                                                    n.pos.y < rect.bottom && (n.pos.y + BLOCK_H) > rect.top
+                                                    n.pos.x < rect.right  && (n.pos.x + n.blockW()) > rect.left &&
+                                                    n.pos.y < rect.bottom && (n.pos.y + n.blockH()) > rect.top
                                                 }.map { it.id }.toSet()
                                                 graph.setSelected(ids)
                                             }
@@ -333,9 +362,10 @@ fun MacroGraphCanvas(
                             val cPos   = screenToCanvas(lastPos, pan, zoom)
                             val tapped = findNodeHit(cPos)
                             when {
-                                tapped != null && elapsed < LONG_PRESS_MS -> onNodeTap(tapped)
-                                tapped != null                             -> onNodeLongPress(tapped)
-                                else                                       -> graph.setSelected(emptySet())
+                                tapped != null && elapsed >= LONG_PRESS_MS        -> onNodeLongPress(tapped)
+                                tapped != null && isSettingsIconHit(cPos, tapped) -> onNodeTap(tapped)
+                                tapped != null                                     -> graph.setSelected(setOf(tapped.id))
+                                else                                               -> graph.setSelected(emptySet())
                             }
                         }
                         draggingId = null
@@ -418,7 +448,7 @@ fun MacroGraphCanvas(
                             scaleY       = zoom
                             transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                         }
-                        .size((BLOCK_W / density).dp, (BLOCK_H / density).dp)
+                        .size((node.blockW() / density).dp, (node.blockH() / density).dp)
                         .zIndex(if (node.selected || node.id == draggingId) 5f else 1f)
                 ) {
                     BlockView(
@@ -590,8 +620,9 @@ fun BlockView(
         // Output pin(s), sticking below block
         when (node.type) {
             MacroBlockType.IF_ELSE -> {
-                val yesPad = ((BLOCK_W * 0.28f - PIN_R) / density).dp
-                val noPad  = ((BLOCK_W * 0.28f - PIN_R) / density).dp
+                val bw     = node.blockW()
+                val yesPad = ((bw * 0.28f - PIN_R) / density).dp
+                val noPad  = ((bw * 0.28f - PIN_R) / density).dp
                 // YES
                 Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = yesPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)

@@ -160,55 +160,57 @@ fun MacroEditorScreen(
     // ── Full-screen layout ────────────────────────────────────────────────
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // Top bar: name + save/cancel
+        // Top bar: name + save/cancel — fixed 48 dp height, all items aligned
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .height(48.dp)
                 .background(Color(0xFF0E0B1A))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment     = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             OutlinedTextField(
                 value         = macroName,
                 onValueChange = { macroName = it; nameError = false },
-                modifier      = Modifier.weight(1f),
+                modifier      = Modifier.weight(1f).fillMaxHeight(),
                 singleLine    = true,
                 isError       = nameError,
-                label         = { Text("Macro name") }
+                placeholder   = { Text("Macro name", fontSize = 13.sp) }
             )
             // Save
             Box(
                 modifier = Modifier
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
-                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
                     .clickable {
                         if (macroName.isBlank()) { nameError = true; return@clickable }
                         val result = graph.compile()
                         orphanWarning = result.orphans
                         showSaveDialog = true
                     }
-                    .padding(horizontal = 14.dp),
+                    .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
                     Text("Save", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
             // Cancel
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .fillMaxHeight()
+                    .width(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF1A1726))
-                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
                     .clickable(onClick = onDismiss),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Close, null, tint = Color(0xFF8A8899), modifier = Modifier.size(16.dp))
+                Icon(Icons.Filled.Close, null, tint = Color(0xFF8A8899), modifier = Modifier.size(14.dp))
             }
         }
 
