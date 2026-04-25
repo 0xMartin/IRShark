@@ -101,7 +101,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var showTxLed by rememberSaveable { mutableStateOf(true) }
     var txPulseActive by remember { mutableStateOf(false) }
     var settingsDirty by remember { mutableStateOf(false) }
+    var settingsToastPending by remember { mutableStateOf(false) }
     var settingsLoaded by remember { mutableStateOf(false) }
+    var remotesLoaded by remember { mutableStateOf(false) }
     var txPulseJob by remember { mutableStateOf<Job?>(null) }
     val toastController = remember { AppToastController() }
     val scope = rememberCoroutineScope()
@@ -131,6 +133,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         dbIndex = loadFlipperDbIndex(context)
         savedRemotes = loadSavedRemotes(context)
+        remotesLoaded = true
         val settings = loadAppSettings(context)
         universalIntervalMs = settings.globalIntervalMs
         autoStopAtEnd = settings.autoStopAtEnd
@@ -139,12 +142,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(savedRemotes) {
+        if (!remotesLoaded) return@LaunchedEffect
         saveSavedRemotes(context, savedRemotes)
     }
 
     LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed) {
         if (!settingsLoaded || !settingsDirty) return@LaunchedEffect
-        delay(700)
         saveAppSettings(
             context,
             com.vex.irshark.data.AppSettings(
@@ -154,6 +157,13 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             )
         )
         settingsDirty = false
+        settingsToastPending = true
+    }
+
+    LaunchedEffect(settingsToastPending) {
+        if (!settingsToastPending) return@LaunchedEffect
+        delay(700)
+        settingsToastPending = false
         toastController.show("Settings saved")
     }
 

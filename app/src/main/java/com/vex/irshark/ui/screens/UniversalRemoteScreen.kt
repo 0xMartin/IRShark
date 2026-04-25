@@ -121,7 +121,7 @@ fun UniversalRemoteScreen(
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("Search categories") },
                         textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
-                        shape = RoundedCornerShape(999.dp),
+                        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = violet.copy(alpha = 0.45f),
                             unfocusedBorderColor = violet.copy(alpha = 0.2f),
@@ -130,15 +130,17 @@ fun UniversalRemoteScreen(
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
                     // Scrollable list (max 6 items = 2x3 grid)
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(260.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .border(1.dp, violet.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                            .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp))
+                            .border(
+                                1.dp,
+                                violet.copy(alpha = 0.15f),
+                                RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp)
+                            ),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)
                     ) {
@@ -151,7 +153,10 @@ fun UniversalRemoteScreen(
                                     val name = prettyName(path)
                                     FolderButton(
                                         title = name,
-                                        onClick = { onOpenFolder(path) },
+                                        onClick = {
+                                            folderSearchQuery = ""
+                                            onOpenFolder(path)
+                                        },
                                         modifier = Modifier.weight(1f),
                                         icon = { CategoryIcon(name = name, tint = violet) }
                                     )

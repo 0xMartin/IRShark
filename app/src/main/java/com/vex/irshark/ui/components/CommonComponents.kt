@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -63,14 +64,18 @@ fun BackIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: 
 }
 
 @Composable
-fun HomeIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun HomeIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(10.dp)
+) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
             .height(40.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(shape)
             .background(Color(0xFF13101E))
-            .border(1.dp, violet.copy(alpha = 0.40f), RoundedCornerShape(10.dp))
+            .border(1.dp, violet.copy(alpha = 0.40f), shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -311,7 +316,8 @@ fun UniversalRemoteHeader(
             ) {
                 HomeIconButton(
                     onClick = onHome,
-                    modifier = Modifier.size(40.dp)
+                    modifier = Modifier.size(40.dp),
+                    shape = RoundedCornerShape(10.dp, 0.dp, 0.dp, 10.dp)
                 )
 
                 Box(
