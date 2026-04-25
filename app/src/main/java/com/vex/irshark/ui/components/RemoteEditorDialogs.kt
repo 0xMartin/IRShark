@@ -15,10 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -93,16 +91,14 @@ fun RemoteEditorDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.90f)
+                .fillMaxHeight(0.82f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF121024))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text("Remote Editor", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -134,44 +130,52 @@ fun RemoteEditorDialog(
                 if (buttons.isEmpty()) {
                     EmptyCard("Add at least one button.")
                 } else {
-                    buttons.forEachIndexed { index, button ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF181327))
-                                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
-                                .padding(10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(button.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                val codePreview = if (button.code.isBlank()) "No code" else button.code.take(42)
-                                Text(codePreview, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Icon(
-                                    imageVector = Icons.Filled.Edit,
-                                    contentDescription = "Edit",
-                                    tint = Color(0xFF9B6DFF),
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .clickable {
-                                            editingButtonIndex = index
-                                            showButtonDialog = true
-                                        }
-                                )
-                                Icon(
-                                    imageVector = Icons.Filled.Delete,
-                                    contentDescription = "Delete",
-                                    tint = Color(0xFFFF7B9D),
-                                    modifier = Modifier
-                                        .size(18.dp)
-                                        .clickable {
-                                            buttons = buttons.toMutableList().also { it.removeAt(index) }
-                                        }
-                                )
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(230.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(buttons.indices.toList()) { index ->
+                            val button = buttons[index]
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFF181327))
+                                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                                    .padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(button.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    val codePreview = if (button.code.isBlank()) "No code" else button.code.take(42)
+                                    Text(codePreview, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Edit,
+                                        contentDescription = "Edit",
+                                        tint = Color(0xFF9B6DFF),
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clickable {
+                                                editingButtonIndex = index
+                                                showButtonDialog = true
+                                            }
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Filled.Delete,
+                                        contentDescription = "Delete",
+                                        tint = Color(0xFFFF7B9D),
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clickable {
+                                                buttons = buttons.toMutableList().also { it.removeAt(index) }
+                                            }
+                                    )
+                                }
                             }
                         }
                     }
@@ -255,16 +259,14 @@ private fun IrButtonEditorDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .fillMaxHeight(0.86f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF121024))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text("Button & IR Code", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -283,7 +285,7 @@ private fun IrButtonEditorDialog(
                     onValueChange = { code = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(100.dp),
+                        .height(82.dp),
                     label = { Text("IR code payload") }
                 )
 
@@ -292,7 +294,7 @@ private fun IrButtonEditorDialog(
                     onValueChange = { details = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(110.dp),
+                        .height(92.dp),
                     label = { Text("Detailed parameters / notes") }
                 )
 
@@ -312,7 +314,7 @@ private fun IrButtonEditorDialog(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(130.dp),
+                            .height(100.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(filteredProfiles) { profile ->
@@ -347,7 +349,7 @@ private fun IrButtonEditorDialog(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(160.dp),
+                                .height(120.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             items(dbCodes.indices.toList()) { idx ->

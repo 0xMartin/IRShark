@@ -11,7 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -138,6 +141,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     // Editor state for custom/editable remotes
     var showRemoteEditor by remember { mutableStateOf(false) }
     var editingRemoteIndex by remember { mutableStateOf<Int?>(null) }
+    var pendingDeleteRemoteIndex by remember { mutableStateOf<Int?>(null) }
 
     fun uniqueRemoteName(baseName: String, excludeIndex: Int? = null): String {
         val taken = savedRemotes
@@ -416,8 +420,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             },
                             onSecondaryAction = { index ->
                                 val originalIndex = indexedFiltered[index].index
-                                savedRemotes = savedRemotes.toMutableList().also { it.removeAt(originalIndex) }
-                                toastController.show("Removed from My Remotes")
+                                pendingDeleteRemoteIndex = originalIndex
                             },
                             secondaryActionLabel = "Delete"
                         )
@@ -649,6 +652,34 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     editingRemoteIndex = null
                 }
             )
+        }
+
+        if (pendingDeleteRemoteIndex != null) {
+            val deleteIndex = pendingDeleteRemoteIndex ?: -1
+            val deleteTarget = savedRemotes.getOrNull(deleteIndex)
+            if (deleteTarget != null) {
+                AlertDialog(
+                    onDismissRequest = { pendingDeleteRemoteIndex = null },
+                    title = { Text("Delete remote") },
+                    text = { Text("Delete '${deleteTarget.name}' from My Remotes?") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                savedRemotes = savedRemotes.toMutableList().also { it.removeAt(deleteIndex) }
+                                pendingDeleteRemoteIndex = null
+                                toastController.show("Removed from My Remotes")
+                            }
+                        ) {
+                            Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingDeleteRemoteIndex = null }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
         }
 
         AppToastHost(
