@@ -37,6 +37,9 @@ sealed class MacroStep {
         val yesSteps: List<MacroStep>,
         val noSteps: List<MacroStep>
     ) : MacroStep()
+
+    /** Immediately terminate the macro. */
+    object Stop : MacroStep()
 }
 
 // ── Macro model ───────────────────────────────────────────────────────────────
@@ -97,6 +100,7 @@ private fun stepToObj(s: MacroStep): JSONObject = JSONObject().apply {
             put("type", "if_confirm"); put("message", s.message)
             put("yesSteps", stepsToArr(s.yesSteps)); put("noSteps", stepsToArr(s.noSteps))
         }
+        is MacroStep.Stop -> { put("type", "stop") }
     }
 }
 
@@ -134,15 +138,17 @@ private fun parseStepObj(o: JSONObject): MacroStep? = when (o.optString("type"))
         yesSteps = parseStepsArr(o.optJSONArray("yesSteps") ?: JSONArray()),
         noSteps  = parseStepsArr(o.optJSONArray("noSteps") ?: JSONArray())
     )
+    "stop" -> MacroStep.Stop
     else -> null
 }
 
 /** Flat step count (used for progress display; loops counted as 1). */
 fun countMacroSteps(steps: List<MacroStep>): Int = steps.sumOf {
     when (it) {
-        is MacroStep.RepeatBlock  -> 1 + countMacroSteps(it.steps)
+        is MacroStep.RepeatBlock   -> 1 + countMacroSteps(it.steps)
         is MacroStep.LoopUntilStop -> 1 + countMacroSteps(it.steps)
-        is MacroStep.IfConfirm    -> 1
-        else                      -> 1
+        is MacroStep.IfConfirm     -> 1
+        is MacroStep.Stop          -> 1
+        else                       -> 1
     }
 }

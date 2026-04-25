@@ -20,11 +20,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -45,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -53,22 +51,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.vex.irshark.data.FlipperProfile
-import com.vex.irshark.data.MacroStep
 import com.vex.irshark.data.SavedMacro
 import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.loadDbIrCodeOptions
+import com.vex.irshark.ui.macro.BlockParams
+import com.vex.irshark.ui.macro.MacroBlockType
+import com.vex.irshark.ui.macro.MacroGraph
+import com.vex.irshark.ui.macro.MacroGraphCanvas
+import com.vex.irshark.ui.macro.MacroNode
+import com.vex.irshark.ui.macro.blockLabel
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-private enum class StepType(val label: String, val color: Color) {
-    IR_SEND     ("IR Send",          Color(0xFF7B4DDF)),
-    DELAY       ("Delay",            Color(0xFF2E7ADB)),
-    SHOW_TEXT   ("Show Text",        Color(0xFF1E8A5E)),
-    WAIT_CONFIRM("Wait for OK",      Color(0xFFC27C1A)),
-    REPEAT      ("Repeat N times",   Color(0xFFA07800)),
-    LOOP        ("Loop until stop",  Color(0xFFB84000)),
-    IF_CONFIRM  ("If user confirms", Color(0xFF1E8AA8))
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Main editor screen
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun MacroEditorScreen(
@@ -80,321 +77,199 @@ fun MacroEditorScreen(
     onDismiss:     () -> Unit
 ) {
     var macroName by remember { mutableStateOf(initialMacro?.name ?: "") }
-    var steps     by remember { mutableStateOf(initialMacro?.steps?.toMutableList() ?: mutableListOf<MacroStep>()) }
     var nameError by remember { mutableStateOf(false) }
 
-    var showTypePickerDialog by remember { mutableStateOf(false) }
-    var pendingStepType      by remember { mutableStateOf<StepType?>(null) }
-    var editingIndex         by remember { mutableStateOf<Int?>(null) }
-    var showIrPicker         by remember { mutableStateOf(false) }
-    var irPickCallback       by remember { mutableStateOf<((String, String, String) -> Unit)?>(null) }
-    var pendingDeleteIndex   by remember { mutableStateOf<Int?>(null) }
+    // Build / restore graph
+    val graph = remember {
+        val g = if (!initialMacro?.blocklyXml.isNullOrBlank()) {
+            MacroGraph.fromJson(initialMacro!!.blocklyXml)
+        } else {
+            MacroGraph.empty()
+        }
+        // Ensure start node always exists
+        if (g.nodes.none { it.type == MacroBlockType.START }) {
+            g.nodes.add(MacroNode(id = "start", type = MacroBlockType.START,
+                pos = Offset(200f, 120f), params = BlockParams.None))
+        }
+        g
+    }
 
-    val violet = MaterialTheme.colorScheme.primary
+    // Param-editor dialog
+    var editingNode by remember { mutableStateOf<MacroNode?>(null) }
+
+    // IR picker
+    var showIrPicker   by remember { mutableStateOf(false) }
+    var irPickNodeId   by remember { mutableStateOf("") }
+
+    // Save / name dialog
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var orphanWarning  by remember { mutableStateOf(0) }
 
     if (showIrPicker) {
         IrPickerDialog(
             savedRemotes = savedRemotes,
             dbProfiles   = dbProfiles,
-            onDismiss    = { showIrPicker = false; irPickCallback = null; pendingStepType = null; editingIndex = null },
+            onDismiss    = { showIrPicker = false },
             onPick       = { remoteName, buttonLabel, irCode ->
-                irPickCallback?.invoke(remoteName, buttonLabel, irCode)
-                showIrPicker  = false
-                irPickCallback = null
+                graph.updateParams(irPickNodeId, BlockParams.IrSend(
+                    displayLabel = "$remoteName / $buttonLabel",
+                    remoteName   = remoteName,
+                    buttonLabel  = buttonLabel,
+                    irCode       = irCode
+                ))
+                showIrPicker = false
             }
         )
     }
 
-    pendingDeleteIndex?.let { delIdx ->
-        AlertDialog(
-            onDismissRequest = { pendingDeleteIndex = null },
-            title = { Text("Remove step") },
-            text  = { Text("Remove this step?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    steps = steps.toMutableList().also { it.removeAt(delIdx) }
-                    pendingDeleteIndex = null
-                }) { Text("Remove") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDeleteIndex = null }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (showTypePickerDialog) {
-        StepTypePickerDialog(
-            onDismiss = { showTypePickerDialog = false },
-            onPick    = { type ->
-                showTypePickerDialog = false
-                editingIndex = null
-                if (type == StepType.IR_SEND) {
-                    showIrPicker = true
-                    irPickCallback = { remoteName, buttonLabel, irCode ->
-                        steps = steps.toMutableList().also {
-                            it.add(MacroStep.IrSend(
-                                displayLabel = "$remoteName / $buttonLabel",
-                                remoteName   = remoteName,
-                                buttonLabel  = buttonLabel,
-                                irCode       = irCode
-                            ))
-                        }
-                    }
-                } else {
-                    pendingStepType = type
+    editingNode?.let { node ->
+        NodeParamDialog(
+            node         = node,
+            onDismiss    = { editingNode = null },
+            onIrPick     = { editingNode = null; irPickNodeId = node.id; showIrPicker = true },
+            onSave       = { params -> graph.updateParams(node.id, params); editingNode = null },
+            onDelete     = {
+                if (node.type != MacroBlockType.START) {
+                    graph.removeNode(node.id)
                 }
+                editingNode = null
             }
         )
     }
 
-    pendingStepType?.let { type ->
-        StepConfigDialog(
-            type        = type,
-            editingStep = editingIndex?.let { steps.getOrNull(it) },
-            onDismiss   = { pendingStepType = null; editingIndex = null },
-            onSaveStep  = { newStep ->
-                val idx = editingIndex
-                steps = steps.toMutableList().also {
-                    if (idx != null && idx in it.indices) it[idx] = newStep
-                    else it.add(newStep)
-                }
-                pendingStepType = null
-                editingIndex    = null
+    if (showSaveDialog) {
+        SaveDialog(
+            initialName    = macroName,
+            orphanCount    = orphanWarning,
+            existingNames  = existingNames,
+            onDismiss      = { showSaveDialog = false },
+            onSave         = { name ->
+                macroName     = name
+                showSaveDialog = false
+                val result = graph.compile()
+                onSave(SavedMacro(
+                    id         = initialMacro?.id ?: UUID.randomUUID().toString(),
+                    name       = name.trim(),
+                    steps      = result.steps,
+                    blocklyXml = graph.toJson()
+                ))
             }
         )
     }
 
-    Column(
-        modifier            = Modifier.fillMaxSize().padding(horizontal = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Spacer(modifier = Modifier.height(4.dp))
+    // ── Full-screen layout ────────────────────────────────────────────────
+    Column(modifier = Modifier.fillMaxSize()) {
 
-        OutlinedTextField(
-            value          = macroName,
-            onValueChange  = { macroName = it; nameError = false },
-            modifier       = Modifier.fillMaxWidth(),
-            singleLine     = true,
-            isError        = nameError,
-            label          = { Text("Macro name") },
-            supportingText = if (nameError) ({ Text("Name is required") }) else null
-        )
-
-        if (steps.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF100D1C))
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("No steps yet. Tap + to add a step.", color = Color(0xFF8A8899), fontSize = 12.sp)
-            }
-        } else {
-            LazyColumn(
-                modifier            = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                itemsIndexed(steps) { index, step ->
-                    StepRow(
-                        index      = index,
-                        step       = step,
-                        isFirst    = index == 0,
-                        isLast     = index == steps.lastIndex,
-                        onMoveUp   = {
-                            steps = steps.toMutableList().also {
-                                val tmp = it[index - 1]; it[index - 1] = it[index]; it[index] = tmp
-                            }
-                        },
-                        onMoveDown = {
-                            steps = steps.toMutableList().also {
-                                val tmp = it[index + 1]; it[index + 1] = it[index]; it[index] = tmp
-                            }
-                        },
-                        onEdit = {
-                            editingIndex = index
-                            if (step is MacroStep.IrSend) {
-                                showIrPicker = true
-                                irPickCallback = { remoteName, buttonLabel, irCode ->
-                                    steps = steps.toMutableList().also {
-                                        it[index] = MacroStep.IrSend(
-                                            displayLabel = "$remoteName / $buttonLabel",
-                                            remoteName   = remoteName,
-                                            buttonLabel  = buttonLabel,
-                                            irCode       = irCode
-                                        )
-                                    }
-                                    editingIndex = null
-                                }
-                            } else {
-                                pendingStepType = stepToType(step)
-                            }
-                        },
-                        onDelete = { pendingDeleteIndex = index }
-                    )
-                }
-            }
-        }
-
-        Box(
+        // Top bar: name + save/cancel
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(44.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(violet.copy(alpha = 0.14f))
-                .border(1.dp, violet.copy(alpha = 0.50f), RoundedCornerShape(10.dp))
-                .clickable { showTypePickerDialog = true },
-            contentAlignment = Alignment.Center
+                .background(Color(0xFF0E0B1A))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Add, null, tint = violet, modifier = Modifier.size(16.dp))
-                Text("Add step", color = violet, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            }
-        }
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            TextButton(modifier = Modifier.weight(1f), onClick = onDismiss) { Text("Cancel") }
+            OutlinedTextField(
+                value         = macroName,
+                onValueChange = { macroName = it; nameError = false },
+                modifier      = Modifier.weight(1f),
+                singleLine    = true,
+                isError       = nameError,
+                label         = { Text("Macro name") }
+            )
+            // Save
             Box(
                 modifier = Modifier
-                    .weight(2f)
-                    .height(44.dp)
+                    .height(48.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(violet.copy(alpha = 0.28f))
-                    .border(1.dp, violet, RoundedCornerShape(10.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(10.dp))
                     .clickable {
                         if (macroName.isBlank()) { nameError = true; return@clickable }
-                        onSave(SavedMacro(
-                            id    = initialMacro?.id ?: UUID.randomUUID().toString(),
-                            name  = macroName.trim(),
-                            steps = steps
-                        ))
-                    },
+                        val result = graph.compile()
+                        orphanWarning = result.orphans
+                        showSaveDialog = true
+                    }
+                    .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Check, null, tint = violet, modifier = Modifier.size(16.dp))
-                    Text("Save macro", color = violet, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Check, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                    Text("Save", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-    }
-}
-
-@Composable
-private fun StepRow(
-    index: Int, step: MacroStep,
-    isFirst: Boolean, isLast: Boolean,
-    onMoveUp: () -> Unit, onMoveDown: () -> Unit,
-    onEdit: () -> Unit, onDelete: () -> Unit
-) {
-    val typeColor = stepColor(step)
-    Row(
-        modifier              = Modifier.fillMaxWidth(),
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(typeColor.copy(alpha = 0.20f))
-                .border(1.dp, typeColor.copy(alpha = 0.50f), RoundedCornerShape(8.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("${index + 1}", color = typeColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF100D1C))
-                .border(1.dp, typeColor.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
-                .clickable(onClick = onEdit)
-                .padding(horizontal = 8.dp, vertical = 6.dp)
-        ) {
-            Text(stepEmoji(step) + "  " + stepDescription(step), color = Color.White, fontSize = 12.sp, maxLines = 2)
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            SmallIconBtn(Icons.Filled.KeyboardArrowUp,   Color(0xFF8A8899), enabled = !isFirst) { onMoveUp() }
-            SmallIconBtn(Icons.Filled.KeyboardArrowDown, Color(0xFF8A8899), enabled = !isLast)  { onMoveDown() }
-        }
-        SmallIconBtn(Icons.Filled.Delete, Color(0xFFFF7B9D)) { onDelete() }
-    }
-}
-
-@Composable
-private fun SmallIconBtn(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    tint: Color, enabled: Boolean = true, onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .size(26.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(Color(0xFF1A1726))
-            .border(1.dp, Color.White.copy(alpha = if (enabled) 0.14f else 0.05f), RoundedCornerShape(6.dp))
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, null, tint = if (enabled) tint else tint.copy(alpha = 0.25f), modifier = Modifier.size(14.dp))
-    }
-}
-
-@Composable
-private fun StepTypePickerDialog(onDismiss: () -> Unit, onPick: (StepType) -> Unit) {
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color(0xFF121024))
-                .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text("Add step", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-            StepType.entries.forEach { type ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(type.color.copy(alpha = 0.12f))
-                        .border(1.dp, type.color.copy(alpha = 0.40f), RoundedCornerShape(10.dp))
-                        .clickable { onPick(type) }
-                        .padding(12.dp),
-                    verticalAlignment     = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(RoundedCornerShape(5.dp))
-                            .background(type.color)
-                    )
-                    Text(type.label, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                }
+            // Cancel
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1A1726))
+                    .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
+                    .clickable(onClick = onDismiss),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Close, null, tint = Color(0xFF8A8899), modifier = Modifier.size(16.dp))
             }
-            TextButton(modifier = Modifier.align(Alignment.End), onClick = onDismiss) { Text("Cancel") }
         }
+
+        // Graph canvas
+        MacroGraphCanvas(
+            graph            = graph,
+            modifier         = Modifier.weight(1f),
+            onNodeTap        = { node ->
+                if (node.type == MacroBlockType.IR_SEND) {
+                    irPickNodeId = node.id
+                    showIrPicker = true
+                } else if (node.type != MacroBlockType.START) {
+                    editingNode = node
+                }
+            },
+            onNodeLongPress  = { node ->
+                val currentSelected = graph.nodes.filter { it.selected }.map { it.id }.toSet()
+                val newSet = if (node.id in currentSelected) currentSelected - node.id
+                             else currentSelected + node.id
+                graph.setSelected(newSet)
+            },
+            onAddBlock       = { type, pos ->
+                graph.addNode(MacroNode(type = type, pos = pos,
+                    params = defaultParams(type)))
+            },
+            onDeleteSelected = {
+                val ids = graph.nodes.filter { it.selected && it.type != MacroBlockType.START }
+                    .map { it.id }.toSet()
+                graph.removeNodes(ids)
+            }
+        )
     }
 }
 
+private fun defaultParams(type: MacroBlockType): BlockParams = when (type) {
+    MacroBlockType.IR_SEND      -> BlockParams.IrSend()
+    MacroBlockType.DELAY        -> BlockParams.Delay()
+    MacroBlockType.SHOW_TEXT    -> BlockParams.ShowText()
+    MacroBlockType.WAIT_CONFIRM -> BlockParams.WaitConfirm()
+    MacroBlockType.IF_ELSE      -> BlockParams.IfElse()
+    else                        -> BlockParams.None
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Node param dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun StepConfigDialog(
-    type:        StepType,
-    editingStep: MacroStep?,
-    onDismiss:   () -> Unit,
-    onSaveStep:  (MacroStep) -> Unit
+private fun NodeParamDialog(
+    node:      MacroNode,
+    onDismiss: () -> Unit,
+    onIrPick:  () -> Unit,
+    onSave:    (BlockParams) -> Unit,
+    onDelete:  () -> Unit
 ) {
-    var delayMs   by remember { mutableStateOf(((editingStep as? MacroStep.Delay)?.ms ?: 500L).toString()) }
-    var showText  by remember { mutableStateOf((editingStep as? MacroStep.ShowText)?.text ?: "") }
-    var waitMsg   by remember { mutableStateOf((editingStep as? MacroStep.WaitConfirm)?.message ?: "Press OK to continue") }
-    var repeatCnt by remember { mutableStateOf(((editingStep as? MacroStep.RepeatBlock)?.count ?: 3).toString()) }
-    var ifMsg     by remember { mutableStateOf((editingStep as? MacroStep.IfConfirm)?.message ?: "Continue?") }
+    val violet = MaterialTheme.colorScheme.primary
+
+    var delayMs by remember { mutableStateOf(((node.params as? BlockParams.Delay)?.ms ?: 500L).toString()) }
+    var showTxt by remember { mutableStateOf((node.params as? BlockParams.ShowText)?.text ?: "") }
+    var waitMsg by remember { mutableStateOf((node.params as? BlockParams.WaitConfirm)?.message ?: "Press OK to continue") }
+    var ifMsg   by remember { mutableStateOf((node.params as? BlockParams.IfElse)?.message ?: "Continue?") }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -406,77 +281,110 @@ private fun StepConfigDialog(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(type.label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text(blockLabel(node.type), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
 
-            when (type) {
-                StepType.DELAY -> {
-                    OutlinedTextField(
-                        value = delayMs, onValueChange = { delayMs = it },
+            when (node.type) {
+                MacroBlockType.DELAY -> {
+                    OutlinedTextField(value = delayMs, onValueChange = { delayMs = it },
                         label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
+                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     Text("500 = 0.5 sec, 2000 = 2 sec", color = Color(0xFF8A8899), fontSize = 11.sp)
                 }
-                StepType.SHOW_TEXT -> {
-                    OutlinedTextField(
-                        value = showText, onValueChange = { showText = it },
-                        label = { Text("Message to display") }, modifier = Modifier.fillMaxWidth(), singleLine = true
-                    )
+                MacroBlockType.SHOW_TEXT -> {
+                    OutlinedTextField(value = showTxt, onValueChange = { showTxt = it },
+                        label = { Text("Message") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
-                StepType.WAIT_CONFIRM -> {
-                    OutlinedTextField(
-                        value = waitMsg, onValueChange = { waitMsg = it },
-                        label = { Text("Prompt message") }, modifier = Modifier.fillMaxWidth(), singleLine = true
-                    )
+                MacroBlockType.WAIT_CONFIRM -> {
+                    OutlinedTextField(value = waitMsg, onValueChange = { waitMsg = it },
+                        label = { Text("Prompt") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 }
-                StepType.REPEAT -> {
-                    OutlinedTextField(
-                        value = repeatCnt, onValueChange = { repeatCnt = it },
-                        label = { Text("Repeat count") }, modifier = Modifier.fillMaxWidth(),
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
+                MacroBlockType.IF_ELSE -> {
+                    OutlinedTextField(value = ifMsg, onValueChange = { ifMsg = it },
+                        label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Text("YES and NO branches connect from the bottom pins.", color = Color(0xFF8A8899), fontSize = 11.sp)
                 }
-                StepType.LOOP -> {
-                    Text("Loops indefinitely until user stops the macro.", color = Color(0xFF8A8899), fontSize = 12.sp)
+                MacroBlockType.IR_SEND -> {
+                    val p = node.params as? BlockParams.IrSend
+                    Text(if (p?.displayLabel.isNullOrEmpty()) "No IR button selected" else p!!.displayLabel,
+                        color = if (p?.displayLabel.isNullOrEmpty()) Color(0xFF8A8899) else Color.White,
+                        fontSize = 12.sp)
+                    TextButton(onClick = onIrPick, modifier = Modifier.fillMaxWidth()) {
+                        Text("Pick IR button...")
+                    }
                 }
-                StepType.IF_CONFIRM -> {
-                    OutlinedTextField(
-                        value = ifMsg, onValueChange = { ifMsg = it },
-                        label = { Text("Question for user") }, modifier = Modifier.fillMaxWidth(), singleLine = true
-                    )
+                MacroBlockType.STOP -> {
+                    Text("Terminates the macro immediately.", color = Color(0xFF8A8899), fontSize = 12.sp)
                 }
-                StepType.IR_SEND -> {}
+                else -> {}
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (node.type != MacroBlockType.START && node.type != MacroBlockType.STOP) {
+                    TextButton(onClick = onDelete) { Text("Delete block", color = Color(0xFFFF7B9D)) }
+                }
+                Spacer(modifier = Modifier.weight(1f))
                 TextButton(onClick = onDismiss) { Text("Cancel") }
-                Spacer(modifier = Modifier.width(4.dp))
                 TextButton(onClick = {
-                    val step: MacroStep = when (type) {
-                        StepType.DELAY        -> MacroStep.Delay(delayMs.toLongOrNull()?.coerceAtLeast(1) ?: 500L)
-                        StepType.SHOW_TEXT    -> MacroStep.ShowText(showText.ifBlank { "Hello!" })
-                        StepType.WAIT_CONFIRM -> MacroStep.WaitConfirm(waitMsg.ifBlank { "Press OK to continue" })
-                        StepType.REPEAT       -> MacroStep.RepeatBlock(
-                            count = repeatCnt.toIntOrNull()?.coerceAtLeast(1) ?: 3,
-                            steps = (editingStep as? MacroStep.RepeatBlock)?.steps ?: emptyList()
-                        )
-                        StepType.LOOP         -> MacroStep.LoopUntilStop(
-                            steps = (editingStep as? MacroStep.LoopUntilStop)?.steps ?: emptyList()
-                        )
-                        StepType.IF_CONFIRM   -> MacroStep.IfConfirm(
-                            message  = ifMsg.ifBlank { "Continue?" },
-                            yesSteps = (editingStep as? MacroStep.IfConfirm)?.yesSteps ?: emptyList(),
-                            noSteps  = (editingStep as? MacroStep.IfConfirm)?.noSteps  ?: emptyList()
-                        )
-                        StepType.IR_SEND -> return@TextButton
+                    val params: BlockParams = when (node.type) {
+                        MacroBlockType.DELAY        -> BlockParams.Delay(delayMs.toLongOrNull()?.coerceAtLeast(1) ?: 500L)
+                        MacroBlockType.SHOW_TEXT    -> BlockParams.ShowText(showTxt.ifBlank { "Hello!" })
+                        MacroBlockType.WAIT_CONFIRM -> BlockParams.WaitConfirm(waitMsg.ifBlank { "Continue?" })
+                        MacroBlockType.IF_ELSE      -> BlockParams.IfElse(ifMsg.ifBlank { "Continue?" })
+                        MacroBlockType.IR_SEND, MacroBlockType.STOP, MacroBlockType.START -> node.params
                     }
-                    onSaveStep(step)
-                }) { Text(if (editingStep == null) "Add" else "Save") }
+                    onSave(params)
+                }) { Text("OK") }
             }
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save dialog (with optional orphan warning)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SaveDialog(
+    initialName:   String,
+    orphanCount:   Int,
+    existingNames: Set<String>,
+    onDismiss:     () -> Unit,
+    onSave:        (String) -> Unit
+) {
+    var name  by remember { mutableStateOf(initialName) }
+    var error by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Save macro") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = name, onValueChange = { name = it; error = "" },
+                    label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true,
+                    isError = error.isNotEmpty(), supportingText = if (error.isNotEmpty()) ({ Text(error) }) else null)
+                if (orphanCount > 0) {
+                    Text("Warning: $orphanCount block(s) are not connected to the graph and will be ignored.",
+                        color = Color(0xFFFFC14D), fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (name.isBlank()) { error = "Name required"; return@TextButton }
+                onSave(name.trim())
+            }) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IR Picker dialog (reused)
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 internal fun IrPickerDialog(
@@ -517,26 +425,21 @@ internal fun IrPickerDialog(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("Pick IR Button", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-
             TabRow(selectedTabIndex = tab, containerColor = Color(0xFF1A1530), contentColor = violet) {
                 Tab(selected = tab == 0, onClick = { tab = 0; query = ""; myRemoteIdx = -1 },
                     text = { Text("My Remotes", fontSize = 12.sp) })
                 Tab(selected = tab == 1, onClick = { tab = 1; query = ""; dbProfileIdx = -1; dbButtons = emptyList() },
                     text = { Text("Remote DB", fontSize = 12.sp) })
             }
-
-            OutlinedTextField(
-                value = query, onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(), singleLine = true,
-                label = { Text(if (tab == 0) "Search remotes" else "Search profiles") }
-            )
+            OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
+                singleLine = true, label = { Text(if (tab == 0) "Search remotes" else "Search profiles") })
 
             if (tab == 0) {
                 val filtered = savedRemotes.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
                 if (myRemoteIdx < 0) {
                     LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         itemsIndexed(filtered) { _, remote ->
-                            PickerRow(remote.name, "${remote.buttons.size} buttons") {
+                            IrPickerRow(remote.name, "${remote.buttons.size} buttons") {
                                 myRemoteIdx = savedRemotes.indexOf(remote)
                             }
                         }
@@ -546,23 +449,23 @@ internal fun IrPickerDialog(
                     if (remote != null) {
                         Text("<- ${remote.name}", color = violet, fontSize = 12.sp,
                             modifier = Modifier.clickable { myRemoteIdx = -1 })
-                        val filteredBtns = remote.buttons.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }
+                        val btns = remote.buttons.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }
                         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            itemsIndexed(filteredBtns) { _, btn ->
-                                val hasCode = btn.code.isNotBlank()
-                                PickerRow(btn.label, if (hasCode) btn.code.take(50) else "No IR code", enabled = hasCode) {
-                                    if (hasCode) onPick(remote.name, btn.label, btn.code)
+                            itemsIndexed(btns) { _, btn ->
+                                val ok = btn.code.isNotBlank()
+                                IrPickerRow(btn.label, if (ok) btn.code.take(50) else "No IR code", enabled = ok) {
+                                    if (ok) onPick(remote.name, btn.label, btn.code)
                                 }
                             }
                         }
                     }
                 }
             } else {
-                val filteredProfiles = dbProfiles.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }.take(200)
+                val profs = dbProfiles.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }.take(200)
                 if (dbProfileIdx < 0) {
                     LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        itemsIndexed(filteredProfiles) { _, profile ->
-                            PickerRow(profile.name, profile.parentPath) { dbProfileIdx = dbProfiles.indexOf(profile) }
+                        itemsIndexed(profs) { _, profile ->
+                            IrPickerRow(profile.name, profile.parentPath) { dbProfileIdx = dbProfiles.indexOf(profile) }
                         }
                     }
                 } else {
@@ -575,17 +478,16 @@ internal fun IrPickerDialog(
                                 Text("Loading...", color = Color(0xFF8A8899), fontSize = 12.sp)
                             }
                         } else {
-                            val filteredBtns = dbButtons.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }
+                            val bts = dbButtons.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }
                             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                itemsIndexed(filteredBtns) { _, opt ->
-                                    PickerRow(opt.label, opt.code.take(60)) { onPick(profile.name, opt.label, opt.code) }
+                                itemsIndexed(bts) { _, opt ->
+                                    IrPickerRow(opt.label, opt.code.take(60)) { onPick(profile.name, opt.label, opt.code) }
                                 }
                             }
                         }
                     }
                 }
             }
-
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = onDismiss) { Text("Cancel") }
             }
@@ -594,7 +496,7 @@ internal fun IrPickerDialog(
 }
 
 @Composable
-private fun PickerRow(title: String, subtitle: String, enabled: Boolean = true, onClick: () -> Unit) {
+private fun IrPickerRow(title: String, subtitle: String, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -609,44 +511,4 @@ private fun PickerRow(title: String, subtitle: String, enabled: Boolean = true, 
             Text(subtitle, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
         }
     }
-}
-
-private fun stepToType(step: MacroStep): StepType = when (step) {
-    is MacroStep.IrSend        -> StepType.IR_SEND
-    is MacroStep.Delay         -> StepType.DELAY
-    is MacroStep.ShowText      -> StepType.SHOW_TEXT
-    is MacroStep.WaitConfirm   -> StepType.WAIT_CONFIRM
-    is MacroStep.RepeatBlock   -> StepType.REPEAT
-    is MacroStep.LoopUntilStop -> StepType.LOOP
-    is MacroStep.IfConfirm     -> StepType.IF_CONFIRM
-}
-
-private fun stepColor(step: MacroStep): Color = when (step) {
-    is MacroStep.IrSend        -> Color(0xFF7B4DDF)
-    is MacroStep.Delay         -> Color(0xFF2E7ADB)
-    is MacroStep.ShowText      -> Color(0xFF1E8A5E)
-    is MacroStep.WaitConfirm   -> Color(0xFFC27C1A)
-    is MacroStep.RepeatBlock   -> Color(0xFFA07800)
-    is MacroStep.LoopUntilStop -> Color(0xFFB84000)
-    is MacroStep.IfConfirm     -> Color(0xFF1E8AA8)
-}
-
-private fun stepEmoji(step: MacroStep): String = when (step) {
-    is MacroStep.IrSend        -> "[IR]"
-    is MacroStep.Delay         -> "[Wait]"
-    is MacroStep.ShowText      -> "[Msg]"
-    is MacroStep.WaitConfirm   -> "[OK?]"
-    is MacroStep.RepeatBlock   -> "[Rpt]"
-    is MacroStep.LoopUntilStop -> "[Loop]"
-    is MacroStep.IfConfirm     -> "[If]"
-}
-
-private fun stepDescription(step: MacroStep): String = when (step) {
-    is MacroStep.IrSend        -> "Send IR: ${step.displayLabel}"
-    is MacroStep.Delay         -> "Wait ${step.ms} ms"
-    is MacroStep.ShowText      -> "Show: \"${step.text}\""
-    is MacroStep.WaitConfirm   -> "Wait OK: \"${step.message}\""
-    is MacroStep.RepeatBlock   -> "Repeat ${step.count}x (${step.steps.size} inner)"
-    is MacroStep.LoopUntilStop -> "Loop forever (${step.steps.size} inner)"
-    is MacroStep.IfConfirm     -> "If: \"${step.message}\""
 }

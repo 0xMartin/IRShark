@@ -147,6 +147,7 @@ class MacroEngine(private val context: Context) {
                 displayText = null
                 if (yes) executeSteps(step.yesSteps) else executeSteps(step.noSteps)
             }
+            is MacroStep.Stop -> throw CancellationException("Stop block reached")
         }
     }
 
