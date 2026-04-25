@@ -299,7 +299,12 @@ fun Badge(text: String, modifier: Modifier = Modifier) {
 // ── Section nav bar (Panel2 for My Remotes, Remote DB, Settings) ───────────
 
 @Composable
-fun SectionNavBar(onHome: () -> Unit, modifier: Modifier = Modifier) {
+fun SectionNavBar(
+    onHome: () -> Unit,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
@@ -314,9 +319,25 @@ fun SectionNavBar(onHome: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
+            if (!actionLabel.isNullOrBlank() && onAction != null) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(violet.copy(alpha = 0.14f))
+                        .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                        .clickable(onClick = onAction)
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(actionLabel, color = violet, fontSize = 12.sp)
+                }
+            }
         }
     }
 }

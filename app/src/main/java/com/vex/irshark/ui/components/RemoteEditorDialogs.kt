@@ -215,10 +215,12 @@ private fun IrButtonEditorDialog(
     onSave: (SavedRemoteButton) -> Unit
 ) {
     val context = LocalContext.current
+    val defaultCode = "protocol=NEC; address=0x00FF; command=0x20DF"
+    val defaultDetails = "protocol: NEC\naddress: 0x00FF\ncommand: 0x20DF\nfrequency: 38000"
 
-    var label by remember { mutableStateOf(initialButton?.label.orEmpty()) }
-    var code by remember { mutableStateOf(initialButton?.code.orEmpty()) }
-    var details by remember { mutableStateOf(initialButton?.details.orEmpty()) }
+    var label by remember { mutableStateOf(initialButton?.label ?: "POWER") }
+    var code by remember { mutableStateOf(initialButton?.code ?: defaultCode) }
+    var details by remember { mutableStateOf(initialButton?.details ?: defaultDetails) }
 
     var profileSearch by remember { mutableStateOf("") }
     var selectedProfilePath by remember { mutableStateOf<String?>(null) }

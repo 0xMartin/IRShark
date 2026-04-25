@@ -39,7 +39,8 @@ import com.vex.irshark.ui.components.Badge
 @Composable
 fun RemoteControlScreen(
     title: String,
-    subtitle: String,
+    typeBadge: String,
+    countBadge: String,
     commands: List<String>,
     selectedCommand: String?,
     txCount: Int,
@@ -105,7 +106,10 @@ fun RemoteControlScreen(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Badge(subtitle)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Badge(typeBadge)
+                    Badge(countBadge)
+                }
             }
         }
 

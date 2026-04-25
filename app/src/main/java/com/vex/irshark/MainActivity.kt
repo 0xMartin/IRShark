@@ -35,6 +35,7 @@ import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.countProfilesForCommand
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.loadAppSettings
+import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.data.loadFlipperDbIndex
 import com.vex.irshark.data.loadSavedRemotes
 import com.vex.irshark.data.parentPath
@@ -154,6 +155,29 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         return "$base $suffix"
     }
 
+    fun hydrateMissingCodesFromDb(
+        buttons: List<SavedRemoteButton>,
+        dbCodes: List<com.vex.irshark.data.DbIrCodeOption>
+    ): List<SavedRemoteButton> {
+        if (buttons.isEmpty() || dbCodes.isEmpty()) return buttons
+        val byLabel = dbCodes.associateBy { it.label.trim().uppercase() }
+        return buttons.map { button ->
+            if (button.code.isNotBlank()) {
+                button
+            } else {
+                val hit = byLabel[button.label.trim().uppercase()]
+                if (hit != null) {
+                    button.copy(
+                        code = hit.code,
+                        details = if (button.details.isBlank()) hit.details else button.details
+                    )
+                } else {
+                    button
+                }
+            }
+        }
+    }
+
     // Load data
     LaunchedEffect(Unit) {
         dbIndex = loadFlipperDbIndex(context)
@@ -254,7 +278,18 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 screenTitle = screenTitle
             )
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS)) {
-                SectionNavBar(onHome = { screen = Screen.HOME })
+                SectionNavBar(
+                    onHome = { screen = Screen.HOME },
+                    actionLabel = if (screen == Screen.MY_REMOTES) "Create custom remote" else null,
+                    onAction = if (screen == Screen.MY_REMOTES) {
+                        {
+                            editingRemoteIndex = null
+                            showRemoteEditor = true
+                        }
+                    } else {
+                        null
+                    }
+                )
             }
             if (screen != Screen.UNIVERSAL) {
                 Spacer(modifier = Modifier.height(12.dp))
@@ -358,6 +393,25 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 controlSource = ControlSource.MY_REMOTES
                                 controlSelectedCommand = null
                                 controlTxCount = 0
+
+                                // Backfill missing DB codes for previously imported remotes.
+                                if (remote.sourceProfilePath != null && controlButtons.any { it.code.isBlank() }) {
+                                    scope.launch {
+                                        val dbCodes = loadDbIrCodeOptions(context, remote.sourceProfilePath)
+                                        val hydrated = hydrateMissingCodesFromDb(controlButtons, dbCodes)
+                                        controlButtons = hydrated
+                                        savedRemotes = savedRemotes.toMutableList().also {
+                                            val prev = it.getOrNull(originalIndex)
+                                            if (prev != null) {
+                                                it[originalIndex] = prev.copy(
+                                                    buttons = hydrated,
+                                                    commands = hydrated.map { b -> b.label }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
                                 screen = Screen.REMOTE_CONTROL
                             },
                             onSecondaryAction = { index ->
@@ -365,12 +419,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 savedRemotes = savedRemotes.toMutableList().also { it.removeAt(originalIndex) }
                                 toastController.show("Removed from My Remotes")
                             },
-                            secondaryActionLabel = "Delete",
-                            topActionLabel = "Create custom remote",
-                            onTopAction = {
-                                editingRemoteIndex = null
-                                showRemoteEditor = true
-                            }
+                            secondaryActionLabel = "Delete"
                         )
                     }
 
@@ -390,37 +439,44 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 val profile = filtered[index]
                                 controlProfilePath = profile.path
                                 controlName = profile.name
-                                controlButtons = profile.commands.map {
-                                    SavedRemoteButton(
-                                        label = it,
-                                        code = "",
-                                        details = "Imported from DB command name"
-                                    )
+                                controlButtons = profile.commands.map { cmd ->
+                                    SavedRemoteButton(label = cmd, code = "", details = "Imported from DB command name")
                                 }
                                 controlRemoteIndex = -1
                                 controlSource = ControlSource.REMOTE_DB
                                 controlSelectedCommand = null
                                 controlTxCount = 0
+
+                                scope.launch {
+                                    val dbCodes = loadDbIrCodeOptions(context, profile.path)
+                                    controlButtons = hydrateMissingCodesFromDb(controlButtons, dbCodes)
+                                }
+
                                 screen = Screen.REMOTE_CONTROL
                             },
                             onSecondaryAction = { index ->
                                 val profile = filtered[index]
                                 if (savedRemotes.none { it.sourceProfilePath == profile.path }) {
-                                    val resolvedName = uniqueRemoteName(profile.name)
-                                    savedRemotes = savedRemotes + SavedRemote(
-                                        name = resolvedName,
-                                        profilePath = profile.path,
-                                        commands = profile.commands,
-                                        buttons = profile.commands.map {
+                                    scope.launch {
+                                        val dbCodes = loadDbIrCodeOptions(context, profile.path)
+                                        val seededButtons = profile.commands.map { cmd ->
                                             SavedRemoteButton(
-                                                label = it,
+                                                label = cmd,
                                                 code = "",
                                                 details = "Imported from DB command name"
                                             )
-                                        },
-                                        sourceProfilePath = profile.path
-                                    )
-                                    toastController.show("Added to My Remotes")
+                                        }
+                                        val hydratedButtons = hydrateMissingCodesFromDb(seededButtons, dbCodes)
+                                        val resolvedName = uniqueRemoteName(profile.name)
+                                        savedRemotes = savedRemotes + SavedRemote(
+                                            name = resolvedName,
+                                            profilePath = profile.path,
+                                            commands = hydratedButtons.map { it.label },
+                                            buttons = hydratedButtons,
+                                            sourceProfilePath = profile.path
+                                        )
+                                        toastController.show("Added to My Remotes")
+                                    }
                                 }
                             },
                             secondaryActionLabel = "Add",
@@ -440,11 +496,30 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         val currentProfile = dbIndex.profiles.firstOrNull { it.path == profilePath }
                         val commands = if (controlCommands.isNotEmpty()) controlCommands else currentProfile?.commands.orEmpty()
                         val title = controlName ?: currentProfile?.name ?: "Remote"
-                        val subtitle = currentProfile?.let { prettyPath(it.parentPath) } ?: prettyPath(profilePath)
+                        val activeSavedRemote = if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
+                            savedRemotes[controlRemoteIndex]
+                        } else {
+                            null
+                        }
+
+                        val typeBadge = when {
+                            activeSavedRemote?.sourceProfilePath == null && controlSource == ControlSource.MY_REMOTES -> "Custom"
+                            activeSavedRemote?.sourceProfilePath != null -> {
+                                val parent = dbIndex.profiles
+                                    .firstOrNull { it.path == activeSavedRemote.sourceProfilePath }
+                                    ?.parentPath
+                                if (parent.isNullOrBlank()) "From DB" else prettyPath(parent)
+                            }
+                            currentProfile != null -> prettyPath(currentProfile.parentPath)
+                            profilePath.isNotBlank() -> prettyPath(profilePath)
+                            else -> "Custom"
+                        }
+                        val countBadge = "${commands.size} buttons"
 
                         RemoteControlScreen(
                             title = title,
-                            subtitle = subtitle,
+                            typeBadge = typeBadge,
+                            countBadge = countBadge,
                             commands = commands,
                             selectedCommand = controlSelectedCommand,
                             txCount = controlTxCount,
