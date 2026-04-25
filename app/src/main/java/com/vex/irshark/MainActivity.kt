@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import com.vex.irshark.data.FlipperDbIndex
 import com.vex.irshark.data.SavedRemote
@@ -40,12 +41,15 @@ import com.vex.irshark.data.prettyPath
 import com.vex.irshark.data.saveAppSettings
 import com.vex.irshark.data.saveSavedRemotes
 import com.vex.irshark.ui.components.AppHeader
+import com.vex.irshark.ui.components.AppToastController
+import com.vex.irshark.ui.components.AppToastHost
 import com.vex.irshark.ui.screens.HomeScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
 import com.vex.irshark.ui.screens.SettingsScreen
 import com.vex.irshark.ui.screens.UniversalRemoteScreen
 import com.vex.irshark.ui.theme.IRSharkTheme
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -96,7 +100,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
     var showTxLed by rememberSaveable { mutableStateOf(true) }
     var txPulseActive by remember { mutableStateOf(false) }
+    var settingsDirty by remember { mutableStateOf(false) }
+    var settingsLoaded by remember { mutableStateOf(false) }
+    var txPulseJob by remember { mutableStateOf<Job?>(null) }
+    val toastController = remember { AppToastController() }
     val scope = rememberCoroutineScope()
+
+    fun emitTxPulse(durationMs: Long = 180L) {
+        txPulseJob?.cancel()
+        txPulseJob = scope.launch {
+            txPulseActive = true
+            delay(durationMs)
+            txPulseActive = false
+        }
+    }
 
     // List search queries
     var myRemotesQuery by rememberSaveable { mutableStateOf("") }
@@ -118,13 +135,16 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         universalIntervalMs = settings.globalIntervalMs
         autoStopAtEnd = settings.autoStopAtEnd
         showTxLed = settings.showTxLed
+        settingsLoaded = true
     }
 
     LaunchedEffect(savedRemotes) {
         saveSavedRemotes(context, savedRemotes)
     }
 
-    LaunchedEffect(universalIntervalMs, autoStopAtEnd, showTxLed) {
+    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed) {
+        if (!settingsLoaded || !settingsDirty) return@LaunchedEffect
+        delay(700)
         saveAppSettings(
             context,
             com.vex.irshark.data.AppSettings(
@@ -133,6 +153,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 showTxLed = showTxLed
             )
         )
+        settingsDirty = false
+        toastController.show("Settings saved")
     }
 
     // Universal auto-send loop
@@ -142,23 +164,27 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
     LaunchedEffect(universalAutoSend, universalCommand, universalCoverage, universalIntervalMs) {
         if (!universalAutoSend || universalCommand == null || universalCoverage <= 0) return@LaunchedEffect
-        while (universalAutoSend) {
-            txPulseActive = true
-            delay(universalIntervalMs.roundToInt().toLong())
-            txPulseActive = false
-            if (universalCodeStep >= universalCoverage) {
-                if (autoStopAtEnd) {
-                    universalAutoSend = false
-                    universalCommand = null
-                    universalCodeStep = 0
-                    break
+        try {
+            while (universalAutoSend) {
+                txPulseActive = true
+                delay((universalIntervalMs.roundToInt().toLong() / 2).coerceAtLeast(70L))
+                txPulseActive = false
+                delay((universalIntervalMs.roundToInt().toLong() / 2).coerceAtLeast(70L))
+                if (universalCodeStep >= universalCoverage) {
+                    if (autoStopAtEnd) {
+                        universalAutoSend = false
+                        universalCommand = null
+                        universalCodeStep = 0
+                        break
+                    }
+                    universalCodeStep = 1
+                } else {
+                    universalCodeStep += 1
                 }
-                universalCodeStep = 1
-            } else {
-                universalCodeStep += 1
             }
+        } finally {
+            txPulseActive = false
         }
-        txPulseActive = false
     }
 
     // Control auto-send loop
@@ -178,7 +204,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             AppHeader(
                 status = dbIndex.status,
                 txActive = txPulseActive || universalAutoSend,
-                showTxLed = showTxLed
+                showTxLed = showTxLed,
+                fastBlink = universalAutoSend
             )
             if (screen != Screen.UNIVERSAL) {
                 Spacer(modifier = Modifier.height(12.dp))
@@ -228,11 +255,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     universalCommand = null
                                     universalCodeStep = 0
                                     universalAutoSend = false
-                                    scope.launch {
-                                        txPulseActive = true
-                                        delay(180)
-                                        txPulseActive = false
-                                    }
+                                    emitTxPulse()
                                 } else {
                                     universalCommand = item
                                     universalAutoSend = true
@@ -244,6 +267,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     universalAutoSend = false
                                     universalCommand = null
                                     universalCodeStep = 0
+                                    txPulseActive = false
                                 } else {
                                     universalAutoSend = true
                                 }
@@ -279,6 +303,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onSecondaryAction = { index ->
                                 val remote = filtered[index]
                                 savedRemotes = savedRemotes.filterNot { it.profilePath == remote.profilePath }
+                                toastController.show("Removed from My Remotes")
                             },
                             secondaryActionLabel = "Delete"
                         )
@@ -316,9 +341,18 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                         profilePath = profile.path,
                                         commands = profile.commands
                                     )
+                                    toastController.show("Added to My Remotes")
                                 }
                             },
-                            secondaryActionLabel = "Add"
+                            secondaryActionLabel = "Add",
+                            secondaryActionLabelForItem = { idx ->
+                                val path = filtered[idx].path
+                                if (savedRemotes.any { it.profilePath == path }) "Added" else "Add"
+                            },
+                            secondaryActionEnabledForItem = { idx ->
+                                val path = filtered[idx].path
+                                savedRemotes.none { it.profilePath == path }
+                            }
                         )
                     }
 
@@ -341,11 +375,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onCommandClick = { _ ->
                                 controlSelectedCommand = null
                                 controlTxCount += 1
-                                scope.launch {
-                                    txPulseActive = true
-                                    delay(180)
-                                    txPulseActive = false
-                                }
+                                emitTxPulse()
                             },
                             onSave = {
                                 if (profilePath.isNotBlank() && savedRemotes.none { it.profilePath == profilePath }) {
@@ -366,14 +396,41 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             autoStopAtEnd = autoStopAtEnd,
                             showTxLed = showTxLed,
                             onBack = { screen = Screen.HOME },
-                            onIntervalChange = { universalIntervalMs = it },
-                            onAutoStopAtEndChange = { autoStopAtEnd = it },
-                            onShowTxLedChange = { showTxLed = it }
+                            onIntervalChange = {
+                                universalIntervalMs = it
+                                settingsDirty = true
+                            },
+                            onAutoStopAtEndChange = {
+                                autoStopAtEnd = it
+                                settingsDirty = true
+                            },
+                            onShowTxLedChange = {
+                                showTxLed = it
+                                settingsDirty = true
+                            },
+                            onIntervalPresetSelect = {
+                                universalIntervalMs = it
+                                settingsDirty = true
+                            },
+                            onResetDefaults = {
+                                universalIntervalMs = 250f
+                                autoStopAtEnd = true
+                                showTxLed = true
+                                settingsDirty = true
+                            }
                         )
                     }
                 }
             }
+
         }
+
+        AppToastHost(
+            controller = toastController,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp)
+        )
     }
 }
 

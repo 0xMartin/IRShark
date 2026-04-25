@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -23,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -132,6 +132,7 @@ fun ListRow(
     title: String,
     subtitle: String,
     actionLabel: String,
+    actionEnabled: Boolean = true,
     onOpen: () -> Unit,
     onAction: () -> Unit
 ) {
@@ -158,13 +159,22 @@ fun ListRow(
                 modifier = Modifier
                     .height(28.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(violet.copy(alpha = 0.18f))
-                    .border(1.dp, violet, RoundedCornerShape(8.dp))
-                    .clickable(onClick = onAction)
+                    .background(if (actionEnabled) violet.copy(alpha = 0.18f) else Color(0xFF1A1726))
+                    .border(
+                        1.dp,
+                        if (actionEnabled) violet else Color.White.copy(alpha = 0.12f),
+                        RoundedCornerShape(8.dp)
+                    )
+                    .clickable(enabled = actionEnabled, onClick = onAction)
                     .padding(horizontal = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(actionLabel, color = violet, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    actionLabel,
+                    color = if (actionEnabled) violet else Color(0xFF8A8899),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
         HorizontalDivider(color = Color.White.copy(alpha = 0.07f))
@@ -174,14 +184,13 @@ fun ListRow(
 // ── App header bar ───────────────────────────────────────────────────────────
 
 @Composable
-fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean) {
+fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
             .background(Color(0xFF0A0814))
-            .border(1.dp, violet.copy(alpha = 0.14f), RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+            .border(1.dp, violet.copy(alpha = 0.14f))
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row(
@@ -213,7 +222,7 @@ fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean) {
             ) {
                 Badge(text = status)
                 if (showTxLed) {
-                    TxLedIndicator(active = txActive)
+                    TxLedIndicator(active = txActive, fastBlink = fastBlink)
                 }
             }
         }
@@ -221,13 +230,14 @@ fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean) {
 }
 
 @Composable
-private fun TxLedIndicator(active: Boolean) {
+private fun TxLedIndicator(active: Boolean, fastBlink: Boolean) {
     val pulse = rememberInfiniteTransition(label = "tx-led")
+    val duration = if (fastBlink) 180 else 900
     val alpha = pulse.animateFloat(
         initialValue = if (active) 0.45f else 0.18f,
         targetValue = if (active) 1f else 0.25f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 900, easing = LinearEasing),
+            animation = tween(durationMillis = duration, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "tx-led-alpha"
@@ -280,8 +290,9 @@ fun UniversalRemoteHeader(
         modifier = modifier
             .fillMaxWidth()
             .height(50.dp)
+            .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
             .background(Color(0xFF121024))
-            .border(1.dp, violet.copy(alpha = 0.12f))
+            .border(1.dp, violet.copy(alpha = 0.12f), RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
             .padding(horizontal = 14.dp)
     ) {
         Row(
@@ -317,7 +328,11 @@ fun UniversalRemoteHeader(
                 modifier = Modifier.height(38.dp)
             )
 
-            BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp), enabled = canGoBack)
+            if (canGoBack) {
+                BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp), enabled = true)
+            } else {
+                Spacer(modifier = Modifier.size(40.dp))
+            }
         }
     }
 }

@@ -2,6 +2,7 @@ package com.vex.irshark.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +37,9 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onIntervalChange: (Float) -> Unit,
     onAutoStopAtEndChange: (Boolean) -> Unit,
-    onShowTxLedChange: (Boolean) -> Unit
+    onShowTxLedChange: (Boolean) -> Unit,
+    onIntervalPresetSelect: (Float) -> Unit,
+    onResetDefaults: () -> Unit
 ) {
     val violet = MaterialTheme.colorScheme.primary
 
@@ -74,6 +77,12 @@ fun SettingsScreen(
                     onValueChange = onIntervalChange,
                     valueRange = 80f..1500f
                 )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SpeedPresetButton("Fast", onClick = { onIntervalPresetSelect(120f) })
+                    SpeedPresetButton("Balanced", onClick = { onIntervalPresetSelect(250f) })
+                    SpeedPresetButton("Safe", onClick = { onIntervalPresetSelect(500f) })
+                }
             }
         }
 
@@ -94,6 +103,48 @@ fun SettingsScreen(
             checked = showTxLed,
             onCheckedChange = onShowTxLedChange
         )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF0F0D1A))
+                .border(1.dp, violet.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                .clickable(onClick = onResetDefaults)
+                .padding(12.dp)
+        ) {
+            Text(
+                text = "Reset settings to default",
+                color = violet,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Text(
+            text = "Changes are saved automatically.",
+            color = Color(0xFF8A8899),
+            fontSize = 11.sp
+        )
+    }
+}
+
+@Composable
+private fun SpeedPresetButton(label: String, onClick: () -> Unit) {
+    val violet = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(violet.copy(alpha = 0.14f))
+            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(label, color = violet, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
