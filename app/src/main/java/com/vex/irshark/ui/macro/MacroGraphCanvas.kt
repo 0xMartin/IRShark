@@ -232,10 +232,10 @@ fun MacroGraphCanvas(
             cPos.y in n.pos.y..(n.pos.y + n.blockH())
         }
 
-    // Settings icon hit zone: top-right ~48dp area of block
+    // Settings icon hit zone: top-right corner, sized to the actual icon area (~28dp)
     fun isSettingsIconHit(cPos: Offset, node: MacroNode): Boolean {
         if (node.type == MacroBlockType.START || node.type == MacroBlockType.END) return false
-        val hitSize = 52f * density
+        val hitSize = 28f * density
         return cPos.x >= node.pos.x + node.blockW() - hitSize &&
                cPos.y <= node.pos.y + hitSize
     }
@@ -500,7 +500,7 @@ fun MacroGraphCanvas(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    if (isSelectMode) "SELECT" else "PAN",
+                    if (isSelectMode) "SELECT" else "MOVE",
                     color      = if (isSelectMode) Color(0xFF9B6DFF) else Color(0xFF8A8899),
                     fontSize   = 10.sp,
                     fontWeight = FontWeight.Bold

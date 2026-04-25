@@ -51,7 +51,7 @@ import com.vex.irshark.data.loadAppSettings
 import com.vex.irshark.data.loadSavedMacros
 import com.vex.irshark.data.saveSavedMacros
 import com.vex.irshark.data.SavedMacro
-import com.vex.irshark.data.transmitIrCode
+import com.vex.irshark.util.transmitIrCode
 import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.data.loadFlipperDbIndex
 import com.vex.irshark.data.loadSavedRemotes

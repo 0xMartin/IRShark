@@ -3,7 +3,7 @@ package com.vex.irshark.macro
 import android.content.Context
 import com.vex.irshark.data.MacroStep
 import com.vex.irshark.data.SavedMacro
-import com.vex.irshark.data.transmitIrCode
+import com.vex.irshark.util.transmitIrCode
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred

@@ -161,11 +161,10 @@ fun MacroEditorScreen(
     // ── Full-screen layout ────────────────────────────────────────────────
     Column(modifier = Modifier.fillMaxSize()) {
 
-        // Top bar: name + save/cancel — fixed 48 dp height, all items aligned
+        // Top bar: name + save/cancel
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp)
                 .background(Color(0xFF0E0B1A))
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment     = Alignment.CenterVertically,
@@ -174,7 +173,7 @@ fun MacroEditorScreen(
             OutlinedTextField(
                 value         = macroName,
                 onValueChange = { macroName = it; nameError = false },
-                modifier      = Modifier.weight(1f).fillMaxHeight(),
+                modifier      = Modifier.weight(1f),
                 singleLine    = true,
                 isError       = nameError,
                 placeholder   = { Text("Macro name", fontSize = 13.sp) }
@@ -182,7 +181,7 @@ fun MacroEditorScreen(
             // Save
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
+                    .height(48.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
                     .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp))
@@ -203,7 +202,7 @@ fun MacroEditorScreen(
             // Cancel
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
+                    .height(48.dp)
                     .width(40.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFF1A1726))
