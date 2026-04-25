@@ -45,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -239,13 +240,14 @@ fun MacroGraphCanvas(
                cPos.y <= node.pos.y + hitSize
     }
 
-    Box(modifier = modifier.fillMaxSize().background(Color(0xFF08060F))) {
+    Box(modifier = modifier.fillMaxSize().clipToBounds().background(Color(0xFF08060F))) {
 
         // ── Canvas area (full screen, no top padding) ─────────────────────
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(bottom = 52.dp)
+                .clipToBounds()
                 .pointerInput(graph) {
                     awaitEachGesture {
                         // 1) First touch
