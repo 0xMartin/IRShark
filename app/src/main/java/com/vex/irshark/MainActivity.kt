@@ -100,8 +100,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var controlSource by rememberSaveable { mutableStateOf(ControlSource.REMOTE_DB) }
     var controlSelectedCommand by rememberSaveable { mutableStateOf<String?>(null) }
     var controlTxCount by rememberSaveable { mutableIntStateOf(0) }
-    var controlAutoSend by rememberSaveable { mutableStateOf(false) }
-    var controlIntervalMs by rememberSaveable { mutableStateOf(220f) }
 
     // Load data
     LaunchedEffect(Unit) {
@@ -128,15 +126,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
     // Control auto-send loop
     val controlCommands = controlCommandsCsv.split(";;").map { it.trim() }.filter { it.isNotBlank() }
-    val controlProgress = if (controlAutoSend) (controlTxCount % 100) / 100f else 0f
-
-    LaunchedEffect(controlAutoSend, controlSelectedCommand, controlIntervalMs) {
-        if (!controlAutoSend || controlSelectedCommand.isNullOrBlank()) return@LaunchedEffect
-        while (controlAutoSend) {
-            delay(controlIntervalMs.roundToInt().toLong())
-            controlTxCount += 1
-        }
-    }
 
     Box(
         modifier = modifier.background(
@@ -191,9 +180,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         },
                         onCommandClick = { item ->
                             universalCommand = item
-                            universalCodeStep = if (universalCoverage <= 0) 1 else {
-                                if (universalCodeStep >= universalCoverage) 1 else universalCodeStep + 1
-                            }
+                            universalAutoSend = true
+                            universalCodeStep = 1
                         },
                         onToggleAutoSend = { universalAutoSend = !universalAutoSend },
                         onIntervalChange = { universalIntervalMs = it }
@@ -221,7 +209,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             controlCommandsCsv = remote.commands.joinToString(";;")
                             controlSource = ControlSource.MY_REMOTES
                             controlSelectedCommand = null
-                            controlAutoSend = false
                             controlTxCount = 0
                             screen = Screen.REMOTE_CONTROL
                         },
@@ -254,7 +241,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             controlCommandsCsv = profile.commands.joinToString(";;")
                             controlSource = ControlSource.REMOTE_DB
                             controlSelectedCommand = null
-                            controlAutoSend = false
                             controlTxCount = 0
                             screen = Screen.REMOTE_CONTROL
                         },
@@ -285,15 +271,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         commands = commands,
                         selectedCommand = controlSelectedCommand,
                         txCount = controlTxCount,
-                        autoSend = controlAutoSend,
-                        intervalMs = controlIntervalMs,
-                        progress = controlProgress,
                         onBack = {
-                            controlAutoSend = false
                             screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
                         },
-                        onToggleAutoSend = { controlAutoSend = !controlAutoSend },
-                        onIntervalChange = { controlIntervalMs = it },
                         onCommandClick = { cmd ->
                             controlSelectedCommand = cmd
                             controlTxCount += 1

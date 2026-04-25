@@ -12,13 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,7 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vex.irshark.ui.components.BackIconButton
-import kotlin.math.roundToInt
+import com.vex.irshark.ui.components.Badge
 
 @Composable
 fun RemoteControlScreen(
@@ -38,12 +35,7 @@ fun RemoteControlScreen(
     commands: List<String>,
     selectedCommand: String?,
     txCount: Int,
-    autoSend: Boolean,
-    intervalMs: Float,
-    progress: Float,
     onBack: () -> Unit,
-    onToggleAutoSend: () -> Unit,
-    onIntervalChange: (Float) -> Unit,
     onCommandClick: (String) -> Unit,
     onSave: () -> Unit,
     showSaveButton: Boolean
@@ -69,59 +61,32 @@ fun RemoteControlScreen(
                         .clickable(onClick = onSave),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Save", color = violet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Add", color = violet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-        Text(subtitle, color = Color(0xFF8A8899), fontSize = 11.sp)
-        Spacer(modifier = Modifier.height(10.dp))
-
-        // Auto-send row
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(42.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (autoSend) Color(0xFF2E1020) else Color(0xFF18103A))
-                    .border(
-                        1.dp,
-                        if (autoSend) Color(0xFFFF7B9D) else violet,
-                        RoundedCornerShape(10.dp)
-                    )
-                    .clickable(onClick = onToggleAutoSend),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (autoSend) "STOP" else "START AUTO SEND",
-                    color = if (autoSend) Color(0xFFFFB7C8) else violet,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .width(112.dp)
-                    .height(42.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF13101E))
-                    .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "${intervalMs.roundToInt()} ms", color = Color.White, fontSize = 12.sp)
+        // Device info header
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF0F0D1A))
+                .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                .padding(12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Badge(subtitle)
             }
         }
 
-        Slider(
-            value = intervalMs,
-            onValueChange = onIntervalChange,
-            valueRange = 80f..1200f,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Text("Controls", color = violet, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Command buttons grid
         commands.chunked(2).forEach { row ->
@@ -134,13 +99,13 @@ fun RemoteControlScreen(
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(50.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (selected) violet.copy(alpha = 0.28f) else Color(0xFF100D1C))
+                            .height(54.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (selected) violet.copy(alpha = 0.28f) else Color(0xFF0F0D1A))
                             .border(
                                 1.dp,
-                                if (selected) violet else Color.White.copy(alpha = 0.14f),
-                                RoundedCornerShape(10.dp)
+                                if (selected) violet else Color.White.copy(alpha = 0.12f),
+                                RoundedCornerShape(12.dp)
                             )
                             .clickable { onCommandClick(cmd) },
                         contentAlignment = Alignment.Center
@@ -148,7 +113,8 @@ fun RemoteControlScreen(
                         Text(
                             text = cmd,
                             color = if (selected) violet else Color.White,
-                            fontSize = 12.sp
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
                         )
                     }
                 }
@@ -156,25 +122,6 @@ fun RemoteControlScreen(
             }
             Spacer(modifier = Modifier.height(8.dp))
         }
-
-        Text(
-            text = if (selectedCommand == null) "Select command to transmit."
-                   else "TX count for $selectedCommand: $txCount",
-            color = Color.White,
-            fontSize = 11.sp
-        )
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        LinearProgressIndicator(
-            progress = { progress.coerceIn(0f, 1f) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(10.dp)
-                .clip(RoundedCornerShape(20.dp)),
-            color = violet,
-            trackColor = Color(0xFF1E1A30)
-        )
 
         Spacer(modifier = Modifier.height(16.dp))
     }

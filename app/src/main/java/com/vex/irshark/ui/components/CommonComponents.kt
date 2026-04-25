@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +53,27 @@ fun BackIconButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: 
             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
             contentDescription = "Back",
             tint = if (enabled) violet else Color(0xFF6A6880),
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+fun HomeIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val violet = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFF13101E))
+            .border(1.dp, violet.copy(alpha = 0.40f), RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Home,
+            contentDescription = "Home",
+            tint = violet,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -150,35 +172,144 @@ fun ListRow(
 @Composable
 fun AppHeader(status: String) {
     val violet = MaterialTheme.colorScheme.primary
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF0F0D1A))
+            .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
+            .padding(12.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(violet.copy(alpha = 0.20f))
-                    .border(1.dp, violet, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "IR", color = violet, fontWeight = FontWeight.ExtraBold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(violet.copy(alpha = 0.20f))
+                        .border(1.dp, violet, RoundedCornerShape(10.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "IR", color = violet, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                }
+                Text(
+                    text = "IRShark",
+                    color = Color.White,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
-            Text(
-                text = "IRShark",
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.ExtraBold
-            )
+            Badge(text = status)
         }
+    }
+}
+
+// ── Badge (compact info display) ──────────────────────────────────────────────
+
+@Composable
+fun Badge(text: String, modifier: Modifier = Modifier) {
+    val violet = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(violet.copy(alpha = 0.15f))
+            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
         Text(
-            text = status,
+            text = text,
             color = violet,
             fontSize = 10.sp,
-            textAlign = TextAlign.End,
-            modifier = Modifier.width(175.dp)
+            fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+// ── Universal Remote path header (single row design) ────────────────────────
+
+@Composable
+fun UniversalRemoteHeader(
+    currentPath: String,
+    folderCount: Int,
+    profileCount: Int,
+    onHome: () -> Unit,
+    onBack: () -> Unit,
+    canGoBack: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    val violet = MaterialTheme.colorScheme.primary
+    
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clip(RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
+            .background(Color(0xFF0F0D1A))
+            .border(1.dp, violet.copy(alpha = 0.25f), RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
+            .padding(horizontal = 12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Home button - square
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(violet.copy(alpha = 0.2f))
+                    .border(1.dp, violet.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+                    .clickable(onClick = onHome),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("↶", color = violet, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+
+            // Path display - left rounded, no right border radius
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(20.dp, 0.dp, 0.dp, 20.dp))
+                    .background(violet.copy(alpha = 0.08f))
+                    .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(20.dp, 0.dp, 0.dp, 20.dp))
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    text = currentPath,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+            }
+
+            // Counter badge
+            Badge(
+                text = "$folderCount / $profileCount",
+                modifier = Modifier.height(38.dp)
+            )
+
+            // Back button - fully rounded right
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(50.dp))
+                    .background(if (canGoBack) violet.copy(alpha = 0.2f) else Color(0xFF1A1625))
+                    .border(1.dp, if (canGoBack) violet.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(50.dp))
+                    .clickable(enabled = canGoBack, onClick = onBack),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("←", color = if (canGoBack) violet else Color(0xFF6A6880), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
