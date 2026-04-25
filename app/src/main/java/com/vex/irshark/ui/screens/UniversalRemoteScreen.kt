@@ -48,10 +48,8 @@ import com.vex.irshark.data.prettyPath
 import com.vex.irshark.data.profilesUnderPath
 import com.vex.irshark.data.resolveUniversalCommandsForPath
 import com.vex.irshark.ui.components.AutoSendProgressModal
-import com.vex.irshark.ui.components.BackIconButton
 import com.vex.irshark.ui.components.EmptyCard
 import com.vex.irshark.ui.components.FolderButton
-import com.vex.irshark.ui.components.HomeIconButton
 import com.vex.irshark.ui.components.UniversalRemoteHeader
 import kotlin.math.roundToInt
 
@@ -97,8 +95,7 @@ fun UniversalRemoteScreen(
             // Top header bar
             UniversalRemoteHeader(
                 currentPath = prettyPath(currentPath),
-                folderCount = folders.size,
-                profileCount = profilesUnderPath(dbIndex, currentPath).size,
+                count = profilesUnderPath(dbIndex, currentPath).size,
                 onHome = {
                     if (autoSend) onToggleAutoSend()
                     onHome()
@@ -200,11 +197,13 @@ fun UniversalRemoteScreen(
                                             textAlign = TextAlign.Center,
                                             maxLines = 1
                                         )
-                                        Text(
-                                            text = "${item.profileCoverage}x",
-                                            color = if (selected) violet else Color(0xFF8A8899),
-                                            fontSize = 9.sp
-                                        )
+                                        if (item.profileCoverage > 1) {
+                                            Text(
+                                                text = "${item.profileCoverage}x",
+                                                color = if (selected) violet else Color(0xFF8A8899),
+                                                fontSize = 9.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -219,7 +218,7 @@ fun UniversalRemoteScreen(
         }
 
         // Auto-send modal
-        if (autoSend && activeItem != null && activeCoverage > 0) {
+        if (autoSend && activeItem != null && activeCoverage > 1) {
             AutoSendProgressModal(
                 commandName = activeItem.displayLabel,
                 currentIndex = codeStep,

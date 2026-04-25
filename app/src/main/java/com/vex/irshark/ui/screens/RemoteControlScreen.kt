@@ -95,16 +95,15 @@ fun RemoteControlScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 row.forEach { cmd ->
-                    val selected = selectedCommand == cmd
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .height(54.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(if (selected) violet.copy(alpha = 0.28f) else Color(0xFF0F0D1A))
+                            .background(Color(0xFF0F0D1A))
                             .border(
                                 1.dp,
-                                if (selected) violet else Color.White.copy(alpha = 0.12f),
+                                Color.White.copy(alpha = 0.12f),
                                 RoundedCornerShape(12.dp)
                             )
                             .clickable { onCommandClick(cmd) },
@@ -112,9 +111,9 @@ fun RemoteControlScreen(
                     ) {
                         Text(
                             text = cmd,
-                            color = if (selected) violet else Color.White,
+                            color = Color.White,
                             fontSize = 12.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                            fontWeight = FontWeight.Normal
                         )
                     }
                 }

@@ -11,8 +11,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
@@ -27,7 +32,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -170,15 +174,15 @@ fun ListRow(
 // ── App header bar ───────────────────────────────────────────────────────────
 
 @Composable
-fun AppHeader(status: String) {
+fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF0F0D1A))
-            .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
-            .padding(12.dp)
+            .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+            .background(Color(0xFF0A0814))
+            .border(1.dp, violet.copy(alpha = 0.14f), RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -199,13 +203,43 @@ fun AppHeader(status: String) {
                 Text(
                     text = "IRShark",
                     color = Color.White,
-                    fontSize = 22.sp,
+                    fontSize = 21.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
             }
-            Badge(text = status)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Badge(text = status)
+                if (showTxLed) {
+                    TxLedIndicator(active = txActive)
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun TxLedIndicator(active: Boolean) {
+    val pulse = rememberInfiniteTransition(label = "tx-led")
+    val alpha = pulse.animateFloat(
+        initialValue = if (active) 0.45f else 0.18f,
+        targetValue = if (active) 1f else 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "tx-led-alpha"
+    )
+    val base = if (active) Color(0xFF5BFF9A) else Color(0xFF4A5568)
+    Box(
+        modifier = Modifier
+            .size(12.dp)
+            .clip(RoundedCornerShape(999.dp))
+            .background(base.copy(alpha = alpha.value))
+            .border(1.dp, base.copy(alpha = 0.85f), RoundedCornerShape(999.dp))
+    )
 }
 
 // ── Badge (compact info display) ──────────────────────────────────────────────
@@ -234,23 +268,21 @@ fun Badge(text: String, modifier: Modifier = Modifier) {
 @Composable
 fun UniversalRemoteHeader(
     currentPath: String,
-    folderCount: Int,
-    profileCount: Int,
+    count: Int,
     onHome: () -> Unit,
     onBack: () -> Unit,
     canGoBack: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(50.dp)
-            .clip(RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
-            .background(Color(0xFF0F0D1A))
-            .border(1.dp, violet.copy(alpha = 0.25f), RoundedCornerShape(0.dp, 24.dp, 24.dp, 0.dp))
-            .padding(horizontal = 12.dp)
+            .background(Color(0xFF121024))
+            .border(1.dp, violet.copy(alpha = 0.12f))
+            .padding(horizontal = 14.dp)
     ) {
         Row(
             modifier = Modifier
@@ -259,27 +291,15 @@ fun UniversalRemoteHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Home button - square
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(violet.copy(alpha = 0.2f))
-                    .border(1.dp, violet.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                    .clickable(onClick = onHome),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("↶", color = violet, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
+            HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
 
-            // Path display - left rounded, no right border radius
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(38.dp)
-                    .clip(RoundedCornerShape(20.dp, 0.dp, 0.dp, 20.dp))
+                    .clip(RoundedCornerShape(0.dp, 18.dp, 18.dp, 0.dp))
                     .background(violet.copy(alpha = 0.08f))
-                    .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(20.dp, 0.dp, 0.dp, 20.dp))
+                    .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(0.dp, 18.dp, 18.dp, 0.dp))
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -292,24 +312,12 @@ fun UniversalRemoteHeader(
                 )
             }
 
-            // Counter badge
             Badge(
-                text = "$folderCount / $profileCount",
+                text = "Count: $count",
                 modifier = Modifier.height(38.dp)
             )
 
-            // Back button - fully rounded right
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(50.dp))
-                    .background(if (canGoBack) violet.copy(alpha = 0.2f) else Color(0xFF1A1625))
-                    .border(1.dp, if (canGoBack) violet.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.1f), RoundedCornerShape(50.dp))
-                    .clickable(enabled = canGoBack, onClick = onBack),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("←", color = if (canGoBack) violet else Color(0xFF6A6880), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
+            BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp), enabled = canGoBack)
         }
     }
 }

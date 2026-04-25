@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -31,18 +32,22 @@ import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.countProfilesForCommand
 import com.vex.irshark.data.dbRootPath
+import com.vex.irshark.data.loadAppSettings
 import com.vex.irshark.data.loadFlipperDbIndex
 import com.vex.irshark.data.loadSavedRemotes
 import com.vex.irshark.data.parentPath
 import com.vex.irshark.data.prettyPath
+import com.vex.irshark.data.saveAppSettings
 import com.vex.irshark.data.saveSavedRemotes
 import com.vex.irshark.ui.components.AppHeader
 import com.vex.irshark.ui.screens.HomeScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
+import com.vex.irshark.ui.screens.SettingsScreen
 import com.vex.irshark.ui.screens.UniversalRemoteScreen
 import com.vex.irshark.ui.theme.IRSharkTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -66,7 +71,7 @@ class MainActivity : ComponentActivity() {
 // ── Navigation state ──────────────────────────────────────────────────────────
 
 private enum class Screen {
-    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL
+    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS
 }
 
 private enum class ControlSource { MY_REMOTES, REMOTE_DB }
@@ -88,6 +93,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var universalCodeStep by rememberSaveable { mutableIntStateOf(0) }
     var universalAutoSend by rememberSaveable { mutableStateOf(false) }
     var universalIntervalMs by rememberSaveable { mutableStateOf(250f) }
+    var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
+    var showTxLed by rememberSaveable { mutableStateOf(true) }
+    var txPulseActive by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // List search queries
     var myRemotesQuery by rememberSaveable { mutableStateOf("") }
@@ -105,10 +114,25 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) {
         dbIndex = loadFlipperDbIndex(context)
         savedRemotes = loadSavedRemotes(context)
+        val settings = loadAppSettings(context)
+        universalIntervalMs = settings.globalIntervalMs
+        autoStopAtEnd = settings.autoStopAtEnd
+        showTxLed = settings.showTxLed
     }
 
     LaunchedEffect(savedRemotes) {
         saveSavedRemotes(context, savedRemotes)
+    }
+
+    LaunchedEffect(universalIntervalMs, autoStopAtEnd, showTxLed) {
+        saveAppSettings(
+            context,
+            com.vex.irshark.data.AppSettings(
+                globalIntervalMs = universalIntervalMs,
+                autoStopAtEnd = autoStopAtEnd,
+                showTxLed = showTxLed
+            )
+        )
     }
 
     // Universal auto-send loop
@@ -119,9 +143,22 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     LaunchedEffect(universalAutoSend, universalCommand, universalCoverage, universalIntervalMs) {
         if (!universalAutoSend || universalCommand == null || universalCoverage <= 0) return@LaunchedEffect
         while (universalAutoSend) {
+            txPulseActive = true
             delay(universalIntervalMs.roundToInt().toLong())
-            universalCodeStep = if (universalCodeStep >= universalCoverage) 1 else universalCodeStep + 1
+            txPulseActive = false
+            if (universalCodeStep >= universalCoverage) {
+                if (autoStopAtEnd) {
+                    universalAutoSend = false
+                    universalCommand = null
+                    universalCodeStep = 0
+                    break
+                }
+                universalCodeStep = 1
+            } else {
+                universalCodeStep += 1
+            }
         }
+        txPulseActive = false
     }
 
     // Control auto-send loop
@@ -137,158 +174,203 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(14.dp)
         ) {
-            AppHeader(status = dbIndex.status)
-            Spacer(modifier = Modifier.height(12.dp))
+            AppHeader(
+                status = dbIndex.status,
+                txActive = txPulseActive || universalAutoSend,
+                showTxLed = showTxLed
+            )
+            if (screen != Screen.UNIVERSAL) {
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
-            when (screen) {
-                Screen.HOME -> {
-                    HomeScreen(
-                        onUniversal = { screen = Screen.UNIVERSAL },
-                        onMyRemotes = { screen = Screen.MY_REMOTES },
-                        onRemoteDb = { screen = Screen.REMOTE_DB }
-                    )
-                }
+            Box(modifier = Modifier.padding(horizontal = if (screen == Screen.UNIVERSAL) 0.dp else 14.dp)) {
+                when (screen) {
+                    Screen.HOME -> {
+                        HomeScreen(
+                            onUniversal = { screen = Screen.UNIVERSAL },
+                            onMyRemotes = { screen = Screen.MY_REMOTES },
+                            onRemoteDb = { screen = Screen.REMOTE_DB },
+                            onSettings = { screen = Screen.SETTINGS }
+                        )
+                    }
 
-                Screen.UNIVERSAL -> {
-                    UniversalRemoteScreen(
-                        dbIndex = dbIndex,
-                        currentPath = universalPath,
-                        activeItem = universalCommand,
-                        codeStep = universalCodeStep,
-                        activeCoverage = universalCoverage,
-                        autoSend = universalAutoSend,
-                        intervalMs = universalIntervalMs,
-                        onHome = {
-                            universalAutoSend = false
-                            screen = Screen.HOME
-                        },
-                        onBackPath = {
-                            parentPath(universalPath)?.let {
-                                universalPath = it
+                    Screen.UNIVERSAL -> {
+                        UniversalRemoteScreen(
+                            dbIndex = dbIndex,
+                            currentPath = universalPath,
+                            activeItem = universalCommand,
+                            codeStep = universalCodeStep,
+                            activeCoverage = universalCoverage,
+                            autoSend = universalAutoSend,
+                            intervalMs = universalIntervalMs,
+                            onHome = {
+                                universalAutoSend = false
+                                screen = Screen.HOME
+                            },
+                            onBackPath = {
+                                parentPath(universalPath)?.let {
+                                    universalPath = it
+                                    universalCommand = null
+                                    universalCodeStep = 0
+                                    universalAutoSend = false
+                                }
+                            },
+                            onOpenFolder = { next ->
+                                universalPath = next
                                 universalCommand = null
                                 universalCodeStep = 0
                                 universalAutoSend = false
-                            }
-                        },
-                        onOpenFolder = { next ->
-                            universalPath = next
-                            universalCommand = null
-                            universalCodeStep = 0
-                            universalAutoSend = false
-                        },
-                        onCommandClick = { item ->
-                            universalCommand = item
-                            universalAutoSend = true
-                            universalCodeStep = 1
-                        },
-                        onToggleAutoSend = { universalAutoSend = !universalAutoSend },
-                        onIntervalChange = { universalIntervalMs = it }
-                    )
-                }
-
-                Screen.MY_REMOTES -> {
-                    val filtered = savedRemotes.filter {
-                        myRemotesQuery.isBlank() ||
-                            it.name.contains(myRemotesQuery, ignoreCase = true) ||
-                            prettyPath(it.profilePath).contains(myRemotesQuery, ignoreCase = true)
+                            },
+                            onCommandClick = { item ->
+                                val coverage = countProfilesForCommand(dbIndex, universalPath, item.actualCommand)
+                                if (coverage <= 1) {
+                                    universalCommand = null
+                                    universalCodeStep = 0
+                                    universalAutoSend = false
+                                    scope.launch {
+                                        txPulseActive = true
+                                        delay(180)
+                                        txPulseActive = false
+                                    }
+                                } else {
+                                    universalCommand = item
+                                    universalAutoSend = true
+                                    universalCodeStep = 1
+                                }
+                            },
+                            onToggleAutoSend = {
+                                if (universalAutoSend) {
+                                    universalAutoSend = false
+                                    universalCommand = null
+                                    universalCodeStep = 0
+                                } else {
+                                    universalAutoSend = true
+                                }
+                            },
+                            onIntervalChange = { universalIntervalMs = it }
+                        )
                     }
-                    RemotesListScreen(
-                        title = "MY REMOTES",
-                        query = myRemotesQuery,
-                        queryLabel = "Search saved remotes",
-                        onQueryChange = { myRemotesQuery = it },
-                        onHome = { screen = Screen.HOME },
-                        emptyText = "No saved remotes.",
-                        items = filtered.map { it.name to prettyPath(it.profilePath) },
-                        onOpen = { index ->
-                            val remote = filtered[index]
-                            controlProfilePath = remote.profilePath
-                            controlName = remote.name
-                            controlCommandsCsv = remote.commands.joinToString(";;")
-                            controlSource = ControlSource.MY_REMOTES
-                            controlSelectedCommand = null
-                            controlTxCount = 0
-                            screen = Screen.REMOTE_CONTROL
-                        },
-                        onSecondaryAction = { index ->
-                            val remote = filtered[index]
-                            savedRemotes = savedRemotes.filterNot { it.profilePath == remote.profilePath }
-                        },
-                        secondaryActionLabel = "Delete"
-                    )
-                }
 
-                Screen.REMOTE_DB -> {
-                    val filtered = dbIndex.profiles.filter {
-                        remoteDbQuery.isBlank() ||
-                            it.name.contains(remoteDbQuery, ignoreCase = true) ||
-                            prettyPath(it.parentPath).contains(remoteDbQuery, ignoreCase = true)
-                    }.take(300)
-                    RemotesListScreen(
-                        title = "REMOTE DB",
-                        query = remoteDbQuery,
-                        queryLabel = "Search all database remotes",
-                        onQueryChange = { remoteDbQuery = it },
-                        onHome = { screen = Screen.HOME },
-                        emptyText = "No matching remotes in database.",
-                        items = filtered.map { it.name to prettyPath(it.parentPath) },
-                        onOpen = { index ->
-                            val profile = filtered[index]
-                            controlProfilePath = profile.path
-                            controlName = profile.name
-                            controlCommandsCsv = profile.commands.joinToString(";;")
-                            controlSource = ControlSource.REMOTE_DB
-                            controlSelectedCommand = null
-                            controlTxCount = 0
-                            screen = Screen.REMOTE_CONTROL
-                        },
-                        onSecondaryAction = { index ->
-                            val profile = filtered[index]
-                            if (savedRemotes.none { it.profilePath == profile.path }) {
-                                savedRemotes = savedRemotes + SavedRemote(
-                                    name = profile.name,
-                                    profilePath = profile.path,
-                                    commands = profile.commands
-                                )
-                            }
-                        },
-                        secondaryActionLabel = "Add"
-                    )
-                }
+                    Screen.MY_REMOTES -> {
+                        val filtered = savedRemotes.filter {
+                            myRemotesQuery.isBlank() ||
+                                it.name.contains(myRemotesQuery, ignoreCase = true) ||
+                                prettyPath(it.profilePath).contains(myRemotesQuery, ignoreCase = true)
+                        }
+                        RemotesListScreen(
+                            title = "MY REMOTES",
+                            query = myRemotesQuery,
+                            queryLabel = "Search saved remotes",
+                            onQueryChange = { myRemotesQuery = it },
+                            onHome = { screen = Screen.HOME },
+                            emptyText = "No saved remotes.",
+                            items = filtered.map { it.name to prettyPath(it.profilePath) },
+                            onOpen = { index ->
+                                val remote = filtered[index]
+                                controlProfilePath = remote.profilePath
+                                controlName = remote.name
+                                controlCommandsCsv = remote.commands.joinToString(";;")
+                                controlSource = ControlSource.MY_REMOTES
+                                controlSelectedCommand = null
+                                controlTxCount = 0
+                                screen = Screen.REMOTE_CONTROL
+                            },
+                            onSecondaryAction = { index ->
+                                val remote = filtered[index]
+                                savedRemotes = savedRemotes.filterNot { it.profilePath == remote.profilePath }
+                            },
+                            secondaryActionLabel = "Delete"
+                        )
+                    }
 
-                Screen.REMOTE_CONTROL -> {
-                    val profilePath = controlProfilePath.orEmpty()
-                    val currentProfile = dbIndex.profiles.firstOrNull { it.path == profilePath }
-                    val commands = if (controlCommands.isNotEmpty()) controlCommands else currentProfile?.commands.orEmpty()
-                    val title = controlName ?: currentProfile?.name ?: "Remote"
-                    val subtitle = currentProfile?.let { prettyPath(it.parentPath) } ?: prettyPath(profilePath)
+                    Screen.REMOTE_DB -> {
+                        val filtered = dbIndex.profiles.filter {
+                            remoteDbQuery.isBlank() ||
+                                it.name.contains(remoteDbQuery, ignoreCase = true) ||
+                                prettyPath(it.parentPath).contains(remoteDbQuery, ignoreCase = true)
+                        }.take(300)
+                        RemotesListScreen(
+                            title = "REMOTE DB",
+                            query = remoteDbQuery,
+                            queryLabel = "Search all database remotes",
+                            onQueryChange = { remoteDbQuery = it },
+                            onHome = { screen = Screen.HOME },
+                            emptyText = "No matching remotes in database.",
+                            items = filtered.map { it.name to prettyPath(it.parentPath) },
+                            onOpen = { index ->
+                                val profile = filtered[index]
+                                controlProfilePath = profile.path
+                                controlName = profile.name
+                                controlCommandsCsv = profile.commands.joinToString(";;")
+                                controlSource = ControlSource.REMOTE_DB
+                                controlSelectedCommand = null
+                                controlTxCount = 0
+                                screen = Screen.REMOTE_CONTROL
+                            },
+                            onSecondaryAction = { index ->
+                                val profile = filtered[index]
+                                if (savedRemotes.none { it.profilePath == profile.path }) {
+                                    savedRemotes = savedRemotes + SavedRemote(
+                                        name = profile.name,
+                                        profilePath = profile.path,
+                                        commands = profile.commands
+                                    )
+                                }
+                            },
+                            secondaryActionLabel = "Add"
+                        )
+                    }
 
-                    RemoteControlScreen(
-                        title = title,
-                        subtitle = subtitle,
-                        commands = commands,
-                        selectedCommand = controlSelectedCommand,
-                        txCount = controlTxCount,
-                        onBack = {
-                            screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
-                        },
-                        onCommandClick = { cmd ->
-                            controlSelectedCommand = cmd
-                            controlTxCount += 1
-                        },
-                        onSave = {
-                            if (profilePath.isNotBlank() && savedRemotes.none { it.profilePath == profilePath }) {
-                                savedRemotes = savedRemotes + SavedRemote(
-                                    name = title,
-                                    profilePath = profilePath,
-                                    commands = commands
-                                )
-                            }
-                        },
-                        showSaveButton = controlSource == ControlSource.REMOTE_DB
-                    )
+                    Screen.REMOTE_CONTROL -> {
+                        val profilePath = controlProfilePath.orEmpty()
+                        val currentProfile = dbIndex.profiles.firstOrNull { it.path == profilePath }
+                        val commands = if (controlCommands.isNotEmpty()) controlCommands else currentProfile?.commands.orEmpty()
+                        val title = controlName ?: currentProfile?.name ?: "Remote"
+                        val subtitle = currentProfile?.let { prettyPath(it.parentPath) } ?: prettyPath(profilePath)
+
+                        RemoteControlScreen(
+                            title = title,
+                            subtitle = subtitle,
+                            commands = commands,
+                            selectedCommand = controlSelectedCommand,
+                            txCount = controlTxCount,
+                            onBack = {
+                                screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
+                            },
+                            onCommandClick = { _ ->
+                                controlSelectedCommand = null
+                                controlTxCount += 1
+                                scope.launch {
+                                    txPulseActive = true
+                                    delay(180)
+                                    txPulseActive = false
+                                }
+                            },
+                            onSave = {
+                                if (profilePath.isNotBlank() && savedRemotes.none { it.profilePath == profilePath }) {
+                                    savedRemotes = savedRemotes + SavedRemote(
+                                        name = title,
+                                        profilePath = profilePath,
+                                        commands = commands
+                                    )
+                                }
+                            },
+                            showSaveButton = controlSource == ControlSource.REMOTE_DB
+                        )
+                    }
+
+                    Screen.SETTINGS -> {
+                        SettingsScreen(
+                            intervalMs = universalIntervalMs,
+                            autoStopAtEnd = autoStopAtEnd,
+                            showTxLed = showTxLed,
+                            onBack = { screen = Screen.HOME },
+                            onIntervalChange = { universalIntervalMs = it },
+                            onAutoStopAtEndChange = { autoStopAtEnd = it },
+                            onShowTxLedChange = { showTxLed = it }
+                        )
+                    }
                 }
             }
         }

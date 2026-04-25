@@ -25,7 +25,8 @@ import androidx.compose.ui.unit.sp
 fun HomeScreen(
     onUniversal: () -> Unit,
     onMyRemotes: () -> Unit,
-    onRemoteDb: () -> Unit
+    onRemoteDb: () -> Unit,
+    onSettings: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -40,6 +41,7 @@ fun HomeScreen(
         HomeEntryButton("UNIVERSAL REMOTE", "Pick device category and auto test commands", onUniversal)
         HomeEntryButton("MY REMOTES", "Your saved and reusable remotes", onMyRemotes)
         HomeEntryButton("REMOTE DB", "Browse all remotes from Flipper-IRDB", onRemoteDb)
+        HomeEntryButton("SETTINGS", "Global speed, TX LED and behavior", onSettings)
     }
 }
 

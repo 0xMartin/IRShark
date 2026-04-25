@@ -9,6 +9,9 @@ import org.json.JSONObject
 private const val DB_ROOT = "flipper_irdb"
 private const val PREFS_NAME = "irshark_prefs"
 private const val KEY_SAVED_REMOTES = "saved_remotes"
+private const val KEY_GLOBAL_INTERVAL_MS = "global_interval_ms"
+private const val KEY_AUTO_STOP_AT_END = "auto_stop_at_end"
+private const val KEY_SHOW_TX_LED = "show_tx_led"
 private const val REMOTE_DELIMITER = "||"
 
 data class FlipperDbIndex(
@@ -60,6 +63,12 @@ data class UniversalCommandItem(
     val profileCoverage: Int
 )
 
+data class AppSettings(
+    val globalIntervalMs: Float = 250f,
+    val autoStopAtEnd: Boolean = true,
+    val showTxLed: Boolean = true
+)
+
 suspend fun loadFlipperDbIndex(context: Context): FlipperDbIndex {
     return withContext(Dispatchers.IO) {
         runCatching {
@@ -103,7 +112,7 @@ suspend fun loadFlipperDbIndex(context: Context): FlipperDbIndex {
                 profilesByFolder = profilesByFolder,
                 profiles = allProfiles,
                 lintConfig = lintConfig,
-                status = "Flipper-IRDB loaded: ${allProfiles.size} profiles"
+                status = "Loaded ${allProfiles.size} profiles"
             )
         }.getOrElse {
             FlipperDbIndex(status = "Flipper-IRDB unavailable")
@@ -228,6 +237,24 @@ fun saveSavedRemotes(context: Context, remotes: List<SavedRemote>) {
         "${it.name}::${it.profilePath}::${it.commands.joinToString(";;")}" 
     }
     prefs.edit().putString(KEY_SAVED_REMOTES, serialized).apply()
+}
+
+fun loadAppSettings(context: Context): AppSettings {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    return AppSettings(
+        globalIntervalMs = prefs.getFloat(KEY_GLOBAL_INTERVAL_MS, 250f),
+        autoStopAtEnd = prefs.getBoolean(KEY_AUTO_STOP_AT_END, true),
+        showTxLed = prefs.getBoolean(KEY_SHOW_TX_LED, true)
+    )
+}
+
+fun saveAppSettings(context: Context, settings: AppSettings) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    prefs.edit()
+        .putFloat(KEY_GLOBAL_INTERVAL_MS, settings.globalIntervalMs)
+        .putBoolean(KEY_AUTO_STOP_AT_END, settings.autoStopAtEnd)
+        .putBoolean(KEY_SHOW_TX_LED, settings.showTxLed)
+        .apply()
 }
 
 private fun parseIrCommands(context: Context, assetPath: String): List<String> {
