@@ -189,7 +189,7 @@ fun ListRow(
 // ── App header bar ───────────────────────────────────────────────────────────
 
 @Composable
-fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean) {
+fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean, screenTitle: String = "IRShark") {
     val violet = MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier
@@ -215,7 +215,7 @@ fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean, fastBlink: 
                     Text(text = "IR", color = violet, fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
                 }
                 Text(
-                    text = "IRShark",
+                    text = screenTitle,
                     color = Color.White,
                     fontSize = 21.sp,
                     fontWeight = FontWeight.ExtraBold
@@ -275,6 +275,31 @@ fun Badge(text: String, modifier: Modifier = Modifier) {
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+// ── Section nav bar (Panel2 for My Remotes, Remote DB, Settings) ───────────
+
+@Composable
+fun SectionNavBar(onHome: () -> Unit, modifier: Modifier = Modifier) {
+    val violet = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+            .background(Color(0xFF121024))
+            .border(1.dp, violet.copy(alpha = 0.12f), RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+            .padding(horizontal = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
+        }
     }
 }
 

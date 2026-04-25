@@ -43,6 +43,7 @@ import com.vex.irshark.data.saveSavedRemotes
 import com.vex.irshark.ui.components.AppHeader
 import com.vex.irshark.ui.components.AppToastController
 import com.vex.irshark.ui.components.AppToastHost
+import com.vex.irshark.ui.components.SectionNavBar
 import com.vex.irshark.ui.screens.HomeScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
@@ -211,12 +212,23 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxSize()
         ) {
+            val screenTitle = when (screen) {
+                Screen.HOME, Screen.REMOTE_CONTROL -> "IRShark"
+                Screen.UNIVERSAL -> "Universal Remote"
+                Screen.MY_REMOTES -> "My Remotes"
+                Screen.REMOTE_DB -> "Remote DB"
+                Screen.SETTINGS -> "Settings"
+            }
             AppHeader(
                 status = dbIndex.status,
                 txActive = txPulseActive || universalAutoSend,
                 showTxLed = showTxLed,
-                fastBlink = universalAutoSend
+                fastBlink = universalAutoSend,
+                screenTitle = screenTitle
             )
+            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS)) {
+                SectionNavBar(onHome = { screen = Screen.HOME })
+            }
             if (screen != Screen.UNIVERSAL) {
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -293,11 +305,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 prettyPath(it.profilePath).contains(myRemotesQuery, ignoreCase = true)
                         }
                         RemotesListScreen(
-                            title = "MY REMOTES",
                             query = myRemotesQuery,
                             queryLabel = "Search saved remotes",
                             onQueryChange = { myRemotesQuery = it },
-                            onHome = { screen = Screen.HOME },
                             emptyText = "No saved remotes.",
                             items = filtered.map { it.name to prettyPath(it.profilePath) },
                             onOpen = { index ->
@@ -326,11 +336,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 prettyPath(it.parentPath).contains(remoteDbQuery, ignoreCase = true)
                         }.take(300)
                         RemotesListScreen(
-                            title = "REMOTE DB",
                             query = remoteDbQuery,
                             queryLabel = "Search all database remotes",
                             onQueryChange = { remoteDbQuery = it },
-                            onHome = { screen = Screen.HOME },
                             emptyText = "No matching remotes in database.",
                             items = filtered.map { it.name to prettyPath(it.parentPath) },
                             onOpen = { index ->
@@ -405,7 +413,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             intervalMs = universalIntervalMs,
                             autoStopAtEnd = autoStopAtEnd,
                             showTxLed = showTxLed,
-                            onBack = { screen = Screen.HOME },
                             onIntervalChange = {
                                 universalIntervalMs = it
                                 settingsDirty = true

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -27,14 +26,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vex.irshark.ui.components.BackIconButton
-
 @Composable
 fun SettingsScreen(
     intervalMs: Float,
     autoStopAtEnd: Boolean,
     showTxLed: Boolean,
-    onBack: () -> Unit,
     onIntervalChange: (Float) -> Unit,
     onAutoStopAtEndChange: (Boolean) -> Unit,
     onShowTxLedChange: (Boolean) -> Unit,
@@ -48,28 +44,6 @@ fun SettingsScreen(
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp))
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF0F0D1A))
-                    .border(1.dp, violet.copy(alpha = 0.20f), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Text(
-                    text = "Settings",
-                    color = Color.White,
-                    fontSize = 13.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         Box(
             modifier = Modifier
                 .fillMaxWidth()
