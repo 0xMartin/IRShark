@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -236,16 +237,34 @@ fun AppHeader(txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean, screenT
 @Composable
 private fun TxLedIndicator(active: Boolean, fastBlink: Boolean) {
     val pulse = rememberInfiniteTransition(label = "tx-led")
-    val duration = if (fastBlink) 180 else 900
-    val alpha = pulse.animateFloat(
-        initialValue = if (active) 0.45f else 0.18f,
-        targetValue = if (active) 1f else 0.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = duration, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "tx-led-alpha"
-    )
+    val alpha = if (fastBlink) {
+        // Sharp on/off blink: full on for half the period, full off for other half
+        pulse.animateFloat(
+            initialValue = 1f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = keyframes {
+                    durationMillis = 220
+                    1f at 0
+                    1f at 99
+                    0f at 100
+                    0f at 219
+                },
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "tx-led-alpha"
+        )
+    } else {
+        pulse.animateFloat(
+            initialValue = if (active) 0.45f else 0.18f,
+            targetValue = if (active) 1f else 0.25f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 900, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "tx-led-alpha"
+        )
+    }
     val base = if (active) Color(0xFF5BFF9A) else Color(0xFF4A5568)
     Box(
         modifier = Modifier

@@ -19,7 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.SettingsRemote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -50,7 +50,7 @@ fun HomeScreen(
             fontSize = 12.sp
         )
 
-        HomeEntryButton("UNIVERSAL REMOTE", "Pick device category and auto test commands", Icons.Filled.Wifi, onUniversal)
+        HomeEntryButton("UNIVERSAL REMOTE", "Pick device category and auto test commands", Icons.Filled.SettingsRemote, onUniversal)
         HomeEntryButton("MY REMOTES", "Your saved and reusable remotes", Icons.Filled.Folder, onMyRemotes)
         HomeEntryButton("REMOTE DB", "Browse all remotes from Flipper-IRDB", Icons.Filled.Search, onRemoteDb)
         HomeEntryButton("SETTINGS", "Global speed, TX LED and behavior", Icons.Filled.Settings, onSettings)
