@@ -48,6 +48,7 @@ import com.vex.irshark.ui.screens.HomeScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
 import com.vex.irshark.ui.screens.SettingsScreen
+import com.vex.irshark.ui.screens.SplashScreen
 import com.vex.irshark.ui.screens.UniversalRemoteScreen
 import com.vex.irshark.ui.theme.IRSharkTheme
 import kotlinx.coroutines.Job
@@ -200,7 +201,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
     // Control auto-send loop
     val controlCommands = controlCommandsCsv.split(";;").map { it.trim() }.filter { it.isNotBlank() }
-
+    // Show splash while loading
+    if (!settingsLoaded) {
+        SplashScreen()
+        return
+    }
     Box(
         modifier = modifier.background(
             brush = Brush.verticalGradient(
@@ -220,7 +225,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 Screen.SETTINGS -> "Settings"
             }
             AppHeader(
-                status = dbIndex.status,
                 txActive = txPulseActive || universalAutoSend,
                 showTxLed = showTxLed,
                 fastBlink = universalAutoSend,

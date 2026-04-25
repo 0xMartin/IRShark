@@ -189,7 +189,7 @@ fun ListRow(
 // ── App header bar ───────────────────────────────────────────────────────────
 
 @Composable
-fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean, screenTitle: String = "IRShark") {
+fun AppHeader(txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean, screenTitle: String = "IRShark") {
     val violet = MaterialTheme.colorScheme.primary
     Box(
         modifier = Modifier
@@ -225,7 +225,6 @@ fun AppHeader(status: String, txActive: Boolean, showTxLed: Boolean, fastBlink: 
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Badge(text = status)
                 if (showTxLed) {
                     TxLedIndicator(active = txActive, fastBlink = fastBlink)
                 }
