@@ -223,11 +223,9 @@ private fun IrButtonEditorDialog(
 ) {
     val context = LocalContext.current
     val defaultCode = "protocol=NEC; address=0x00FF; command=0x20DF"
-    val defaultDetails = "protocol: NEC\naddress: 0x00FF\ncommand: 0x20DF\nfrequency: 38000"
 
     var label by remember { mutableStateOf(initialButton?.label ?: "POWER") }
     var code by remember { mutableStateOf(initialButton?.code ?: defaultCode) }
-    var details by remember { mutableStateOf(initialButton?.details ?: defaultDetails) }
 
     var profileSearch by remember { mutableStateOf("") }
     var selectedProfilePath by remember { mutableStateOf<String?>(null) }
@@ -290,15 +288,6 @@ private fun IrButtonEditorDialog(
                         .fillMaxWidth()
                         .height(82.dp),
                     label = { Text("IR code payload") }
-                )
-
-                OutlinedTextField(
-                    value = details,
-                    onValueChange = { details = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(92.dp),
-                    label = { Text("Detailed parameters / notes") }
                 )
 
                 Text("Import code from database", color = Color(0xFFB699FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -368,7 +357,6 @@ private fun IrButtonEditorDialog(
                                             selectedCodeIdx = idx
                                             label = item.label
                                             code = item.code
-                                            details = item.details
                                         }
                                         .padding(8.dp)
                                 ) {
@@ -393,8 +381,7 @@ private fun IrButtonEditorDialog(
                             onSave(
                                 SavedRemoteButton(
                                     label = label.trim(),
-                                    code = code.trim(),
-                                    details = details.trim()
+                                    code = code.trim()
                                 )
                             )
                         }

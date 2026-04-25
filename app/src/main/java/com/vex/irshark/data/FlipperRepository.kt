@@ -40,8 +40,7 @@ data class SavedRemote(
 
 data class SavedRemoteButton(
     val label: String,
-    val code: String,
-    val details: String = ""
+    val code: String
 )
 
 data class DbIrCodeOption(
@@ -244,8 +243,7 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
                                 add(
                                     SavedRemoteButton(
                                         label = label,
-                                        code = b.optString("code").trim(),
-                                        details = b.optString("details").trim()
+                                        code = b.optString("code").trim()
                                     )
                                 )
                             }
@@ -332,7 +330,6 @@ fun saveSavedRemotes(context: Context, remotes: List<SavedRemote>) {
                                     JSONObject().apply {
                                         put("label", button.label)
                                         put("code", button.code)
-                                        put("details", button.details)
                                     }
                                 )
                             }

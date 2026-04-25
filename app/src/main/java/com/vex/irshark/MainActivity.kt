@@ -171,10 +171,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             } else {
                 val hit = byLabel[button.label.trim().uppercase()]
                 if (hit != null) {
-                    button.copy(
-                        code = hit.code,
-                        details = if (button.details.isBlank()) hit.details else button.details
-                    )
+                    button.copy(code = hit.code)
                 } else {
                     button
                 }
@@ -443,7 +440,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 controlProfilePath = profile.path
                                 controlName = profile.name
                                 controlButtons = profile.commands.map { cmd ->
-                                    SavedRemoteButton(label = cmd, code = "", details = "Imported from DB command name")
+                                    SavedRemoteButton(label = cmd, code = "")
                                 }
                                 controlRemoteIndex = -1
                                 controlSource = ControlSource.REMOTE_DB
@@ -465,8 +462,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                         val seededButtons = profile.commands.map { cmd ->
                                             SavedRemoteButton(
                                                 label = cmd,
-                                                code = "",
-                                                details = "Imported from DB command name"
+                                                code = ""
                                             )
                                         }
                                         val hydratedButtons = hydrateMissingCodesFromDb(seededButtons, dbCodes)
@@ -609,8 +605,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     val normalizedButtons = buttons.map {
                         it.copy(
                             label = it.label.trim(),
-                            code = it.code.trim(),
-                            details = it.details.trim()
+                            code = it.code.trim()
                         )
                     }.filter { it.label.isNotBlank() }
 
