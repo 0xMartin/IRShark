@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,7 +21,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsRemote
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -46,18 +48,19 @@ fun HomeScreen(
     onRemoteDb:  () -> Unit,
     onSettings:  () -> Unit,
     onMacros:    () -> Unit = {},
-    onShortcuts: () -> Unit = {}
+    onIrFinder: () -> Unit = {}
 ) {
     val sharkColor = Color(0xFF9B6DFF)
-    Box(modifier = Modifier.fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxSize()) {
         // Decorative shark textures
         Image(
             painter = painterResource(id = R.drawable.shark),
             contentDescription = null,
             colorFilter = ColorFilter.tint(sharkColor, BlendMode.SrcIn),
             modifier = Modifier
-                .size(210.dp)
-                .align(Alignment.BottomEnd)
+                .size(252.dp)
+                .align(Alignment.BottomCenter)
+                .offset(y = (-62).dp)
                 .rotate(-20f)
                 .alpha(0.07f)
         )
@@ -94,7 +97,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                HomeGridCard("Shortcuts", Icons.Filled.Star, onShortcuts, Modifier.weight(1f))
+                HomeGridCard("IR Finder", Icons.Filled.FindInPage, onIrFinder, Modifier.weight(1f))
                 HomeGridCard("Settings", Icons.Filled.Settings, onSettings, Modifier.weight(1f))
             }
         }
@@ -124,8 +127,8 @@ private fun HomeGridCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(18.dp))
                     .background(violet.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -133,7 +136,7 @@ private fun HomeGridCard(
                     imageVector = icon,
                     contentDescription = null,
                     tint = violet,
-                    modifier = Modifier.size(30.dp)
+                    modifier = Modifier.size(39.dp)
                 )
             }
             Spacer(modifier = Modifier.height(10.dp))
