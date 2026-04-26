@@ -63,6 +63,8 @@ data class SwitchRequest(
 
 class MacroEngine(private val context: Context) {
 
+    var hapticEnabled: Boolean = true
+
     private val _state = MutableStateFlow<MacroRunState>(MacroRunState.Idle)
     val state: StateFlow<MacroRunState> = _state
 
@@ -208,6 +210,7 @@ class MacroEngine(private val context: Context) {
             is MacroStep.Stop -> throw CancellationException("Stop block reached")
             is MacroStep.Vibrate -> {
                 // Fire-and-forget: vibrate without blocking macro execution
+                if (!hapticEnabled) return
                 runScope?.launch(Dispatchers.Main) {
                     val vib = context.getSystemService(android.content.Context.VIBRATOR_SERVICE)
                         as? android.os.Vibrator

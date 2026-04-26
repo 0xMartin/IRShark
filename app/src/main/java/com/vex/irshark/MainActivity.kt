@@ -163,6 +163,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var pendingDeleteMacroId by remember { mutableStateOf<String?>(null) }
     val macroEngine = remember { MacroEngine(context) }
     val macroState by macroEngine.state.collectAsState()
+    LaunchedEffect(hapticFeedback) { macroEngine.hapticEnabled = hapticFeedback }
 
     fun shareJsonFile(fileStem: String, subject: String, chooserTitle: String, json: String) {
         scope.launch {
