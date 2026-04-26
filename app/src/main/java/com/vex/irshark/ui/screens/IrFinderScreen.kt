@@ -310,6 +310,8 @@ fun IrFinderScreen(
             FinderStep.PickBrand -> PickStep(
                 question = "What brand?",
                 options = brandsForCategory.map { prettyName(it) to it },
+                showDeviceIcons = true,
+                iconNameOverride = selectedCategory,
                 onSelect = { raw ->
                     selectedBrand = raw
                     step = FinderStep.TestButtons
@@ -326,6 +328,7 @@ fun IrFinderScreen(
                 } else {
                     profilesUnderPath(dbIndex, "flipper_irdb/$selectedCategory").size
                 },
+                categoryIconName = selectedCategory,
                 matchingProfiles = matchingProfiles,
                 addedProfilePaths = addedProfilePaths,
                 hapticEnabled = hapticEnabled,
@@ -401,6 +404,7 @@ private fun PickStep(
     question: String,
     options: List<Pair<String, String>>,
     showDeviceIcons: Boolean = false,
+    iconNameOverride: String? = null,
     onSelect: (String) -> Unit
 ) {
     val violet = MaterialTheme.colorScheme.primary
@@ -464,7 +468,8 @@ private fun PickStep(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (showDeviceIcons) {
-                            CategorySvgIcon(name = raw, tint = violet, size = 20.dp)
+                            val iconName = iconNameOverride ?: raw
+                            CategorySvgIcon(name = iconName, tint = violet, size = 20.dp)
                         }
                         Text(
                             text = display,
@@ -492,6 +497,7 @@ private fun TestButtonsStep(
     isLoading: Boolean,
     matchingCount: Int,
     totalCount: Int,
+    categoryIconName: String,
     matchingProfiles: List<com.vex.irshark.data.FlipperProfile>,
     addedProfilePaths: Set<String>,
     hapticEnabled: Boolean = true,
@@ -722,6 +728,7 @@ private fun TestButtonsStep(
                 ) {
                     items(matchingProfiles) { profile ->
                         val isAdded = addedProfilePaths.contains(profile.path)
+                        val iconName = categoryIconName.ifBlank { "Other" }
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -731,6 +738,18 @@ private fun TestButtonsStep(
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(violet.copy(alpha = 0.12f))
+                                    .border(1.dp, violet.copy(alpha = 0.30f), RoundedCornerShape(9.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CategorySvgIcon(name = iconName, tint = violet, size = 18.dp)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = profile.name,

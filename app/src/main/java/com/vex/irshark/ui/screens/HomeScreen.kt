@@ -18,9 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsRemote
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -90,7 +90,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                HomeGridCard("Remote DB", Icons.Filled.Search, onRemoteDb, Modifier.weight(1f))
+                HomeGridCard("Remote DB", Icons.Filled.Storage, onRemoteDb, Modifier.weight(1f))
                 HomeGridCard("Macros", Icons.Filled.AutoAwesome, onMacros, Modifier.weight(1f))
             }
             Row(
