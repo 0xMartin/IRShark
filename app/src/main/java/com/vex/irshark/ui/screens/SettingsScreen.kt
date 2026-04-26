@@ -58,7 +58,7 @@ fun SettingsScreen(
                 Slider(
                     value = intervalMs,
                     onValueChange = onIntervalChange,
-                    valueRange = 80f..1500f
+                    valueRange = 0f..1000f
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

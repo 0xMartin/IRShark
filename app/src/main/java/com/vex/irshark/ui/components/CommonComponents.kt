@@ -649,7 +649,6 @@ fun SectionNavBar(
 @Composable
 fun UniversalRemoteHeader(
     currentPath: String,
-    count: Int,
     onHome: () -> Unit,
     onBack: () -> Unit,
     canGoBack: Boolean = true,
@@ -704,23 +703,6 @@ fun UniversalRemoteHeader(
                         maxLines = 1
                     )
                 }
-            }
-
-            Box(
-                modifier = Modifier
-                    .height(40.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(violet.copy(alpha = 0.15f))
-                    .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
-                    .padding(horizontal = 14.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Count: $count",
-                    color = violet,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
             }
 
             if (canGoBack) {

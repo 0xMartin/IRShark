@@ -15,6 +15,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,19 +61,21 @@ import com.vex.irshark.data.loadDbIrCodeOptions
 fun RemoteEditorDialog(
     initialName: String,
     initialButtons: List<SavedRemoteButton>,
+    initialIconName: String?,
     existingNames: Set<String>,
     originalName: String?,
     dbProfiles: List<FlipperProfile>,
     onDismiss: () -> Unit,
-    onSave: (String, List<SavedRemoteButton>) -> Unit
+    onSave: (String, List<SavedRemoteButton>, String?) -> Unit
 ) {
     var remoteName by remember { mutableStateOf(initialName) }
     var buttons by remember { mutableStateOf(initialButtons) }
+    var iconName by remember { mutableStateOf(initialIconName) }
     var editingButtonIndex by remember { mutableIntStateOf(-1) }
     var showButtonDialog by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
 
-    val isDirty = remoteName != initialName || buttons != initialButtons
+    val isDirty = remoteName != initialName || buttons != initialButtons || iconName != initialIconName
 
     fun requestDismiss() {
         if (isDirty) showDiscardConfirm = true else onDismiss()
@@ -81,6 +86,20 @@ fun RemoteEditorDialog(
     val duplicateName = normalizedName.isNotBlank() &&
         existingNames.any { it.lowercase() == normalizedName.lowercase() && it.lowercase() != originalLower }
     val canSave = normalizedName.isNotBlank() && !duplicateName && buttons.isNotEmpty()
+    val iconOptions = listOf(
+        "TVs",
+        "ACs",
+        "Projectors",
+        "DVD_Players",
+        "Fans",
+        "Cameras",
+        "Consoles",
+        "Audio_and_Video_Receivers",
+        "Set_Top_Boxes",
+        "Lights",
+        "Microwaves",
+        "Other"
+    )
 
     if (showButtonDialog) {
         val existing = if (editingButtonIndex in buttons.indices) buttons[editingButtonIndex] else null
@@ -145,6 +164,54 @@ fun RemoteEditorDialog(
                         color = Color(0xFFFF8A80),
                         fontSize = 11.sp
                     )
+                }
+
+                Text(
+                    text = "Icon",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 150.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(iconOptions) { option ->
+                        val selected = iconName == option
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
+                                .border(
+                                    1.dp,
+                                    if (selected) Color(0xFF9B6DFF) else Color.White.copy(alpha = 0.10f),
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { iconName = option }
+                                .padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CategorySvgIcon(name = option, tint = Color(0xFF9B6DFF), size = 18.dp)
+                                Text(
+                                    text = option.replace('_', ' '),
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Text(
@@ -257,7 +324,7 @@ fun RemoteEditorDialog(
                     TextButton(
                         enabled = canSave,
                         onClick = {
-                            onSave(normalizedName, buttons)
+                            onSave(normalizedName, buttons, iconName)
                         }
                     ) { Text("Save") }
                 }

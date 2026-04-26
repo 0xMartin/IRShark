@@ -32,6 +32,7 @@ data class SavedRemote(
     val profilePath: String,
     val commands: List<String>,
     val buttons: List<SavedRemoteButton> = emptyList(),
+    val iconName: String? = null,
     val sourceProfilePath: String? = null,
     val favorite: Boolean = false
 )
@@ -211,6 +212,15 @@ fun prettyPathWithChevron(path: String): String {
 
 fun dbRootPath(): String = DB_ROOT
 
+fun categorySeedFromPath(path: String?): String? {
+    val raw = path?.trim().orEmpty()
+    if (raw.isBlank()) return null
+    return raw
+        .substringAfter("$DB_ROOT/", "")
+        .substringBefore('/')
+        .ifBlank { null }
+}
+
 fun loadSavedRemotes(context: Context): List<SavedRemote> {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val raw = prefs.getString(KEY_SAVED_REMOTES, "").orEmpty()
@@ -234,6 +244,7 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
                         profilePath = parts[1].trim(),
                         commands = commands,
                         buttons = commands.map { SavedRemoteButton(label = it, code = "") },
+                        iconName = categorySeedFromPath(parts[1].trim()),
                         sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) },
                         favorite = false
                     )
@@ -244,12 +255,13 @@ fun loadSavedRemotes(context: Context): List<SavedRemote> {
                         profilePath = parts[1].trim(),
                         commands = emptyList(),
                         buttons = emptyList(),
+                        iconName = categorySeedFromPath(parts[1].trim()),
                         sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) },
                         favorite = false
                     )
                 }
                 else -> {
-                    SavedRemote(name = row, profilePath = "", commands = emptyList(), buttons = emptyList(), favorite = false)
+                    SavedRemote(name = row, profilePath = "", commands = emptyList(), buttons = emptyList(), iconName = null, favorite = false)
                 }
             }
         }
@@ -268,6 +280,7 @@ fun serializeSavedRemotesJson(remotes: List<SavedRemote>): String {
                 JSONObject().apply {
                     put("name", remote.name)
                     put("profilePath", remote.profilePath)
+                    put("iconName", remote.iconName ?: "")
                     put("sourceProfilePath", remote.sourceProfilePath ?: "")
                     put("favorite", remote.favorite)
                     put(
@@ -336,6 +349,9 @@ fun parseSavedRemotesJson(raw: String): List<SavedRemote>? {
                 val sourceProfilePath = obj.optString("sourceProfilePath").trim().ifBlank {
                     if (profilePath.startsWith(DB_ROOT)) profilePath else ""
                 }.ifBlank { null }
+                val iconName = obj.optString("iconName").trim().ifBlank {
+                    categorySeedFromPath(sourceProfilePath ?: profilePath)
+                }
 
                 val resolvedButtons = if (buttons.isNotEmpty()) {
                     buttons
@@ -349,6 +365,7 @@ fun parseSavedRemotesJson(raw: String): List<SavedRemote>? {
                         profilePath = profilePath,
                         commands = if (commands.isNotEmpty()) commands else resolvedButtons.map { it.label },
                         buttons = resolvedButtons,
+                        iconName = iconName,
                         sourceProfilePath = sourceProfilePath,
                         favorite = obj.optBoolean("favorite", false)
                     )
@@ -594,6 +611,7 @@ fun exportRemotesToJson(remotes: List<SavedRemote>): String {
         val obj = JSONObject()
         obj.put("name", remote.name)
         obj.put("profilePath", remote.profilePath)
+        obj.put("iconName", remote.iconName ?: "")
         obj.put("sourceProfilePath", remote.sourceProfilePath ?: "")
         obj.put("favorite", remote.favorite)
         val buttonsArray = JSONArray()
@@ -626,6 +644,9 @@ fun importRemotesFromJson(json: String): List<SavedRemote> {
                 profilePath = obj.optString("profilePath"),
                 commands = buttons.map { it.label },
                 buttons = buttons,
+                iconName = obj.optString("iconName").takeIf { it.isNotBlank() }
+                    ?: categorySeedFromPath(obj.optString("sourceProfilePath").takeIf { it.isNotBlank() }
+                        ?: obj.optString("profilePath")),
                 sourceProfilePath = obj.optString("sourceProfilePath").takeIf { it.isNotBlank() },
                 favorite = obj.optBoolean("favorite", false)
             )

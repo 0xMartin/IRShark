@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +55,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+private enum class UniversalTab { Commands, Categories }
+
 @Composable
 fun UniversalRemoteScreen(
     dbIndex: FlipperDbIndex,
@@ -77,6 +80,9 @@ fun UniversalRemoteScreen(
     
     var folderSearchQuery by remember { mutableStateOf("") }
     var flashedCommand by remember { mutableStateOf<String?>(null) }
+    var selectedTab by remember(currentPath) {
+        mutableStateOf(if (resolvedCommands.isNotEmpty()) UniversalTab.Commands else UniversalTab.Categories)
+    }
     val scope = rememberCoroutineScope()
 
     val estimatedTimeMs = if (autoSend && activeItem != null && activeCoverage > 0) {
@@ -94,7 +100,6 @@ fun UniversalRemoteScreen(
             // Top header bar
             UniversalRemoteHeader(
                 currentPath = prettyPathWithChevron(currentPath),
-                count = profilesUnderPath(dbIndex, currentPath).size,
                 onHome = {
                     if (autoSend) onToggleAutoSend()
                     onHome()
@@ -108,103 +113,111 @@ fun UniversalRemoteScreen(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 14.dp)
             ) {
-                // Device folder section
-                if (folders.isNotEmpty()) {
-                    Text("Categories", color = violet, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Search field
-                    OutlinedTextField(
-                        value = folderSearchQuery,
-                        onValueChange = { folderSearchQuery = it },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Search categories") },
-                        textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
-                        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = violet.copy(alpha = 0.45f),
-                            unfocusedBorderColor = violet.copy(alpha = 0.2f),
-                            focusedContainerColor = Color(0xFF13101E),
-                            unfocusedContainerColor = Color(0xFF13101E)
-                        )
-                    )
-
-                    // Scrollable list (same style as IR Finder picker)
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 420.dp)
-                            .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp))
-                            .border(
-                                1.dp,
-                                violet.copy(alpha = 0.15f),
-                                RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp)
-                            ),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)
-                    ) {
-                        items(filteredFolders) { path ->
-                            val name = prettyName(path)
-                            val iconSourceName = if (currentPath == root) {
-                                name
-                            } else {
-                                prettyName(currentPath)
-                            }
-                            FolderButton(
-                                title = name,
-                                onClick = {
-                                    folderSearchQuery = ""
-                                    onOpenFolder(path)
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                icon = { CategorySvgIcon(name = iconSourceName, tint = violet, size = 24.dp) }
-                            )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(UniversalTab.Commands to "Commands", UniversalTab.Categories to "Categories").forEach { (tab, label) ->
+                        val selected = selectedTab == tab
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) violet.copy(alpha = 0.16f) else Color(0xFF13101E))
+                                .border(1.dp, if (selected) violet.copy(alpha = 0.45f) else violet.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
+                                .clickable { selectedTab = tab },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(label, color = if (selected) violet else Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // Commands section
-                Text("Commands", color = violet, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                if (resolvedCommands.isEmpty()) {
-                    EmptyCard("No commands found in this category.")
-                } else {
-                    resolvedCommands.chunked(2).forEach { row ->
-                        Row(
+                when (selectedTab) {
+                    UniversalTab.Categories -> {
+                        OutlinedTextField(
+                            value = folderSearchQuery,
+                            onValueChange = { folderSearchQuery = it },
+                            singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            label = { Text("Search categories") },
+                            textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
+                            shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = violet.copy(alpha = 0.45f),
+                                unfocusedBorderColor = violet.copy(alpha = 0.2f),
+                                focusedContainerColor = Color(0xFF13101E),
+                                unfocusedContainerColor = Color(0xFF13101E)
+                            )
+                        )
+
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(2),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp))
+                                .border(
+                                    1.dp,
+                                    violet.copy(alpha = 0.15f),
+                                    RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp)
+                                ),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(10.dp)
                         ) {
-                            row.forEach { item ->
-                                val isFlashed = flashedCommand == item.actualCommand
-                                RemoteCommandButton(
-                                    label = item.displayLabel,
-                                    countLabel = "x${item.profileCoverage}",
-                                    isActive = isFlashed,
+                            items(filteredFolders) { path ->
+                                val name = prettyName(path)
+                                val iconSourceName = if (currentPath == root) name else prettyName(currentPath)
+                                FolderButton(
+                                    title = name,
                                     onClick = {
-                                        flashedCommand = item.actualCommand
-                                        scope.launch { delay(220); flashedCommand = null }
-                                        onCommandClick(item)
+                                        folderSearchQuery = ""
+                                        onOpenFolder(path)
                                     },
-                                    modifier = Modifier
-                                        .weight(1f)
+                                    modifier = Modifier.fillMaxWidth(),
+                                    icon = { CategorySvgIcon(name = iconSourceName, tint = violet, size = 24.dp) }
                                 )
                             }
-                            repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    UniversalTab.Commands -> {
+                        if (resolvedCommands.isEmpty()) {
+                            EmptyCard("No commands found in this category.")
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(bottom = 16.dp)
+                            ) {
+                                items(resolvedCommands) { item ->
+                                    val isFlashed = flashedCommand == item.actualCommand
+                                    RemoteCommandButton(
+                                        label = item.displayLabel,
+                                        countLabel = "x${item.profileCoverage}",
+                                        isActive = isFlashed,
+                                        onClick = {
+                                            flashedCommand = item.actualCommand
+                                            scope.launch { delay(220); flashedCommand = null }
+                                            onCommandClick(item)
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
 

@@ -45,6 +45,7 @@ import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.countProfilesForCommand
+import com.vex.irshark.data.categorySeedFromPath
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.exportRemotesToJson
 import com.vex.irshark.data.importRemotesFromJson
@@ -516,12 +517,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             },
                             iconNameForItem = { idx ->
                                 val remote = indexedFiltered[idx].value
-                                val pathForIcon = remote.sourceProfilePath
-                                    ?: remote.profilePath
-                                pathForIcon
-                                    .substringAfter("flipper_irdb/", "")
-                                    .substringBefore('/')
-                                    .ifBlank { null }
+                                remote.iconName ?: categorySeedFromPath(remote.sourceProfilePath ?: remote.profilePath)
                             },
                             isFavoriteForItem = { idx -> indexedFiltered[idx].value.favorite },
                             onFavoriteToggleForItem = { idx ->
@@ -591,10 +587,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             emptyText = "No matching remotes in database.",
                             items = filtered.map { it.name to prettyPath(it.parentPath) },
                             iconNameForItem = { idx ->
-                                filtered[idx].parentPath
-                                    .substringAfter("flipper_irdb/", "")
-                                    .substringBefore('/')
-                                    .ifBlank { null }
+                                categorySeedFromPath(filtered[idx].parentPath)
                             },
                             onOpen = { index ->
                                 val profile = filtered[index]
@@ -633,6 +626,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                             profilePath = profile.path,
                                             commands = hydratedButtons.map { it.label },
                                             buttons = hydratedButtons,
+                                            iconName = categorySeedFromPath(profile.parentPath),
                                             sourceProfilePath = profile.path
                                         )
                                         toastController.show("Added to My Remotes")
@@ -680,10 +674,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             title = title,
                             deviceIconName = (activeSavedRemote?.sourceProfilePath
                                 ?: currentProfile?.parentPath
-                                ?: profilePath)
-                                .substringAfter("flipper_irdb/", "")
-                                .substringBefore('/')
-                                .ifBlank { null },
+                                ?: profilePath).let { path ->
+                                    activeSavedRemote?.iconName ?: categorySeedFromPath(path)
+                                },
                             typeBadge = typeBadge,
                             countBadge = countBadge,
                             commands = commands,
@@ -821,6 +814,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                             profilePath = profilePath,
                                             commands = hydratedButtons.map { it.label },
                                             buttons = hydratedButtons,
+                                            iconName = categorySeedFromPath(profilePath),
                                             sourceProfilePath = profilePath
                                         )
                                         toastController.show("Added to My Remotes")
@@ -876,6 +870,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             RemoteEditorDialog(
                 initialName = existing?.name.orEmpty(),
                 initialButtons = existing?.buttons.orEmpty(),
+                initialIconName = existing?.iconName,
                 existingNames = savedRemotes.map { it.name }.toSet(),
                 originalName = existing?.name,
                 dbProfiles = dbIndex.profiles,
@@ -883,7 +878,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     showRemoteEditor = false
                     editingRemoteIndex = null
                 },
-                onSave = { rawName, buttons ->
+                onSave = { rawName, buttons, iconName ->
                     val normalizedButtons = buttons.map {
                         it.copy(
                             label = it.label.trim(),
@@ -903,6 +898,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             profilePath = if (detachFromDb) "" else previous.profilePath,
                             commands = normalizedButtons.map { it.label },
                             buttons = normalizedButtons,
+                            iconName = iconName,
                             sourceProfilePath = if (detachFromDb) null else previous.sourceProfilePath
                         )
 
@@ -920,6 +916,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             profilePath = "",
                             commands = normalizedButtons.map { it.label },
                             buttons = normalizedButtons,
+                            iconName = iconName,
                             sourceProfilePath = null
                         )
                         toastController.show("Remote created")
