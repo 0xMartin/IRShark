@@ -109,22 +109,34 @@ fun FolderButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifi
     val violet = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
-            .height(88.dp)
+            .height(56.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF100D1C))
-            .border(1.dp, violet.copy(alpha = 0.34f), RoundedCornerShape(12.dp))
+            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(10.dp)
+            .padding(horizontal = 10.dp)
     ) {
-        if (icon != null) {
-            Box(modifier = Modifier.align(Alignment.TopStart)) { icon() }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.CenterStart),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (icon != null) {
+                icon()
+            }
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+                textAlign = if (icon != null) androidx.compose.ui.text.style.TextAlign.Start else androidx.compose.ui.text.style.TextAlign.Center
+            )
         }
-        Text(
-            text = title,
-            color = Color.White,
-            fontSize = 12.sp,
-            modifier = Modifier.align(Alignment.BottomStart)
-        )
     }
 }
 

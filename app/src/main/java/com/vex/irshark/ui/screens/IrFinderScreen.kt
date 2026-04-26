@@ -1,5 +1,6 @@
 package com.vex.irshark.ui.screens
 
+import androidx.compose.foundation.Canvas
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,8 +50,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -265,6 +271,7 @@ fun IrFinderScreen(
             FinderStep.PickCategory -> PickStep(
                 question = "What type of device?",
                 options = categories.map { prettyName(it) to it },
+                showDeviceIcons = true,
                 onSelect = { raw ->
                     selectedCategory = raw
                     step = FinderStep.PickBrand
@@ -362,6 +369,7 @@ fun IrFinderScreen(
 private fun PickStep(
     question: String,
     options: List<Pair<String, String>>,   // display → raw
+    showDeviceIcons: Boolean = false,
     onSelect: (String) -> Unit
 ) {
     val violet = MaterialTheme.colorScheme.primary
@@ -415,19 +423,118 @@ private fun PickStep(
                         .background(Color(0xFF100D1C))
                         .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
                         .clickable { onSelect(raw) },
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(
-                        text = display,
-                        color = Color.White,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (showDeviceIcons) {
+                            DeviceCategoryIcon(name = raw, tint = violet)
+                        }
+                        Text(
+                            text = display,
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            textAlign = if (showDeviceIcons) TextAlign.Start else TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeviceCategoryIcon(name: String, tint: Color) {
+    val lname = name.lowercase()
+    val iconColor = tint.copy(alpha = 0.75f)
+    Canvas(modifier = Modifier.size(20.dp)) {
+        when {
+            "tv" in lname || "television" in lname || "projector" in lname -> {
+                val sw = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                drawRoundRect(color = iconColor, topLeft = Offset(2f, 4f), size = Size(size.width - 4f, size.height * 0.65f), cornerRadius = CornerRadius(3f), style = sw)
+                drawLine(iconColor, Offset(size.width / 2f, size.height * 0.7f), Offset(size.width / 2f, size.height - 3f), strokeWidth = 2f)
+                drawLine(iconColor, Offset(size.width * 0.3f, size.height - 3f), Offset(size.width * 0.7f, size.height - 3f), strokeWidth = 2f)
+            }
+            "ac" in lname || "air" in lname || "condition" in lname || "purif" in lname -> {
+                val sw = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                drawRoundRect(color = iconColor, topLeft = Offset(2f, 5f), size = Size(size.width - 4f, size.height * 0.5f), cornerRadius = CornerRadius(4f), style = sw)
+                for (i in 0..3) {
+                    val x = 5f + i * 4f
+                    drawLine(iconColor, Offset(x, size.height * 0.5f + 4f), Offset(x, size.height - 3f), strokeWidth = 1.6f)
+                }
+            }
+            "audio" in lname || "receiver" in lname || "speaker" in lname || "sound" in lname || "amplif" in lname -> {
+                val sw = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                drawRoundRect(color = iconColor, topLeft = Offset(2f, 6f), size = Size(size.width - 4f, size.height * 0.45f), cornerRadius = CornerRadius(3f), style = sw)
+                for (i in 0..2) {
+                    drawCircle(color = iconColor, radius = 1.3f, center = Offset(6f + i * 4f, size.height * 0.3f + 6f))
+                }
+            }
+            "blu" in lname || "dvd" in lname || "cd" in lname || "disc" in lname -> {
+                val sw = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                drawCircle(color = iconColor, radius = size.minDimension / 2f - 3f, style = sw)
+                drawCircle(color = iconColor, radius = 3f, style = sw)
+                drawCircle(color = iconColor, radius = 1.3f)
+            }
+            "camera" in lname || "cctv" in lname -> {
+                val sw = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                drawRoundRect(color = iconColor, topLeft = Offset(2f, 5f), size = Size(size.width * 0.62f, size.height * 0.46f), cornerRadius = CornerRadius(3f), style = sw)
+                drawCircle(color = iconColor, radius = 3f, center = Offset(size.width * 0.32f, size.height * 0.28f + 5f), style = sw)
+                val path = Path().apply {
+                    moveTo(size.width * 0.66f, size.height * 0.22f)
+                    lineTo(size.width - 3f, size.height * 0.17f)
+                    lineTo(size.width - 3f, size.height * 0.58f)
+                    lineTo(size.width * 0.66f, size.height * 0.53f)
+                    close()
+                }
+                drawPath(path, iconColor, style = sw)
+            }
+            "cable" in lname || "box" in lname || "stb" in lname || "set" in lname -> {
+                val sw = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                drawRoundRect(color = iconColor, topLeft = Offset(2f, 6f), size = Size(size.width - 4f, size.height * 0.44f), cornerRadius = CornerRadius(3f), style = sw)
+                drawCircle(color = iconColor, radius = 1.6f, center = Offset(6f, size.height * 0.36f))
+                drawRoundRect(color = iconColor, topLeft = Offset(10f, size.height * 0.28f + 1f), size = Size(6f, 3f), cornerRadius = CornerRadius(2f))
+            }
+            "game" in lname || "console" in lname || "nintendo" in lname || "playstation" in lname || "xbox" in lname -> {
+                val cx = size.width * 0.35f
+                val cy = size.height * 0.5f
+                for (angle in listOf(0f, 90f, 180f, 270f)) {
+                    val rad = Math.toRadians(angle.toDouble())
+                    val dx = (Math.cos(rad) * 5f).toFloat()
+                    val dy = (Math.sin(rad) * 5f).toFloat()
+                    drawLine(iconColor, Offset(cx, cy), Offset(cx + dx, cy + dy), strokeWidth = 2f, cap = StrokeCap.Round)
+                }
+                drawCircle(color = iconColor, radius = 1.8f, center = Offset(size.width * 0.75f, size.height * 0.38f))
+                drawCircle(color = iconColor, radius = 1.8f, center = Offset(size.width * 0.75f, size.height * 0.62f))
+            }
+            "fan" in lname -> {
+                val sw = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                drawCircle(color = iconColor, radius = size.minDimension / 2f - 3f, style = sw)
+                drawCircle(color = iconColor, radius = 3f, style = sw)
+                for (angle in 0..2) {
+                    val rad = Math.toRadians(angle * 120.0)
+                    val dx = (Math.cos(rad) * 5f).toFloat()
+                    val dy = (Math.sin(rad) * 5f).toFloat()
+                    drawLine(iconColor, center, Offset(center.x + dx, center.y + dy), strokeWidth = 2f, cap = StrokeCap.Round)
+                }
+            }
+            else -> {
+                val sw = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                drawRoundRect(color = iconColor, topLeft = Offset(5f, 2f), size = Size(size.width - 10f, size.height - 4f), cornerRadius = CornerRadius(5f), style = sw)
+                drawCircle(color = iconColor, radius = 2f, center = Offset(center.x, 7f), style = sw)
+                val cx2 = center.x
+                val cy2 = size.height * 0.56f
+                drawLine(iconColor, Offset(cx2 - 4f, cy2), Offset(cx2 + 4f, cy2), strokeWidth = 1.6f, cap = StrokeCap.Round)
+                drawLine(iconColor, Offset(cx2, cy2 - 4f), Offset(cx2, cy2 + 4f), strokeWidth = 1.6f, cap = StrokeCap.Round)
             }
         }
     }

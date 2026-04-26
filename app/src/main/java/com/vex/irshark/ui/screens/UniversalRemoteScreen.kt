@@ -11,9 +11,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -136,39 +140,35 @@ fun UniversalRemoteScreen(
                         )
                     )
 
-                    // Scrollable list (max 6 items = 2x3 grid)
-                    LazyColumn(
+                    // Scrollable list (same style as IR Finder picker)
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(260.dp)
+                            .heightIn(max = 420.dp)
                             .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp))
                             .border(
                                 1.dp,
                                 violet.copy(alpha = 0.15f),
                                 RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp)
                             ),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(10.dp)
                     ) {
-                        items(filteredFolders.chunked(2)) { row ->
-                            Row(
+                        items(filteredFolders) { path ->
+                            val name = prettyName(path)
+                            FolderButton(
+                                title = name,
+                                onClick = {
+                                    folderSearchQuery = ""
+                                    onOpenFolder(path)
+                                },
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                row.forEach { path ->
-                                    val name = prettyName(path)
-                                    FolderButton(
-                                        title = name,
-                                        onClick = {
-                                            folderSearchQuery = ""
-                                            onOpenFolder(path)
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                        icon = { CategoryIcon(name = name, tint = violet) }
-                                    )
-                                }
-                                repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
-                            }
+                                icon = if (currentPath == root) {
+                                    { CategoryIcon(name = name, tint = violet) }
+                                } else null
+                            )
                         }
                     }
 
@@ -193,7 +193,7 @@ fun UniversalRemoteScreen(
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(62.dp)
+                                        .height(64.dp)
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(
                                             brush = Brush.verticalGradient(
@@ -210,11 +210,11 @@ fun UniversalRemoteScreen(
                                             scope.launch { delay(220); flashedCommand = null }
                                             onCommandClick(item)
                                         }
-                                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
                                 ) {
                                     Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.SpaceBetween
+                                        verticalArrangement = Arrangement.Top
                                     ) {
                                         Box(
                                             modifier = Modifier
@@ -222,6 +222,7 @@ fun UniversalRemoteScreen(
                                                 .clip(RoundedCornerShape(999.dp))
                                                 .background(stripeColor)
                                         )
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Column {
                                             Text(
                                                 text = item.displayLabel,
@@ -234,7 +235,8 @@ fun UniversalRemoteScreen(
                                                 Text(
                                                     text = "${item.profileCoverage}x",
                                                     color = Color(0xFF8A8899),
-                                                    fontSize = 9.sp
+                                                    fontSize = 10.sp,
+                                                    lineHeight = 10.sp
                                                 )
                                             }
                                         }
