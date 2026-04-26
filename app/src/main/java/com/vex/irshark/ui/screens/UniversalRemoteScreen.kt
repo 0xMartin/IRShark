@@ -1,5 +1,6 @@
 package com.vex.irshark.ui.screens
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,6 +69,7 @@ fun UniversalRemoteScreen(
     activeCoverage: Int,
     autoSend: Boolean,
     intervalMs: Float,
+    hapticEnabled: Boolean = true,
     onHome: () -> Unit,
     onBackPath: () -> Unit,
     onOpenFolder: (String) -> Unit,
@@ -83,6 +86,7 @@ fun UniversalRemoteScreen(
     var flashedCommand by remember { mutableStateOf<String?>(null) }
     var selectedTab by rememberSaveable { mutableStateOf(UniversalTab.Categories) }
     val scope = rememberCoroutineScope()
+    val view = LocalView.current
 
     val estimatedTimeMs = if (autoSend && activeItem != null && activeCoverage > 0) {
         ((activeCoverage - codeStep) * intervalMs.roundToInt()).toLong()
@@ -226,6 +230,9 @@ fun UniversalRemoteScreen(
                                         protocol = "x${item.profileCoverage}",
                                         isActive = isFlashed,
                                         onClick = {
+                                            if (hapticEnabled) {
+                                                view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                            }
                                             flashedCommand = item.actualCommand
                                             scope.launch { delay(220); flashedCommand = null }
                                             onCommandClick(item)
@@ -247,6 +254,7 @@ fun UniversalRemoteScreen(
                 currentIndex = codeStep,
                 totalCount = activeCoverage,
                 estimatedTimeRemainingMs = estimatedTimeMs,
+                hapticEnabled = hapticEnabled,
                 onStop = onToggleAutoSend
             )
         }

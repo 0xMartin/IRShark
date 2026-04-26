@@ -45,6 +45,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.vex.irshark.data.FlipperDbIndex
 import com.vex.irshark.data.DbLoadProgress
+import com.vex.irshark.data.FlipperProfile
+import com.vex.irshark.data.RemoteHistoryEntry
 import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
@@ -56,9 +58,11 @@ import com.vex.irshark.data.exportMacrosToJson
 import com.vex.irshark.data.importRemotesFromJson
 import com.vex.irshark.data.importMacrosFromJson
 import com.vex.irshark.data.loadAppSettings
+import com.vex.irshark.data.loadRemoteHistory
 import com.vex.irshark.data.loadSavedMacros
 import com.vex.irshark.data.saveSavedMacros
 import com.vex.irshark.data.SavedMacro
+import com.vex.irshark.data.recordRemoteHistory
 import com.vex.irshark.util.transmitIrCode
 import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.data.loadFlipperDbIndex
@@ -66,6 +70,7 @@ import com.vex.irshark.data.loadSavedRemotes
 import com.vex.irshark.data.parentPath
 import com.vex.irshark.data.prettyPath
 import com.vex.irshark.data.saveAppSettings
+import com.vex.irshark.data.saveRemoteHistory
 import com.vex.irshark.data.saveSavedRemotes
 import com.vex.irshark.ui.components.AppHeader
 import com.vex.irshark.ui.components.RemoteEditorDialog
@@ -122,7 +127,7 @@ private enum class Screen {
     HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS, MACROS, MACRO_EDITOR, MACRO_RUN, IR_FINDER
 }
 
-private enum class ControlSource { MY_REMOTES, REMOTE_DB }
+private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
 
 // ── Root composable with navigation ──────────────────────────────────────────
 
@@ -344,6 +349,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var controlSource by rememberSaveable { mutableStateOf(ControlSource.REMOTE_DB) }
     var controlSelectedCommand by rememberSaveable { mutableStateOf<String?>(null) }
     var controlTxCount by rememberSaveable { mutableIntStateOf(0) }
+    var controlReturnScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    var controlHistoryEntry by remember { mutableStateOf<RemoteHistoryEntry?>(null) }
+    var remoteHistory by remember { mutableStateOf(listOf<RemoteHistoryEntry>()) }
+    var historyLoaded by remember { mutableStateOf(false) }
 
     // Editor state for custom/editable remotes
     var showRemoteEditor by remember { mutableStateOf(false) }
@@ -404,6 +413,125 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
+    fun rememberRemoteOpen(
+        name: String,
+        profilePath: String,
+        sourceProfilePath: String?,
+        iconName: String?,
+        snapshotButtons: List<SavedRemoteButton>
+    ) {
+        remoteHistory = recordRemoteHistory(
+            history = remoteHistory,
+            entry = RemoteHistoryEntry(
+                name = name,
+                profilePath = profilePath,
+                sourceProfilePath = sourceProfilePath,
+                iconName = iconName,
+                openedAtEpochMs = System.currentTimeMillis(),
+                buttons = snapshotButtons
+            )
+        )
+    }
+
+    fun openRemoteControl(
+        name: String,
+        profilePath: String,
+        buttons: List<SavedRemoteButton>,
+        source: ControlSource,
+        returnScreen: Screen,
+        remoteIndex: Int = -1,
+        iconName: String? = null,
+        sourceProfilePath: String? = null,
+        historySnapshotButtons: List<SavedRemoteButton> = emptyList()
+    ) {
+        controlProfilePath = profilePath
+        controlName = name
+        controlButtons = buttons
+        controlRemoteIndex = remoteIndex
+        controlSource = source
+        controlSelectedCommand = null
+        controlTxCount = 0
+        controlReturnScreen = returnScreen
+        controlHistoryEntry = if (source == ControlSource.HISTORY) {
+            RemoteHistoryEntry(
+                name = name,
+                profilePath = profilePath,
+                sourceProfilePath = sourceProfilePath,
+                iconName = iconName,
+                openedAtEpochMs = System.currentTimeMillis(),
+                buttons = historySnapshotButtons
+            )
+        } else {
+            null
+        }
+        rememberRemoteOpen(
+            name = name,
+            profilePath = profilePath,
+            sourceProfilePath = sourceProfilePath,
+            iconName = iconName,
+            snapshotButtons = historySnapshotButtons
+        )
+        screen = Screen.REMOTE_CONTROL
+    }
+
+    fun openDatabaseRemote(
+        profile: FlipperProfile,
+        source: ControlSource,
+        returnScreen: Screen,
+        historyName: String = profile.name,
+        iconNameOverride: String? = null
+    ) {
+        val seededButtons = profile.commands.map { cmd ->
+            SavedRemoteButton(label = cmd, code = "")
+        }
+        val iconName = iconNameOverride ?: categorySeedFromPath(profile.parentPath)
+        openRemoteControl(
+            name = historyName,
+            profilePath = profile.path,
+            buttons = seededButtons,
+            source = source,
+            returnScreen = returnScreen,
+            iconName = iconName,
+            sourceProfilePath = profile.path,
+            historySnapshotButtons = emptyList()
+        )
+
+        scope.launch {
+            val dbCodes = loadDbIrCodeOptions(context, profile.path)
+            val hydrated = hydrateMissingCodesFromDb(seededButtons, dbCodes)
+            if (controlProfilePath == profile.path && controlName == historyName) {
+                controlButtons = hydrated
+            }
+        }
+    }
+
+    fun openHistoryRemote(entry: RemoteHistoryEntry) {
+        val sourceProfilePath = entry.sourceProfilePath
+        if (!sourceProfilePath.isNullOrBlank()) {
+            val profile = dbIndex.profiles.firstOrNull { it.path == sourceProfilePath }
+            if (profile != null) {
+                openDatabaseRemote(
+                    profile = profile,
+                    source = ControlSource.HISTORY,
+                    returnScreen = Screen.SETTINGS,
+                    historyName = entry.name,
+                    iconNameOverride = entry.iconName
+                )
+            }
+        } else if (entry.buttons.isNotEmpty()) {
+            openRemoteControl(
+                name = entry.name,
+                profilePath = entry.profilePath,
+                buttons = entry.buttons,
+                source = ControlSource.HISTORY,
+                returnScreen = Screen.SETTINGS,
+                iconName = entry.iconName,
+                sourceProfilePath = null,
+                historySnapshotButtons = entry.buttons
+            )
+        }
+    }
+
     // Load data
     LaunchedEffect(Unit) {
         dbIndex = loadFlipperDbIndex(context) { progress ->
@@ -412,6 +540,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         dbLoaded = true
         savedRemotes = loadSavedRemotes(context)
         remotesLoaded = true
+        remoteHistory = loadRemoteHistory(context)
+        historyLoaded = true
         savedMacros = loadSavedMacros(context)
         macrosLoaded = true
         val settings = loadAppSettings(context)
@@ -426,6 +556,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     LaunchedEffect(savedRemotes) {
         if (!remotesLoaded) return@LaunchedEffect
         saveSavedRemotes(context, savedRemotes)
+    }
+
+    LaunchedEffect(remoteHistory) {
+        if (!historyLoaded) return@LaunchedEffect
+        saveRemoteHistory(context, remoteHistory)
     }
 
     LaunchedEffect(savedMacros) {
@@ -544,7 +679,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     onHome = { screen = Screen.HOME },
                     onBack = {
                         controlRemoteIndex = -1
-                        screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
+                        screen = controlReturnScreen
                     }
                 )
             }
@@ -630,6 +765,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             activeCoverage = universalCoverage,
                             autoSend = universalAutoSend,
                             intervalMs = universalIntervalMs,
+                            hapticEnabled = hapticFeedback,
                             onHome = {
                                 universalAutoSend = false
                                 screen = Screen.HOME
@@ -712,23 +848,28 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onOpen = { index ->
                                 val originalIndex = indexedFiltered[index].index
                                 val remote = indexedFiltered[index].value
-                                controlProfilePath = remote.profilePath
-                                controlName = remote.name
-                                controlButtons = if (remote.buttons.isNotEmpty()) {
+                                val remoteButtons = if (remote.buttons.isNotEmpty()) {
                                     remote.buttons
                                 } else {
                                     remote.commands.map { SavedRemoteButton(label = it, code = "") }
                                 }
-                                controlRemoteIndex = originalIndex
-                                controlSource = ControlSource.MY_REMOTES
-                                controlSelectedCommand = null
-                                controlTxCount = 0
+                                openRemoteControl(
+                                    name = remote.name,
+                                    profilePath = remote.profilePath,
+                                    buttons = remoteButtons,
+                                    source = ControlSource.MY_REMOTES,
+                                    returnScreen = Screen.MY_REMOTES,
+                                    remoteIndex = originalIndex,
+                                    iconName = remote.iconName ?: categorySeedFromPath(remote.sourceProfilePath ?: remote.profilePath),
+                                    sourceProfilePath = remote.sourceProfilePath,
+                                    historySnapshotButtons = if (remote.sourceProfilePath == null) remoteButtons else emptyList()
+                                )
 
                                 // Backfill missing DB codes for previously imported remotes.
-                                if (remote.sourceProfilePath != null && controlButtons.any { it.code.isBlank() }) {
+                                if (remote.sourceProfilePath != null && remoteButtons.any { it.code.isBlank() }) {
                                     scope.launch {
                                         val dbCodes = loadDbIrCodeOptions(context, remote.sourceProfilePath)
-                                        val hydrated = hydrateMissingCodesFromDb(controlButtons, dbCodes)
+                                        val hydrated = hydrateMissingCodesFromDb(remoteButtons, dbCodes)
                                         controlButtons = hydrated
                                         savedRemotes = savedRemotes.toMutableList().also {
                                             val prev = it.getOrNull(originalIndex)
@@ -741,8 +882,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                         }
                                     }
                                 }
-
-                                screen = Screen.REMOTE_CONTROL
                             },
                             onSecondaryAction = { index ->
                                 val originalIndex = indexedFiltered[index].index
@@ -767,22 +906,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             },
                             onOpen = { index ->
                                 val profile = filtered[index]
-                                controlProfilePath = profile.path
-                                controlName = profile.name
-                                controlButtons = profile.commands.map { cmd ->
-                                    SavedRemoteButton(label = cmd, code = "")
-                                }
-                                controlRemoteIndex = -1
-                                controlSource = ControlSource.REMOTE_DB
-                                controlSelectedCommand = null
-                                controlTxCount = 0
-
-                                scope.launch {
-                                    val dbCodes = loadDbIrCodeOptions(context, profile.path)
-                                    controlButtons = hydrateMissingCodesFromDb(controlButtons, dbCodes)
-                                }
-
-                                screen = Screen.REMOTE_CONTROL
+                                openDatabaseRemote(
+                                    profile = profile,
+                                    source = ControlSource.REMOTE_DB,
+                                    returnScreen = Screen.REMOTE_DB
+                                )
                             },
                             onSecondaryAction = { index ->
                                 val profile = filtered[index]
@@ -831,6 +959,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         } else {
                             null
                         }
+                        val historyEntry = if (controlSource == ControlSource.HISTORY) controlHistoryEntry else null
+                        val effectiveSourceProfilePath = activeSavedRemote?.sourceProfilePath ?: historyEntry?.sourceProfilePath ?: profilePath.takeIf { currentProfile != null }
 
                         val typeBadge = when {
                             activeSavedRemote?.sourceProfilePath == null && controlSource == ControlSource.MY_REMOTES -> "Custom"
@@ -840,20 +970,25 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     ?.parentPath
                                 if (parent.isNullOrBlank()) "From DB" else prettyPath(parent)
                             }
+                            historyEntry?.sourceProfilePath != null -> {
+                                if (currentProfile != null) prettyPath(currentProfile.parentPath) else "From DB"
+                            }
+                            historyEntry?.buttons?.isNotEmpty() == true -> "Custom"
                             currentProfile != null -> prettyPath(currentProfile.parentPath)
                             profilePath.isNotBlank() -> prettyPath(profilePath)
                             else -> "Custom"
                         }
                         val countBadge = "${commands.size} buttons"
 
-                        val isRemoteAlreadyAdded = controlSource == ControlSource.REMOTE_DB && profilePath.isNotBlank() && savedRemotes.any { it.sourceProfilePath == profilePath }
+                        val isRemoteAlreadyAdded = !effectiveSourceProfilePath.isNullOrBlank() && savedRemotes.any { it.sourceProfilePath == effectiveSourceProfilePath }
                         
                         RemoteControlScreen(
                             title = title,
                             deviceIconName = (activeSavedRemote?.sourceProfilePath
+                                ?: historyEntry?.iconName
                                 ?: currentProfile?.parentPath
                                 ?: profilePath).let { path ->
-                                    activeSavedRemote?.iconName ?: categorySeedFromPath(path)
+                                    activeSavedRemote?.iconName ?: historyEntry?.iconName ?: categorySeedFromPath(path)
                                 },
                             typeBadge = typeBadge,
                             countBadge = countBadge,
@@ -863,7 +998,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             hapticEnabled = hapticFeedback,
                             onBack = {
                                 controlRemoteIndex = -1
-                                screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
+                                screen = controlReturnScreen
                             },
                             onCommandClick = { cmdLabel ->
                                 controlSelectedCommand = null
@@ -884,18 +1019,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 }
                             },
                             onSave = {
-                                if (profilePath.isNotBlank() && savedRemotes.none { it.sourceProfilePath == profilePath }) {
+                                val addProfilePath = effectiveSourceProfilePath
+                                if (!addProfilePath.isNullOrBlank() && savedRemotes.none { it.sourceProfilePath == addProfilePath }) {
                                     val resolvedName = uniqueRemoteName(title)
                                     savedRemotes = savedRemotes + SavedRemote(
                                         name = resolvedName,
-                                        profilePath = profilePath,
+                                        profilePath = addProfilePath,
                                         commands = commands,
                                         buttons = controlButtons,
-                                        sourceProfilePath = profilePath
+                                        iconName = activeSavedRemote?.iconName ?: historyEntry?.iconName ?: categorySeedFromPath(currentProfile?.parentPath ?: addProfilePath),
+                                        sourceProfilePath = addProfilePath
                                     )
                                 }
                             },
-                            showSaveButton = controlSource == ControlSource.REMOTE_DB,
+                            showSaveButton = controlSource != ControlSource.MY_REMOTES && !effectiveSourceProfilePath.isNullOrBlank(),
                             showEditButton = controlSource == ControlSource.MY_REMOTES,
                             saveButtonLabel = if (isRemoteAlreadyAdded) "Added" else "Add",
                             saveButtonEnabled = !isRemoteAlreadyAdded,
@@ -920,6 +1057,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             autoStopAtEnd = autoStopAtEnd,
                             showTxLed = showTxLed,
                             hapticFeedback = hapticFeedback,
+                            historyEntries = remoteHistory,
+                            onOpenHistoryItem = { openHistoryRemote(it) },
                             onIntervalChange = {
                                 universalIntervalMs = it
                                 settingsDirty = true
@@ -941,7 +1080,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 settingsDirty = true
                             },
                             onResetDefaults = {
-                                universalIntervalMs = 250f
+                                universalIntervalMs = 150f
                                 autoStopAtEnd = true
                                 showTxLed = true
                                 hapticFeedback = true
@@ -1045,6 +1184,13 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                         toastController.show("Added to My Remotes")
                                     }
                                 }
+                            },
+                            onOpenRemote = { profile ->
+                                openDatabaseRemote(
+                                    profile = profile,
+                                    source = ControlSource.HISTORY,
+                                    returnScreen = Screen.IR_FINDER
+                                )
                             },
                             onNavStateChange = { breadcrumb, onBack, onUndo ->
                                 irFinderBreadcrumb = breadcrumb

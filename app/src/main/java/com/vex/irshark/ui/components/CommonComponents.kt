@@ -205,6 +205,7 @@ fun RemoteCommandButton(
 ) {
     val violet = MaterialTheme.colorScheme.primary
     val stripeColor = if (isActive) Color(0xFF4CAF50) else violet.copy(alpha = 0.7f)
+    val secondaryLabelColor = Color(0xFF9AA0B5)
 
     Box(
         modifier = modifier
@@ -249,7 +250,7 @@ fun RemoteCommandButton(
             if (protocol.isNotBlank()) {
                 Text(
                     text = protocol,
-                    color = Color(0xFFFFC14D),
+                    color = secondaryLabelColor,
                     fontSize = 10.sp,
                     lineHeight = 10.sp,
                     textAlign = TextAlign.Center,

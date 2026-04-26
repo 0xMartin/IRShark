@@ -1,5 +1,6 @@
 package com.vex.irshark.ui.components
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -32,11 +34,13 @@ fun AutoSendProgressModal(
     currentIndex: Int,
     totalCount: Int,
     estimatedTimeRemainingMs: Long,
+    hapticEnabled: Boolean = true,
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val violet = MaterialTheme.colorScheme.primary
     val progress = if (totalCount > 0) currentIndex.toFloat() / totalCount.toFloat() else 0f
+    val view = LocalView.current
     
     val seconds = (estimatedTimeRemainingMs / 1000).toInt()
     val minutes = seconds / 60
@@ -98,7 +102,12 @@ fun AutoSendProgressModal(
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFF2E1020))
                         .border(1.dp, Color(0xFFFF7B9D), RoundedCornerShape(12.dp))
-                        .clickable(onClick = onStop),
+                        .clickable {
+                            if (hapticEnabled) {
+                                view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                            }
+                            onStop()
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("STOP", color = Color(0xFFFFB7C8), fontSize = 13.sp, fontWeight = FontWeight.Bold)

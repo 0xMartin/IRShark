@@ -10,7 +10,7 @@ private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
 private const val KEY_IR_FINDER_LAST_TESTED = "ir_finder_last_tested"
 
 data class AppSettings(
-    val globalIntervalMs: Float = 250f,
+    val globalIntervalMs: Float = 150f,
     val autoStopAtEnd: Boolean = true,
     val showTxLed: Boolean = true,
     val hapticFeedback: Boolean = true,
@@ -20,7 +20,7 @@ data class AppSettings(
 fun loadAppSettings(context: Context): AppSettings {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     return AppSettings(
-        globalIntervalMs    = prefs.getFloat(KEY_GLOBAL_INTERVAL_MS, 250f),
+        globalIntervalMs    = prefs.getFloat(KEY_GLOBAL_INTERVAL_MS, 150f),
         autoStopAtEnd       = prefs.getBoolean(KEY_AUTO_STOP_AT_END, true),
         showTxLed           = prefs.getBoolean(KEY_SHOW_TX_LED, true),
         hapticFeedback      = prefs.getBoolean(KEY_HAPTIC_FEEDBACK, true),

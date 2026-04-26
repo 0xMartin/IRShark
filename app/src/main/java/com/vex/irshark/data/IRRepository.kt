@@ -10,6 +10,7 @@ import java.io.File
 private const val DB_ROOT = "flipper_irdb"
 private const val PREFS_NAME = "irshark_prefs"
 private const val KEY_SAVED_REMOTES = "saved_remotes"
+private const val KEY_REMOTE_HISTORY = "remote_history"
 private const val REMOTE_DELIMITER = "||"
 private const val DB_INDEX_CACHE_FILE = "db_index_cache_v1.json"
 private const val DB_INDEX_CACHE_VERSION = 1
@@ -44,6 +45,23 @@ data class SavedRemoteButton(
     val label: String,
     val code: String
 )
+
+data class RemoteHistoryEntry(
+    val name: String,
+    val profilePath: String,
+    val sourceProfilePath: String? = null,
+    val iconName: String? = null,
+    val openedAtEpochMs: Long,
+    val buttons: List<SavedRemoteButton> = emptyList()
+) {
+    val stableKey: String
+        get() = when {
+            !sourceProfilePath.isNullOrBlank() -> "db:$sourceProfilePath"
+            profilePath.isNotBlank() -> "path:$profilePath:${name.lowercase()}"
+            buttons.isNotEmpty() -> "custom:$name:${buttons.joinToString("|") { "${it.label}:${it.code}" }.hashCode()}"
+            else -> "name:${name.lowercase()}"
+        }
+}
 
 data class DbIrCodeOption(
     val label: String,
@@ -312,6 +330,90 @@ fun saveSavedRemotes(context: Context, remotes: List<SavedRemote>) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val serialized = serializeSavedRemotesJson(remotes)
     prefs.edit().putString(KEY_SAVED_REMOTES, serialized.toString()).apply()
+}
+
+fun loadRemoteHistory(context: Context): List<RemoteHistoryEntry> {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val raw = prefs.getString(KEY_REMOTE_HISTORY, "").orEmpty().trim()
+    if (raw.isBlank() || !raw.startsWith("[")) return emptyList()
+
+    return runCatching {
+        val arr = JSONArray(raw)
+        buildList {
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val name = obj.optString("name").trim()
+                if (name.isBlank()) continue
+
+                val buttons = obj.optJSONArray("buttons")?.let { list ->
+                    buildList {
+                        for (j in 0 until list.length()) {
+                            val button = list.optJSONObject(j) ?: continue
+                            val label = button.optString("label").trim()
+                            if (label.isBlank()) continue
+                            add(
+                                SavedRemoteButton(
+                                    label = label,
+                                    code = button.optString("code").trim()
+                                )
+                            )
+                        }
+                    }
+                }.orEmpty()
+
+                add(
+                    RemoteHistoryEntry(
+                        name = name,
+                        profilePath = obj.optString("profilePath").trim(),
+                        sourceProfilePath = obj.optString("sourceProfilePath").trim().ifBlank { null },
+                        iconName = obj.optString("iconName").trim().ifBlank { null },
+                        openedAtEpochMs = obj.optLong("openedAtEpochMs", 0L),
+                        buttons = buttons
+                    )
+                )
+            }
+        }
+    }.getOrElse { emptyList() }
+}
+
+fun saveRemoteHistory(context: Context, history: List<RemoteHistoryEntry>) {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val serialized = JSONArray().apply {
+        history.take(200).forEach { entry ->
+            put(
+                JSONObject().apply {
+                    put("name", entry.name)
+                    put("profilePath", entry.profilePath)
+                    put("sourceProfilePath", entry.sourceProfilePath ?: "")
+                    put("iconName", entry.iconName ?: "")
+                    put("openedAtEpochMs", entry.openedAtEpochMs)
+                    put(
+                        "buttons",
+                        JSONArray().apply {
+                            entry.buttons.forEach { button ->
+                                put(
+                                    JSONObject().apply {
+                                        put("label", button.label)
+                                        put("code", button.code)
+                                    }
+                                )
+                            }
+                        }
+                    )
+                }
+            )
+        }
+    }.toString()
+    prefs.edit().putString(KEY_REMOTE_HISTORY, serialized).apply()
+}
+
+fun recordRemoteHistory(
+    history: List<RemoteHistoryEntry>,
+    entry: RemoteHistoryEntry,
+    limit: Int = 200
+): List<RemoteHistoryEntry> {
+    val deduped = history.filterNot { it.stableKey == entry.stableKey }
+    return listOf(entry) + deduped.take((limit - 1).coerceAtLeast(0))
 }
 
 fun serializeSavedRemotesJson(remotes: List<SavedRemote>): String {

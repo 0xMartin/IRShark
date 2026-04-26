@@ -128,6 +128,7 @@ fun IrFinderScreen(
     onTransmit: () -> Unit = {},
     addedProfilePaths: Set<String> = emptySet(),
     onAddRemote: (profilePath: String, profileName: String, commands: List<String>) -> Unit = { _, _, _ -> },
+    onOpenRemote: (com.vex.irshark.data.FlipperProfile) -> Unit = {},
     onNavStateChange: (breadcrumb: String?, onBack: (() -> Unit)?, onUndo: (() -> Unit)?) -> Unit = { _, _, _ -> },
     lastTested: String? = null,
     onUpdateLastTested: (String) -> Unit = {},
@@ -370,6 +371,7 @@ fun IrFinderScreen(
                     val btn = finderButtons.getOrNull(idx) ?: return@TestButtonsStep
                     finderButtons[idx] = btn.copy(confirmedCode = null, codeIndex = 0)
                 },
+                onOpenRemote = onOpenRemote,
                 onAddRemote = { profile ->
                     onAddRemote(profile.path, profile.name, profile.commands)
                 }
@@ -488,6 +490,7 @@ private fun TestButtonsStep(
     onWorks: (Int) -> Unit,
     onNextCode: (Int) -> Unit,
     onResetButton: (Int) -> Unit,
+    onOpenRemote: (com.vex.irshark.data.FlipperProfile) -> Unit,
     onAddRemote: (com.vex.irshark.data.FlipperProfile) -> Unit
 ) {
     val violet = MaterialTheme.colorScheme.primary
@@ -726,6 +729,7 @@ private fun TestButtonsStep(
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color(0xFF0E0B1A))
                                 .border(1.dp, Color(0xFF2A2540), RoundedCornerShape(8.dp))
+                                .clickable { onOpenRemote(profile) }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {

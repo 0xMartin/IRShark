@@ -58,9 +58,9 @@ fun HomeScreen(
             contentDescription = null,
             colorFilter = ColorFilter.tint(sharkColor, BlendMode.SrcIn),
             modifier = Modifier
-                .size(252.dp)
+                .size(232.dp)
                 .align(Alignment.BottomCenter)
-                .offset(y = (-62).dp)
+                .offset(y = (-40).dp)
                 .rotate(-20f)
                 .alpha(0.07f)
         )
@@ -91,13 +91,13 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 HomeGridCard("Remote DB", Icons.Filled.Storage, onRemoteDb, Modifier.weight(1f))
-                HomeGridCard("Macros", Icons.Filled.AutoAwesome, onMacros, Modifier.weight(1f))
+                HomeGridCard("IR Finder", Icons.Filled.FindInPage, onIrFinder, Modifier.weight(1f))
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                HomeGridCard("IR Finder", Icons.Filled.FindInPage, onIrFinder, Modifier.weight(1f))
+                HomeGridCard("Macros", Icons.Filled.AutoAwesome, onMacros, Modifier.weight(1f))
                 HomeGridCard("Settings", Icons.Filled.Settings, onSettings, Modifier.weight(1f))
             }
         }
@@ -114,7 +114,7 @@ private fun HomeGridCard(
     val violet = MaterialTheme.colorScheme.primary
     Box(
         modifier = modifier
-            .height(130.dp)
+            .height(118.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF100D1C))
             .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
@@ -127,7 +127,7 @@ private fun HomeGridCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(72.dp)
+                    .size(64.dp)
                     .clip(RoundedCornerShape(18.dp))
                     .background(violet.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
@@ -136,10 +136,10 @@ private fun HomeGridCard(
                     imageVector = icon,
                     contentDescription = null,
                     tint = violet,
-                    modifier = Modifier.size(39.dp)
+                    modifier = Modifier.size(34.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = title,
                 color = Color.White,
