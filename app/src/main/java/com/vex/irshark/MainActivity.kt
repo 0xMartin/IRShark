@@ -72,6 +72,7 @@ import com.vex.irshark.ui.screens.MacroRunScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
 import com.vex.irshark.ui.screens.SettingsScreen
+import com.vex.irshark.ui.screens.ShortcutsScreen
 import com.vex.irshark.ui.screens.SplashScreen
 import com.vex.irshark.ui.screens.UniversalRemoteScreen
 import com.vex.irshark.ui.theme.IRSharkTheme
@@ -105,7 +106,7 @@ class MainActivity : ComponentActivity() {
 // ── Navigation state ──────────────────────────────────────────────────────────
 
 private enum class Screen {
-    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS, MACROS, MACRO_EDITOR, MACRO_RUN
+    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS, MACROS, MACRO_EDITOR, MACRO_RUN, SHORTCUTS
 }
 
 private enum class ControlSource { MY_REMOTES, REMOTE_DB }
@@ -354,6 +355,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 Screen.MACROS -> "Macros"
                 Screen.MACRO_EDITOR -> "Macro Editor"
                 Screen.MACRO_RUN -> "Running Macro"
+                Screen.SHORTCUTS -> "Shortcuts"
             }
             AppHeader(
                 txActive = txPulseActive || universalAutoSend,
@@ -361,7 +363,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 fastBlink = universalAutoSend,
                 screenTitle = screenTitle
             )
-            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS)) {
+            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.SHORTCUTS)) {
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
                     searchQuery = when (screen) {
@@ -416,7 +418,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onMyRemotes = { screen = Screen.MY_REMOTES },
                             onRemoteDb  = { screen = Screen.REMOTE_DB },
                             onSettings  = { screen = Screen.SETTINGS },
-                            onMacros    = { screen = Screen.MACROS }
+                            onMacros    = { screen = Screen.MACROS },
+                            onShortcuts = { screen = Screen.SHORTCUTS }
                         )
                     }
 
@@ -752,6 +755,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 screen = Screen.MACROS
                             }
                         )
+                    }
+
+                    Screen.SHORTCUTS -> {
+                        ShortcutsScreen()
                     }
 
                     Screen.MACRO_RUN -> {
