@@ -71,6 +71,7 @@ import com.vex.irshark.ui.components.AppHeader
 import com.vex.irshark.ui.components.RemoteEditorDialog
 import com.vex.irshark.ui.components.AppToastController
 import com.vex.irshark.ui.components.AppToastHost
+import com.vex.irshark.ui.components.RemoteControlNavBar
 import com.vex.irshark.ui.components.SectionNavBar
 import com.vex.irshark.ui.screens.HomeScreen
 import com.vex.irshark.ui.screens.MacroEditorScreen
@@ -523,6 +524,30 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 fastBlink = universalAutoSend,
                 screenTitle = screenTitle
             )
+            if (screen == Screen.REMOTE_CONTROL) {
+                val profilePath = controlProfilePath.orEmpty()
+                val currentProfile = dbIndex.profiles.firstOrNull { it.path == profilePath }
+                val title = controlName ?: currentProfile?.name ?: "Remote"
+                val activeSavedRemote = if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
+                    savedRemotes[controlRemoteIndex]
+                } else {
+                    null
+                }
+                val iconName = (activeSavedRemote?.sourceProfilePath
+                    ?: currentProfile?.parentPath
+                    ?: profilePath).let { path ->
+                        activeSavedRemote?.iconName ?: categorySeedFromPath(path)
+                    }
+                RemoteControlNavBar(
+                    title = title,
+                    iconName = iconName,
+                    onHome = { screen = Screen.HOME },
+                    onBack = {
+                        controlRemoteIndex = -1
+                        screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
+                    }
+                )
+            }
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER)) {
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },

@@ -501,13 +501,7 @@ private fun TestButtonsStep(
             color = Color.White,
             fontWeight = FontWeight.Bold,
             fontSize = 26.sp,
-            modifier = Modifier.padding(bottom = 4.dp)
-        )
-        Text(
-            text = "Select a button, then send codes until one works. Tap ✓ Works when the device responds.",
-            color = Color(0xFF8A8899),
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 10.dp)
         )
 
         // Button grid
@@ -518,7 +512,7 @@ private fun TestButtonsStep(
             contentPadding = PaddingValues(bottom = 12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height((buttons.size / 2 * 38 + 46).dp.coerceAtMost(208.dp))
+                .height((buttons.size / 2 * 30 + 37).dp.coerceAtMost(166.dp))
         ) {
             items(buttons.size) { idx ->
                 val btn = buttons[idx]

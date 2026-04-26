@@ -6,21 +6,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ViewList
@@ -80,119 +76,71 @@ fun RemoteControlScreen(
     val commands = buttons.map { it.label }.filter { it.isNotBlank() }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Back button and device info panel on the same row
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF0F0D1A))
+                .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .width(40.dp)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF13101E))
-                    .border(1.dp, violet.copy(alpha = 0.40f), RoundedCornerShape(10.dp))
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = violet,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF0F0D1A))
-                    .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
-                    .padding(12.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Badge(typeBadge)
+                Badge(countBadge)
+                Spacer(modifier = Modifier.weight(1f))
+                if (showSaveButton) {
+                    Box(
+                        modifier = Modifier
+                            .height(30.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (saveButtonEnabled) violet.copy(alpha = 0.14f) else Color(0xFF2A2540))
+                            .border(1.dp, if (saveButtonEnabled) violet.copy(alpha = 0.35f) else Color(0xFF2A2540), RoundedCornerShape(8.dp))
+                            .clickable(enabled = saveButtonEnabled, onClick = onSave)
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        if (!deviceIconName.isNullOrBlank()) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(violet.copy(alpha = 0.12f))
-                                    .border(1.dp, violet.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CategorySvgIcon(
-                                    name = deviceIconName,
-                                    tint = violet,
-                                    size = 20.dp
-                                )
-                            }
-                        }
                         Text(
-                            title,
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f)
+                            text = saveButtonLabel,
+                            color = if (saveButtonEnabled) violet else Color(0xFF8A8899),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
-                        if (showSaveButton) {
-                            Box(
-                                modifier = Modifier
-                                    .height(32.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (saveButtonEnabled) violet.copy(alpha = 0.14f) else Color(0xFF2A2540))
-                                    .border(1.dp, if (saveButtonEnabled) violet.copy(alpha = 0.35f) else Color(0xFF2A2540), RoundedCornerShape(8.dp))
-                                    .clickable(enabled = saveButtonEnabled, onClick = onSave)
-                                    .padding(horizontal = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(saveButtonLabel, color = if (saveButtonEnabled) violet else Color(0xFF8A8899), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        if (showEditButton) {
-                            Box(
-                                modifier = Modifier
-                                    .height(32.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(violet.copy(alpha = 0.14f))
-                                    .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                                    .clickable(onClick = onEdit)
-                                    .padding(horizontal = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("Edit", color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        if (onShare != null) {
-                            Box(
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(violet.copy(alpha = 0.14f))
-                                    .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                                    .clickable(onClick = onShare),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Filled.Share,
-                                    contentDescription = "Share",
-                                    tint = violet,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Badge(typeBadge)
-                        Badge(countBadge)
+                }
+                if (showEditButton) {
+                    Box(
+                        modifier = Modifier
+                            .height(30.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(violet.copy(alpha = 0.14f))
+                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                            .clickable(onClick = onEdit)
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Edit", color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                if (onShare != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(violet.copy(alpha = 0.14f))
+                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                            .clickable(onClick = onShare),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Share,
+                            contentDescription = "Share",
+                            tint = violet,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
             }

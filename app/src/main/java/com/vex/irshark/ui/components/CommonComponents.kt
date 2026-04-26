@@ -610,13 +610,21 @@ fun SectionNavBar(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .height(40.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(Color(0xFF0E0B1A))
                                     .border(1.dp, violet.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                                    .padding(horizontal = 10.dp),
+                                contentAlignment = Alignment.CenterStart
                             ) {
                                 if (searchQuery.isEmpty()) {
-                                    Text(searchPlaceholder, color = Color(0xFF8A8899), fontSize = 13.sp)
+                                    Text(
+                                        text = searchPlaceholder,
+                                        color = Color(0xFF8A8899),
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
                                 }
                                 inner()
                             }
@@ -643,6 +651,78 @@ fun SectionNavBar(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun RemoteControlNavBar(
+    title: String,
+    iconName: String?,
+    onHome: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val violet = MaterialTheme.colorScheme.primary
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+            .background(Color(0xFF121024))
+            .border(1.dp, violet.copy(alpha = 0.12f), RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp))
+            .padding(horizontal = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
+
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(violet.copy(alpha = 0.08f))
+                    .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!iconName.isNullOrBlank()) {
+                    CategorySvgIcon(name = iconName, tint = violet, size = 18.dp)
+                }
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0xFF13101E))
+                    .border(1.dp, violet.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = violet,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
