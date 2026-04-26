@@ -5,6 +5,7 @@ import android.hardware.ConsumerIrManager
 
 private const val RC5_CARRIER_HZ = 36000
 private const val RC5_HALF_BIT_US = 889
+private const val RC5_REPEAT_GAP_US = 88900
 
 private const val RC6_CARRIER_HZ = 36000
 private const val RC6_T_US = 444
@@ -59,7 +60,8 @@ fun transmitIrCode(context: Context, codePayload: String): Boolean {
                     encodeNec(address.value, command.value, extendedAddress = true)
                 }
                 protocol == "RC6" -> encodeRc6(address.bytes, command.bytes)
-                protocol == "RC5" || protocol == "RC5X" -> encodeRc5(address.value, command.value)
+                protocol == "RC5" -> encodeRc5(address.value, command.value, extended = false)
+                protocol == "RC5X" -> encodeRc5(address.value, command.value, extended = true)
                 else -> return false
             }
 
@@ -239,7 +241,7 @@ private fun encodeRc6(addressBytes: List<Int>, commandBytes: List<Int>): IntArra
     return halves.map { it.second }.toIntArray()
 }
 
-private fun encodeRc5(address: Int, command: Int): IntArray {
+private fun encodeRc5(address: Int, command: Int, extended: Boolean): IntArray {
     val a = address and 0x1F
     val c7 = command and 0x7F
 
@@ -250,14 +252,20 @@ private fun encodeRc5(address: Int, command: Int): IntArray {
     }
 
     val bits = mutableListOf<Int>()
-    // RC5: start1=1, start2 is inverted MSB of 7-bit command, then toggle, address(5), command(6)
+    // RC5: start1=1, start2=1, toggle, address(5), command(6)
+    // RC5X: start1=1, field bit = inverted command bit 6, toggle, address(5), command(6)
     val cMsb = (c7 shr 6) and 1
-    val start2 = if (cMsb == 1) 0 else 1
+    val start2 = if (extended) {
+        if (cMsb == 1) 0 else 1
+    } else {
+        1
+    }
     bits += 1
     bits += start2
     bits += if (toggle) 1 else 0
     for (i in 4 downTo 0) bits += ((a shr i) and 1)
-    for (i in 5 downTo 0) bits += ((c7 shr i) and 1)
+    val command6 = c7 and 0x3F
+    for (i in 5 downTo 0) bits += ((command6 shr i) and 1)
 
     val halves = mutableListOf<Pair<Boolean, Int>>()
 
@@ -281,7 +289,25 @@ private fun encodeRc5(address: Int, command: Int): IntArray {
         }
     }
 
-    return halves.map { it.second }.toIntArray()
+    val singleFrame = halves.map { it.second }.toIntArray()
+    return repeatFrame(singleFrame, RC5_REPEAT_GAP_US, repeats = 3)
+}
+
+private fun repeatFrame(frame: IntArray, gapUs: Int, repeats: Int): IntArray {
+    if (frame.isEmpty() || repeats <= 1) return frame
+
+    val out = ArrayList<Int>(frame.size * repeats + repeats)
+    repeat(repeats) { index ->
+        frame.forEach { out += it }
+        if (index != repeats - 1) {
+            if (out.size % 2 == 0) {
+                out += gapUs
+            } else {
+                out[out.lastIndex] = out.last() + gapUs
+            }
+        }
+    }
+    return out.toIntArray()
 }
 
 private fun littleEndianValue(bytes: List<Int>): Int {
