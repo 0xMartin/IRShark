@@ -628,8 +628,17 @@ fun exportRemotesToJson(remotes: List<SavedRemote>): String {
 }
 
 fun importRemotesFromJson(json: String): List<SavedRemote> {
-    return try {
-        val array = JSONArray(json)
+    return runCatching {
+        val trimmed = json.trim()
+        val array = when {
+            trimmed.startsWith("[") -> JSONArray(trimmed)
+            trimmed.startsWith("{") -> {
+                val root = JSONObject(trimmed)
+                root.optJSONArray("remotes") ?: JSONArray().apply { put(root) }
+            }
+            else -> JSONArray()
+        }
+
         (0 until array.length()).mapNotNull { i ->
             val obj = array.optJSONObject(i) ?: return@mapNotNull null
             val name = obj.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
@@ -651,7 +660,7 @@ fun importRemotesFromJson(json: String): List<SavedRemote> {
                 favorite = obj.optBoolean("favorite", false)
             )
         }
-    } catch (_: Exception) {
+    }.getOrElse {
         emptyList()
     }
 }

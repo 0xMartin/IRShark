@@ -83,6 +83,25 @@ fun saveSavedMacros(context: Context, macros: List<SavedMacro>) {
     prefs.edit().putString(KEY_MACROS, JSONArray().apply { macros.forEach { put(macroToObj(it)) } }.toString()).apply()
 }
 
+fun exportMacrosToJson(macros: List<SavedMacro>): String {
+    return JSONArray().apply { macros.forEach { put(macroToObj(it)) } }.toString(2)
+}
+
+fun importMacrosFromJson(json: String): List<SavedMacro> {
+    return runCatching {
+        val trimmed = json.trim()
+        val array = when {
+            trimmed.startsWith("[") -> JSONArray(trimmed)
+            trimmed.startsWith("{") -> {
+                val root = JSONObject(trimmed)
+                root.optJSONArray("macros") ?: JSONArray().apply { put(root) }
+            }
+            else -> JSONArray()
+        }
+        (0 until array.length()).mapNotNull { parseMacroObj(array.optJSONObject(it) ?: return@mapNotNull null) }
+    }.getOrElse { emptyList() }
+}
+
 // ── JSON serialization ────────────────────────────────────────────────────────
 
 private fun macroToObj(m: SavedMacro) = JSONObject().apply {

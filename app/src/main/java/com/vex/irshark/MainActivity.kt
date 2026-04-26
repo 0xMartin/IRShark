@@ -49,7 +49,9 @@ import com.vex.irshark.data.countProfilesForCommand
 import com.vex.irshark.data.categorySeedFromPath
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.exportRemotesToJson
+import com.vex.irshark.data.exportMacrosToJson
 import com.vex.irshark.data.importRemotesFromJson
+import com.vex.irshark.data.importMacrosFromJson
 import com.vex.irshark.data.loadAppSettings
 import com.vex.irshark.data.loadSavedMacros
 import com.vex.irshark.data.saveSavedMacros
@@ -86,6 +88,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import java.util.UUID
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -144,6 +147,15 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     val toastController = remember { AppToastController() }
     val scope = rememberCoroutineScope()
 
+    // Macros
+    var savedMacros by remember { mutableStateOf(listOf<SavedMacro>()) }
+    var macrosLoaded by remember { mutableStateOf(false) }
+    var editingMacroId by remember { mutableStateOf<String?>(null) }
+    var macrosQuery by remember { mutableStateOf("") }
+    var pendingDeleteMacroId by remember { mutableStateOf<String?>(null) }
+    val macroEngine = remember { MacroEngine(context) }
+    val macroState by macroEngine.state.collectAsState()
+
     // ── Import / Export launchers ─────────────────────────────────────────────
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -180,6 +192,74 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             }
         }
     }
+    val macroExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val json = exportMacrosToJson(savedMacros)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { stream -> stream.write(json.toByteArray()) }
+                }
+                toastController.show("Exported ${savedMacros.size} macros")
+            }
+        }
+    }
+    val macroImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val json = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { stream -> stream.readBytes().toString(Charsets.UTF_8) }
+                }
+                if (json != null) {
+                    val imported = importMacrosFromJson(json)
+                    if (imported.isEmpty()) {
+                        toastController.show("No valid macros in file")
+                    } else {
+                        val takenNames = savedMacros.map { it.name.lowercase() }.toMutableSet()
+                        val takenIds = savedMacros.map { it.id }.toMutableSet()
+                        var renamedCount = 0
+
+                        fun uniqueMacroName(baseName: String): String {
+                            val base = baseName.trim().ifBlank { "Macro" }
+                            if (base.lowercase() !in takenNames) return base
+                            var suffix = 2
+                            while ("$base $suffix".lowercase() in takenNames) {
+                                suffix += 1
+                            }
+                            return "$base $suffix"
+                        }
+
+                        val normalized = imported.map { macro ->
+                            val resolvedName = uniqueMacroName(macro.name)
+                            if (!resolvedName.equals(macro.name, ignoreCase = false)) {
+                                renamedCount += 1
+                            }
+                            takenNames += resolvedName.lowercase()
+
+                            val resolvedId = if (macro.id.isBlank() || macro.id in takenIds) {
+                                UUID.randomUUID().toString()
+                            } else {
+                                macro.id
+                            }
+                            takenIds += resolvedId
+
+                            macro.copy(id = resolvedId, name = resolvedName)
+                        }
+
+                        savedMacros = savedMacros + normalized
+                        if (renamedCount > 0) {
+                            toastController.show("Imported ${normalized.size} macros ($renamedCount renamed)")
+                        } else {
+                            toastController.show("Imported ${normalized.size} macros")
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     fun emitTxPulse(durationMs: Long = 180L) {
         txPulseJob?.cancel()
@@ -207,15 +287,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var showRemoteEditor by remember { mutableStateOf(false) }
     var editingRemoteIndex by remember { mutableStateOf<Int?>(null) }
     var pendingDeleteRemoteIndex by remember { mutableStateOf<Int?>(null) }
-
-    // Macros
-    var savedMacros by remember { mutableStateOf(listOf<SavedMacro>()) }
-    var macrosLoaded by remember { mutableStateOf(false) }
-    var editingMacroId by remember { mutableStateOf<String?>(null) }
-    var macrosQuery by remember { mutableStateOf("") }
-    var pendingDeleteMacroId by remember { mutableStateOf<String?>(null) }
-    val macroEngine = remember { MacroEngine(context) }
-    val macroState by macroEngine.state.collectAsState()
 
     // IR Finder nav state (lifted from IrFinderScreen)
     var irFinderBreadcrumb by remember { mutableStateOf<String?>(null) }
@@ -424,6 +495,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             }
                         )
                         Screen.MACROS -> listOf(
+                            Icons.Filled.Download to {
+                                macroImportLauncher.launch(arrayOf("application/json", "text/plain"))
+                            },
+                            Icons.Filled.Upload to {
+                                macroExportLauncher.launch("irshark_macros.json")
+                            },
                             Icons.Filled.Add to {
                                 editingMacroId = null
                                 screen = Screen.MACRO_EDITOR
