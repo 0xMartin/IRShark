@@ -9,6 +9,9 @@ private const val RC5_REPEAT_GAP_US = 88900
 
 private const val RC6_CARRIER_HZ = 36000
 private const val RC6_T_US = 444
+private const val SIRC_CARRIER_HZ = 40000
+private const val KASEIKYO_CARRIER_HZ = 37000
+private const val PIONEER_CARRIER_HZ = 40000
 
 private val rc6Lock = Any()
 private var rc6ToggleBit = false
@@ -56,9 +59,15 @@ fun transmitIrCode(context: Context, codePayload: String): Boolean {
             val pattern = when {
                 protocol == "NEC" -> encodeNec(address.value, command.value, extendedAddress = false)
                 protocol == "NECEXT" -> encodeNec(address.value, command.value, extendedAddress = true)
-                protocol == "SAMSUNG" || protocol == "SAMSUNG32" -> {
-                    encodeNec(address.value, command.value, extendedAddress = true)
-                }
+                protocol == "SAMSUNG" -> encodeNec(address.value, command.value, extendedAddress = true)
+                protocol == "SAMSUNG32" -> encodeSamsung32(address.value, command.value)
+                protocol == "SIRC" -> encodeSirc(address.value, command.value, totalBits = 12)
+                protocol == "SIRC15" -> encodeSirc(address.value, command.value, totalBits = 15)
+                protocol == "SIRC20" -> encodeSirc(address.value, command.value, totalBits = 20)
+                protocol == "KASEIKYO" -> encodeKaseikyo(address.bytes, command.bytes)
+                protocol == "RCA" -> encodeRca(address.value, command.value)
+                protocol == "PIONEER" -> encodePioneer(address.value, command.value)
+                protocol == "NEC42" -> encodeNec42(address.value, command.value)
                 protocol == "RC6" -> encodeRc6(address.bytes, command.bytes)
                 protocol == "RC5" -> encodeRc5(address.value, command.value, extended = false)
                 protocol == "RC5X" -> encodeRc5(address.value, command.value, extended = true)
@@ -67,6 +76,9 @@ fun transmitIrCode(context: Context, codePayload: String): Boolean {
 
             if (pattern.isNotEmpty()) {
                 val carrier = when (protocol) {
+                    "SIRC", "SIRC15", "SIRC20" -> SIRC_CARRIER_HZ
+                    "KASEIKYO" -> KASEIKYO_CARRIER_HZ
+                    "PIONEER" -> PIONEER_CARRIER_HZ
                     "RC5", "RC5X" -> RC5_CARRIER_HZ
                     "RC6" -> RC6_CARRIER_HZ
                     else -> 38000
@@ -183,6 +195,150 @@ private fun encodeNec(address: Int, command: Int, extendedAddress: Boolean): Int
         }
     }
     bits.addAll(stop.toList())
+    return bits.toIntArray()
+}
+
+private fun encodeSamsung32(address: Int, command: Int): IntArray {
+    val lead = intArrayOf(4500, 4500)
+    val one = intArrayOf(560, 1690)
+    val zero = intArrayOf(560, 560)
+    val stop = intArrayOf(560)
+    val bits = mutableListOf<Int>()
+    bits.addAll(lead.toList())
+
+    val data = listOf(
+        address and 0xFF,
+        (address shr 8) and 0xFF,
+        command and 0xFF,
+        (command shr 8) and 0xFF
+    )
+    for (byte in data) {
+        for (i in 0 until 8) {
+            bits.addAll(if (((byte shr i) and 1) == 1) one.toList() else zero.toList())
+        }
+    }
+    bits.addAll(stop.toList())
+    return bits.toIntArray()
+}
+
+private fun encodeSirc(address: Int, command: Int, totalBits: Int): IntArray {
+    val bits = mutableListOf<Int>()
+    val leader = intArrayOf(2400, 600)
+    val one = intArrayOf(1200, 600)
+    val zero = intArrayOf(600, 600)
+
+    val frameBits = mutableListOf<Int>()
+    for (i in 0 until 7) frameBits += (command shr i) and 1
+    when (totalBits) {
+        12 -> for (i in 0 until 5) frameBits += (address shr i) and 1
+        15 -> for (i in 0 until 8) frameBits += (address shr i) and 1
+        20 -> for (i in 0 until 13) frameBits += (address shr i) and 1
+        else -> return intArrayOf()
+    }
+
+    bits.addAll(leader.toList())
+    for (bit in frameBits) bits.addAll(if (bit == 1) one.toList() else zero.toList())
+    return repeatFrame(bits.toIntArray(), gapUs = 45000, repeats = 3)
+}
+
+private fun encodeKaseikyo(addressBytes: List<Int>, commandBytes: List<Int>): IntArray {
+    val payload = (addressBytes.take(4) + commandBytes.take(2)).let {
+        if (it.size >= 6) it else it + List(6 - it.size) { 0 }
+    }
+    return encodePulseDistanceBytes(
+        bytes = payload,
+        headerMarkUs = 3456,
+        headerSpaceUs = 1728,
+        bitMarkUs = 432,
+        zeroSpaceUs = 432,
+        oneSpaceUs = 1296,
+        trailerMarkUs = 432,
+        lsbFirst = true
+    )
+}
+
+private fun encodeRca(address: Int, command: Int): IntArray {
+    val payload = listOf(
+        address and 0xFF,
+        command and 0xFF,
+        (command and 0xFF).inv() and 0xFF
+    )
+    return encodePulseDistanceBytes(
+        bytes = payload,
+        headerMarkUs = 4000,
+        headerSpaceUs = 4000,
+        bitMarkUs = 500,
+        zeroSpaceUs = 1000,
+        oneSpaceUs = 2000,
+        trailerMarkUs = 500,
+        lsbFirst = true
+    )
+}
+
+private fun encodePioneer(address: Int, command: Int): IntArray {
+    val frame = encodePulseDistanceBytes(
+        bytes = listOf(
+            address and 0xFF,
+            (address and 0xFF).inv() and 0xFF,
+            command and 0xFF,
+            (command and 0xFF).inv() and 0xFF
+        ),
+        headerMarkUs = 8500,
+        headerSpaceUs = 4250,
+        bitMarkUs = 530,
+        zeroSpaceUs = 530,
+        oneSpaceUs = 1590,
+        trailerMarkUs = 530,
+        lsbFirst = true
+    )
+    return repeatFrame(frame, gapUs = 25000, repeats = 2)
+}
+
+private fun encodeNec42(address: Int, command: Int): IntArray {
+    val bits = mutableListOf<Int>()
+    bits += 9000
+    bits += 4500
+
+    fun appendBit(bit: Int) {
+        bits += 560
+        bits += if (bit == 1) 1690 else 560
+    }
+
+    val addr13 = address and 0x1FFF
+    val invAddr13 = addr13.inv() and 0x1FFF
+    val cmd8 = command and 0xFF
+    val invCmd8 = cmd8.inv() and 0xFF
+
+    for (i in 0 until 13) appendBit((addr13 shr i) and 1)
+    for (i in 0 until 13) appendBit((invAddr13 shr i) and 1)
+    for (i in 0 until 8) appendBit((cmd8 shr i) and 1)
+    for (i in 0 until 8) appendBit((invCmd8 shr i) and 1)
+    bits += 560
+    return bits.toIntArray()
+}
+
+private fun encodePulseDistanceBytes(
+    bytes: List<Int>,
+    headerMarkUs: Int,
+    headerSpaceUs: Int,
+    bitMarkUs: Int,
+    zeroSpaceUs: Int,
+    oneSpaceUs: Int,
+    trailerMarkUs: Int,
+    lsbFirst: Boolean
+): IntArray {
+    val bits = mutableListOf<Int>()
+    bits += headerMarkUs
+    bits += headerSpaceUs
+    for (byte in bytes) {
+        val range = if (lsbFirst) 0 until 8 else 7 downTo 0
+        for (i in range) {
+            val bit = (byte shr i) and 1
+            bits += bitMarkUs
+            bits += if (bit == 1) oneSpaceUs else zeroSpaceUs
+        }
+    }
+    bits += trailerMarkUs
     return bits.toIntArray()
 }
 
