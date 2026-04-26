@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +42,8 @@ fun MacroListScreen(
     macros:   List<SavedMacro>,
     onPlay:   (SavedMacro) -> Unit,
     onEdit:   (SavedMacro) -> Unit,
-    onDelete: (SavedMacro) -> Unit
+    onDelete: (SavedMacro) -> Unit,
+    onShare:  (SavedMacro) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         if (macros.isEmpty()) {
@@ -52,7 +54,13 @@ fun MacroListScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(macros) { macro ->
-                    MacroRow(macro = macro, onPlay = onPlay, onEdit = onEdit, onDelete = onDelete)
+                    MacroRow(
+                        macro = macro,
+                        onPlay = onPlay,
+                        onEdit = onEdit,
+                        onDelete = onDelete,
+                        onShare = onShare
+                    )
                 }
             }
         }
@@ -64,7 +72,8 @@ private fun MacroRow(
     macro:    SavedMacro,
     onPlay:   (SavedMacro) -> Unit,
     onEdit:   (SavedMacro) -> Unit,
-    onDelete: (SavedMacro) -> Unit
+    onDelete: (SavedMacro) -> Unit,
+    onShare:  (SavedMacro) -> Unit
 ) {
     val violet   = MaterialTheme.colorScheme.primary
     val blockCount = remember(macro.blocklyXml) {
@@ -99,6 +108,10 @@ private fun MacroRow(
             // Edit button
             MacroActionBox(icon = Icons.Filled.Edit, tint = violet,
                 bg = violet.copy(alpha = 0.18f), border = violet) { onEdit(macro) }
+
+            // Share button
+            MacroActionBox(icon = Icons.Filled.Share, tint = Color(0xFFB699FF),
+                bg = Color(0x22181624), border = Color.White.copy(alpha = 0.18f)) { onShare(macro) }
 
             // Delete button
             MacroActionBox(icon = Icons.Filled.Delete, tint = Color(0xFFFF7B9D),

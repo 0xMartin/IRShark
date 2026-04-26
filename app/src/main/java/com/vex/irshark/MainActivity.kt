@@ -1,5 +1,6 @@
 package com.vex.irshark
 
+import android.content.ClipData
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -41,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.vex.irshark.data.FlipperDbIndex
 import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.SavedRemoteButton
@@ -88,6 +90,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import java.io.File
 import java.util.UUID
 import kotlin.math.roundToInt
 
@@ -155,6 +158,33 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var pendingDeleteMacroId by remember { mutableStateOf<String?>(null) }
     val macroEngine = remember { MacroEngine(context) }
     val macroState by macroEngine.state.collectAsState()
+
+    fun shareJsonFile(fileStem: String, subject: String, chooserTitle: String, json: String) {
+        scope.launch {
+            runCatching {
+                val uri = withContext(Dispatchers.IO) {
+                    val safeStem = fileStem
+                        .trim()
+                        .ifBlank { "irshark_export" }
+                        .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                    val file = File(context.cacheDir, "${safeStem}_${System.currentTimeMillis()}.json")
+                    file.writeText(json, Charsets.UTF_8)
+                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                }
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = ClipData.newRawUri("IRShark JSON", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, chooserTitle))
+            }.onFailure {
+                toastController.show("Failed to prepare share file")
+            }
+        }
+    }
 
     // ── Import / Export launchers ─────────────────────────────────────────────
     val exportLauncher = rememberLauncherForActivityResult(
@@ -807,12 +837,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 {
                                     val remote = savedRemotes[controlRemoteIndex]
                                     val json = exportRemotesToJson(listOf(remote))
-                                    val intent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "IRShark Remote: ${remote.name}")
-                                        putExtra(Intent.EXTRA_TEXT, json)
-                                    }
-                                    context.startActivity(Intent.createChooser(intent, "Share \"${remote.name}\""))
+                                    shareJsonFile(
+                                        fileStem = "remote_${remote.name}",
+                                        subject = "IRShark Remote: ${remote.name}",
+                                        chooserTitle = "Share \"${remote.name}\"",
+                                        json = json
+                                    )
                                 }
                             } else null
                         )
@@ -868,7 +898,16 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 editingMacroId = macro.id
                                 screen = Screen.MACRO_EDITOR
                             },
-                            onDelete = { macro -> pendingDeleteMacroId = macro.id }
+                            onDelete = { macro -> pendingDeleteMacroId = macro.id },
+                            onShare = { macro ->
+                                val json = exportMacrosToJson(listOf(macro))
+                                shareJsonFile(
+                                    fileStem = "macro_${macro.name}",
+                                    subject = "IRShark Macro: ${macro.name}",
+                                    chooserTitle = "Share \"${macro.name}\"",
+                                    json = json
+                                )
+                            }
                         )
                     }
 
