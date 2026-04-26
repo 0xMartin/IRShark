@@ -5,11 +5,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 private const val DB_ROOT = "flipper_irdb"
 private const val PREFS_NAME = "irshark_prefs"
 private const val KEY_SAVED_REMOTES = "saved_remotes"
 private const val REMOTE_DELIMITER = "||"
+private const val DB_INDEX_CACHE_FILE = "db_index_cache_v1.json"
+private const val DB_INDEX_CACHE_VERSION = 1
 
 data class FlipperDbIndex(
     val totalProfiles: Int = 0,
@@ -87,6 +90,19 @@ suspend fun loadFlipperDbIndex(
     return withContext(Dispatchers.IO) {
         runCatching {
             val lintConfig = parseLintConfig(context)
+
+            loadDbIndexCache(context)?.let { cached ->
+                if (onProgress != null) {
+                    withContext(Dispatchers.Main) {
+                        onProgress(DbLoadProgress(loadedFiles = cached.totalProfiles, totalFiles = cached.totalProfiles))
+                    }
+                }
+                return@runCatching cached.copy(
+                    lintConfig = lintConfig,
+                    status = "Loaded ${cached.totalProfiles} profiles (cached)"
+                )
+            }
+
             val folders = mutableMapOf<String, MutableList<String>>()
             val profilesByFolder = mutableMapOf<String, MutableList<FlipperProfile>>()
             val allProfiles = mutableListOf<FlipperProfile>()
@@ -117,7 +133,7 @@ suspend fun loadFlipperDbIndex(
                         profilesByFolder[path]?.add(profile)
                         allProfiles += profile
                         loadedFiles += 1
-                        if (onProgress != null) {
+                        if (onProgress != null && (loadedFiles == totalFiles || loadedFiles % 20 == 0)) {
                             withContext(Dispatchers.Main) {
                                 onProgress(DbLoadProgress(loadedFiles = loadedFiles, totalFiles = totalFiles))
                             }
@@ -134,7 +150,7 @@ suspend fun loadFlipperDbIndex(
 
             walk(DB_ROOT)
 
-            FlipperDbIndex(
+            val freshIndex = FlipperDbIndex(
                 totalProfiles = allProfiles.size,
                 folders = folders,
                 profilesByFolder = profilesByFolder,
@@ -142,6 +158,9 @@ suspend fun loadFlipperDbIndex(
                 lintConfig = lintConfig,
                 status = "Loaded ${allProfiles.size} profiles"
             )
+
+            saveDbIndexCache(context, freshIndex)
+            freshIndex
         }.getOrElse {
             FlipperDbIndex(status = "Flipper-IRDB unavailable")
         }
@@ -489,6 +508,97 @@ private fun countIrFiles(context: Context, path: String): Int {
         }
     }
     return count
+}
+
+private fun saveDbIndexCache(context: Context, index: FlipperDbIndex) {
+    runCatching {
+        val file = File(context.filesDir, DB_INDEX_CACHE_FILE)
+        val root = JSONObject().apply {
+            put("version", DB_INDEX_CACHE_VERSION)
+            put("totalProfiles", index.totalProfiles)
+
+            val foldersObj = JSONObject()
+            index.folders.forEach { (path, children) ->
+                val arr = JSONArray()
+                children.forEach { arr.put(it) }
+                foldersObj.put(path, arr)
+            }
+            put("folders", foldersObj)
+
+            val profilesArr = JSONArray()
+            index.profiles.forEach { profile ->
+                val cmdArr = JSONArray()
+                profile.commands.forEach { cmdArr.put(it) }
+                profilesArr.put(
+                    JSONObject().apply {
+                        put("path", profile.path)
+                        put("parentPath", profile.parentPath)
+                        put("name", profile.name)
+                        put("commands", cmdArr)
+                    }
+                )
+            }
+            put("profiles", profilesArr)
+        }
+        file.writeText(root.toString(), Charsets.UTF_8)
+    }
+}
+
+private fun loadDbIndexCache(context: Context): FlipperDbIndex? {
+    return runCatching {
+        val file = File(context.filesDir, DB_INDEX_CACHE_FILE)
+        if (!file.exists()) return null
+        val raw = file.readText(Charsets.UTF_8)
+        val root = JSONObject(raw)
+        if (root.optInt("version", 0) != DB_INDEX_CACHE_VERSION) return null
+
+        val folders = mutableMapOf<String, List<String>>()
+        val foldersObj = root.optJSONObject("folders") ?: JSONObject()
+        foldersObj.keys().forEach { key ->
+            val arr = foldersObj.optJSONArray(key) ?: JSONArray()
+            val children = buildList {
+                for (i in 0 until arr.length()) {
+                    val item = arr.optString(i).trim()
+                    if (item.isNotBlank()) add(item)
+                }
+            }
+            folders[key] = children
+        }
+
+        val profiles = mutableListOf<FlipperProfile>()
+        val profilesArr = root.optJSONArray("profiles") ?: JSONArray()
+        for (i in 0 until profilesArr.length()) {
+            val obj = profilesArr.optJSONObject(i) ?: continue
+            val path = obj.optString("path").trim()
+            val parentPath = obj.optString("parentPath").trim()
+            val name = obj.optString("name").trim()
+            if (path.isBlank() || parentPath.isBlank() || name.isBlank()) continue
+            val cmdArr = obj.optJSONArray("commands") ?: JSONArray()
+            val commands = buildList {
+                for (j in 0 until cmdArr.length()) {
+                    val cmd = cmdArr.optString(j).trim()
+                    if (cmd.isNotBlank()) add(cmd)
+                }
+            }
+            profiles += FlipperProfile(
+                path = path,
+                parentPath = parentPath,
+                name = name,
+                commands = commands
+            )
+        }
+
+        if (profiles.isEmpty()) return null
+
+        val profilesByFolder = profiles.groupBy { it.parentPath }
+        FlipperDbIndex(
+            totalProfiles = root.optInt("totalProfiles", profiles.size),
+            folders = folders,
+            profilesByFolder = profilesByFolder,
+            profiles = profiles,
+            status = "Loaded ${profiles.size} profiles (cached)"
+        )
+    }.getOrNull()
 }
 
 private fun parseLintConfig(context: Context): FlipperLintConfig {

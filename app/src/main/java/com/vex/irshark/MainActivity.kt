@@ -91,6 +91,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 import kotlin.math.roundToInt
@@ -189,6 +191,21 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
+    fun countImportEntries(json: String, wrapperKey: String): Int {
+        val trimmed = json.trim()
+        if (trimmed.isBlank()) return 0
+        return runCatching {
+            when {
+                trimmed.startsWith("[") -> JSONArray(trimmed).length()
+                trimmed.startsWith("{") -> {
+                    val root = JSONObject(trimmed)
+                    root.optJSONArray(wrapperKey)?.length() ?: 1
+                }
+                else -> 0
+            }
+        }.getOrDefault(0)
+    }
+
     // ── Import / Export launchers ─────────────────────────────────────────────
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -213,13 +230,21 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 }
                 if (json != null) {
                     val imported = importRemotesFromJson(json)
-                    if (imported.isEmpty()) {
-                        toastController.show("No valid remotes in file")
-                    } else {
-                        val existingNames = savedRemotes.map { it.name.lowercase() }.toSet()
-                        val newOnes = imported.filter { it.name.lowercase() !in existingNames }
+                    val totalEntries = countImportEntries(json, "remotes")
+                    val invalidEntries = (totalEntries - imported.size).coerceAtLeast(0)
+                    val existingNames = savedRemotes.map { it.name.lowercase() }.toSet()
+                    val newOnes = imported.filter { it.name.lowercase() !in existingNames }
+                    val duplicateEntries = imported.size - newOnes.size
+
+                    if (newOnes.isNotEmpty()) {
                         savedRemotes = savedRemotes + newOnes
-                        toastController.show("Imported ${newOnes.size} remotes (${imported.size - newOnes.size} skipped)")
+                    }
+
+                    val health = "Remote import: +${newOnes.size}, dup $duplicateEntries, invalid $invalidEntries"
+                    if (newOnes.isEmpty()) {
+                        toastController.show("No remotes imported. $health")
+                    } else {
+                        toastController.show(health)
                     }
                 }
             }
@@ -248,12 +273,15 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 }
                 if (json != null) {
                     val imported = importMacrosFromJson(json)
+                    val totalEntries = countImportEntries(json, "macros")
+                    val invalidEntries = (totalEntries - imported.size).coerceAtLeast(0)
                     if (imported.isEmpty()) {
-                        toastController.show("No valid macros in file")
+                        toastController.show("No valid macros in file (invalid $invalidEntries)")
                     } else {
                         val takenNames = savedMacros.map { it.name.lowercase() }.toMutableSet()
                         val takenIds = savedMacros.map { it.id }.toMutableSet()
                         var renamedCount = 0
+                        var regeneratedIdCount = 0
 
                         fun uniqueMacroName(baseName: String): String {
                             val base = baseName.trim().ifBlank { "Macro" }
@@ -273,6 +301,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             takenNames += resolvedName.lowercase()
 
                             val resolvedId = if (macro.id.isBlank() || macro.id in takenIds) {
+                                regeneratedIdCount += 1
                                 UUID.randomUUID().toString()
                             } else {
                                 macro.id
@@ -283,11 +312,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         }
 
                         savedMacros = savedMacros + normalized
-                        if (renamedCount > 0) {
-                            toastController.show("Imported ${normalized.size} macros ($renamedCount renamed)")
-                        } else {
-                            toastController.show("Imported ${normalized.size} macros")
-                        }
+                        toastController.show(
+                            "Macro import: +${normalized.size}, renamed $renamedCount, invalid $invalidEntries, id-fix $regeneratedIdCount"
+                        )
                     }
                 }
             }

@@ -276,25 +276,6 @@ fun IrFinderScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         when (step) {
         FinderStep.PickCategory -> Column(modifier = Modifier.fillMaxSize()) {
-            if (lastTested != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(violet.copy(alpha = 0.08f))
-                        .border(1.dp, violet.copy(alpha = 0.22f), RoundedCornerShape(10.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text("Last session:", color = Color(0xFF8A8899), fontSize = 11.sp)
-                        Text(lastTested, color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-            }
             PickStep(
                 modifier = Modifier.weight(1f),
                 question = "What type of device?",
