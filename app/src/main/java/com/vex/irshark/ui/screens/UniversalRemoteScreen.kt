@@ -59,6 +59,7 @@ import com.vex.irshark.data.resolveUniversalCommandsForPath
 import com.vex.irshark.ui.components.AutoSendProgressModal
 import com.vex.irshark.ui.components.EmptyCard
 import com.vex.irshark.ui.components.FolderButton
+import com.vex.irshark.ui.components.RemoteCommandButton
 import com.vex.irshark.ui.components.UniversalRemoteHeader
 import kotlin.math.roundToInt
 
@@ -189,59 +190,18 @@ fun UniversalRemoteScreen(
                         ) {
                             row.forEach { item ->
                                 val isFlashed = flashedCommand == item.actualCommand
-                                val stripeColor = if (isFlashed) Color(0xFF4CAF50) else violet.copy(alpha = 0.7f)
-                                Box(
+                                RemoteCommandButton(
+                                    label = item.displayLabel,
+                                    countLabel = "x${item.profileCoverage}",
+                                    isActive = isFlashed,
+                                    onClick = {
+                                        flashedCommand = item.actualCommand
+                                        scope.launch { delay(220); flashedCommand = null }
+                                        onCommandClick(item)
+                                    },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(64.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(
-                                            brush = Brush.verticalGradient(
-                                                colors = listOf(Color(0xFF181327), Color(0xFF0F0D1A))
-                                            )
-                                        )
-                                        .border(
-                                            1.dp,
-                                            violet.copy(alpha = 0.22f),
-                                            RoundedCornerShape(16.dp)
-                                        )
-                                        .clickable {
-                                            flashedCommand = item.actualCommand
-                                            scope.launch { delay(220); flashedCommand = null }
-                                            onCommandClick(item)
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.Top
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(width = 22.dp, height = 4.dp)
-                                                .clip(RoundedCornerShape(999.dp))
-                                                .background(stripeColor)
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Column {
-                                            Text(
-                                                text = item.displayLabel,
-                                                color = Color.White,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1
-                                            )
-                                            if (item.profileCoverage > 1) {
-                                                Text(
-                                                    text = "${item.profileCoverage}x",
-                                                    color = Color(0xFF8A8899),
-                                                    fontSize = 10.sp,
-                                                    lineHeight = 10.sp
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                                )
                             }
                             repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                         }

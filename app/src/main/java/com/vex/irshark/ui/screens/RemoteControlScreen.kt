@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vex.irshark.ui.components.BackIconButton
 import com.vex.irshark.ui.components.Badge
+import com.vex.irshark.ui.components.RemoteCommandButton
 
 @Composable
 fun RemoteControlScreen(
@@ -126,47 +126,18 @@ fun RemoteControlScreen(
             ) {
                 row.forEach { cmd ->
                     val isFlashed = flashedCommand == cmd
-                    val stripeColor = if (isFlashed) Color(0xFF4CAF50) else violet.copy(alpha = 0.7f)
-                    Box(
+                    RemoteCommandButton(
+                        label = cmd,
+                        countLabel = "x1",
+                        isActive = isFlashed,
+                        onClick = {
+                            flashedCommand = cmd
+                            scope.launch { delay(220); flashedCommand = null }
+                            onCommandClick(cmd)
+                        },
                         modifier = Modifier
                             .weight(1f)
-                            .height(62.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(Color(0xFF181327), Color(0xFF0F0D1A))
-                                )
-                            )
-                            .border(
-                                1.dp,
-                                violet.copy(alpha = 0.22f),
-                                RoundedCornerShape(16.dp)
-                            )
-                            .clickable {
-                                flashedCommand = cmd
-                                scope.launch { delay(220); flashedCommand = null }
-                                onCommandClick(cmd)
-                            }
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 22.dp, height = 4.dp)
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(stripeColor)
-                            )
-                            Text(
-                                text = cmd,
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
+                    )
                 }
                 repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
             }

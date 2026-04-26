@@ -45,8 +45,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -153,6 +155,71 @@ fun EmptyCard(message: String) {
             .padding(12.dp)
     ) {
         Text(message, color = Color(0xFF8A8899), fontSize = 11.sp)
+    }
+}
+
+// ── Shared remote command button (Universal + Remote Control) ───────────────
+
+@Composable
+fun RemoteCommandButton(
+    label: String,
+    countLabel: String,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val violet = MaterialTheme.colorScheme.primary
+    val stripeColor = if (isActive) Color(0xFF4CAF50) else violet.copy(alpha = 0.7f)
+
+    Box(
+        modifier = modifier
+            .height(72.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0xFF181327), Color(0xFF0F0D1A))
+                )
+            )
+            .border(
+                1.dp,
+                violet.copy(alpha = 0.22f),
+                RoundedCornerShape(16.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 22.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(stripeColor)
+            )
+
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+
+            Text(
+                text = countLabel,
+                color = Color(0xFF8A8899),
+                fontSize = 10.sp,
+                lineHeight = 10.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 1
+            )
+        }
     }
 }
 
