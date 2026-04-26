@@ -246,14 +246,16 @@ fun RemoteCommandButton(
                 modifier = Modifier.weight(1f)
             )
 
-            Text(
-                text = countLabel,
-                color = Color(0xFF8A8899),
-                fontSize = 10.sp,
-                lineHeight = 10.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 1
-            )
+            if (countLabel.isNotBlank()) {
+                Text(
+                    text = countLabel,
+                    color = Color(0xFF8A8899),
+                    fontSize = 10.sp,
+                    lineHeight = 10.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+            }
         }
     }
 }
@@ -470,11 +472,12 @@ private fun TxLedIndicator(active: Boolean, fastBlink: Boolean) {
 @Composable
 fun Badge(text: String, modifier: Modifier = Modifier) {
     val violet = MaterialTheme.colorScheme.primary
+    val pillShape = RoundedCornerShape(50)
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(pillShape)
             .background(violet.copy(alpha = 0.15f))
-            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+            .border(1.dp, violet.copy(alpha = 0.35f), pillShape)
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Text(
