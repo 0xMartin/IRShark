@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -138,20 +139,24 @@ fun RemoteEditorDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight()
-                .heightIn(max = 640.dp)
+                .fillMaxHeight(0.92f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF121024))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // --- Fixed header ---
                 Text("Remote Editor", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // --- Scrollable content ---
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
 
                 OutlinedTextField(
                     value = remoteName,
@@ -319,7 +324,10 @@ fun RemoteEditorDialog(
                     Spacer(modifier = Modifier.size(6.dp))
                     Text("Add button", color = Color(0xFFE4D7FF))
                 }
+                } // end scrollable content column
 
+                // --- Fixed footer — always visible ---
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -332,7 +340,7 @@ fun RemoteEditorDialog(
                         }
                     ) { Text("Save") }
                 }
-            }
+            } // end outer column
         }
     }
 }
