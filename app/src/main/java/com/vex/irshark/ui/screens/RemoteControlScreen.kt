@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -55,11 +56,7 @@ fun RemoteControlScreen(
     var flashedCommand by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         // Top navigation row
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp))
@@ -115,35 +112,41 @@ fun RemoteControlScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        Text("Controls", color = violet, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Command buttons grid
-        commands.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                row.forEach { cmd ->
-                    val isFlashed = flashedCommand == cmd
-                    RemoteCommandButton(
-                        label = cmd,
-                        countLabel = "x1",
-                        isActive = isFlashed,
-                        onClick = {
-                            flashedCommand = cmd
-                            scope.launch { delay(220); flashedCommand = null }
-                            onCommandClick(cmd)
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                    )
-                }
-                repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
-            }
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Text("Controls", color = violet, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(modifier = Modifier.height(8.dp))
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            // Command buttons grid
+            commands.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    row.forEach { cmd ->
+                        val isFlashed = flashedCommand == cmd
+                        RemoteCommandButton(
+                            label = cmd,
+                            countLabel = "x1",
+                            isActive = isFlashed,
+                            onClick = {
+                                flashedCommand = cmd
+                                scope.launch { delay(220); flashedCommand = null }
+                                onCommandClick(cmd)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                        )
+                    }
+                    repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 }
