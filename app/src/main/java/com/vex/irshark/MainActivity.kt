@@ -821,6 +821,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         }
                         val countBadge = "${commands.size} buttons"
 
+                        val isRemoteAlreadyAdded = controlSource == ControlSource.REMOTE_DB && profilePath.isNotBlank() && savedRemotes.any { it.sourceProfilePath == profilePath }
+                        
                         RemoteControlScreen(
                             title = title,
                             deviceIconName = (activeSavedRemote?.sourceProfilePath
@@ -870,6 +872,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             },
                             showSaveButton = controlSource == ControlSource.REMOTE_DB,
                             showEditButton = controlSource == ControlSource.MY_REMOTES,
+                            saveButtonLabel = if (isRemoteAlreadyAdded) "Added" else "Add",
+                            saveButtonEnabled = !isRemoteAlreadyAdded,
                             onShare = if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
                                 {
                                     val remote = savedRemotes[controlRemoteIndex]

@@ -68,7 +68,9 @@ fun RemoteControlScreen(
     showSaveButton: Boolean,
     showEditButton: Boolean,
     hapticEnabled: Boolean = true,
-    onShare: (() -> Unit)? = null
+    onShare: (() -> Unit)? = null,
+    saveButtonLabel: String = "Add",
+    saveButtonEnabled: Boolean = true
 ) {
     val violet = MaterialTheme.colorScheme.primary
     var flashedCommand by remember { mutableStateOf<String?>(null) }
@@ -146,13 +148,13 @@ fun RemoteControlScreen(
                                 modifier = Modifier
                                     .height(32.dp)
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(violet.copy(alpha = 0.14f))
-                                    .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                                    .clickable(onClick = onSave)
+                                    .background(if (saveButtonEnabled) violet.copy(alpha = 0.14f) else Color(0xFF2A2540))
+                                    .border(1.dp, if (saveButtonEnabled) violet.copy(alpha = 0.35f) else Color(0xFF2A2540), RoundedCornerShape(8.dp))
+                                    .clickable(enabled = saveButtonEnabled, onClick = onSave)
                                     .padding(horizontal = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("Add", color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                Text(saveButtonLabel, color = if (saveButtonEnabled) violet else Color(0xFF8A8899), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                         if (showEditButton) {

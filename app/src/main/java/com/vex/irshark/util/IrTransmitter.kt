@@ -21,11 +21,16 @@ private var rc5ToggleBit = false
 /**
  * Extracts the protocol name from a payload string.
  * Payload format: "protocol=RC6; address=...; command=..." etc.
- * Returns the protocol name (e.g., "RC6", "NEC") or null if not found.
+ * Returns the protocol name (e.g., "RC6", "NEC") or "RAW" for raw format, or null if not found.
  */
 fun extractProtocolFromPayload(payload: String): String? {
-    val match = Regex("""protocol\s*=\s*(\S+)""", RegexOption.IGNORE_CASE).find(payload)
-    return match?.groupValues?.get(1)?.uppercase()
+    val trimmed = payload.trim()
+    // Check if it's a raw payload (space-separated integers)
+    val isRaw = trimmed.split(Regex("\\s+")).all { it.toIntOrNull() != null }
+    if (isRaw) return "RAW"
+    
+    val match = Regex("""protocol\s*=\s*([^;\s]+)""", RegexOption.IGNORE_CASE).find(payload)
+    return match?.groupValues?.get(1)?.uppercase()?.trim(';')
 }
 
 /**
