@@ -337,6 +337,7 @@ private fun defaultParams(type: MacroBlockType): BlockParams = when (type) {
     MacroBlockType.IF_ELSE      -> BlockParams.IfElse()
     MacroBlockType.VIBRATE      -> BlockParams.Vibrate()
     MacroBlockType.REPEAT       -> BlockParams.Repeat()
+    MacroBlockType.SWITCH       -> BlockParams.Switch()
     else                        -> BlockParams.None
 }
 
@@ -362,6 +363,8 @@ private fun NodeParamDialog(
     var ifMsg    by remember { mutableStateOf((node.params as? BlockParams.IfElse)?.message ?: "Continue?") }
     var vibrateMs by remember { mutableStateOf(((node.params as? BlockParams.Vibrate)?.durationMs ?: 500L).toString()) }
     var repeatCount by remember { mutableStateOf(((node.params as? BlockParams.Repeat)?.count ?: 3).toString()) }
+    var switchMsg     by remember { mutableStateOf((node.params as? BlockParams.Switch)?.message ?: "Choose an option") }
+    var switchOptions by remember { mutableStateOf((node.params as? BlockParams.Switch)?.options ?: listOf("Option 1", "Option 2")) }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -427,7 +430,40 @@ private fun NodeParamDialog(
                     OutlinedTextField(value = repeatCount, onValueChange = { repeatCount = it },
                         label = { Text("Count") }, modifier = Modifier.fillMaxWidth(),
                         singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    Text("Repeats the connected downstream chain N times.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                    Text("Repeats the BODY branch N times, then continues via OUT pin.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                }
+                MacroBlockType.SWITCH -> {
+                    OutlinedTextField(value = switchMsg, onValueChange = { switchMsg = it },
+                        label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Options (max 10) — each becomes an output pin:", color = Color(0xFF8A8899), fontSize = 11.sp)
+                    switchOptions.forEachIndexed { i, opt ->
+                        Row(
+                            modifier          = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            OutlinedTextField(
+                                value         = opt,
+                                onValueChange = { newVal ->
+                                    switchOptions = switchOptions.toMutableList().also { it[i] = newVal }
+                                },
+                                modifier      = Modifier.weight(1f),
+                                singleLine    = true,
+                                label         = { Text("Option ${i + 1}") }
+                            )
+                            TextButton(
+                                onClick  = { if (switchOptions.size > 1) switchOptions = switchOptions.toMutableList().also { it.removeAt(i) } },
+                                enabled  = switchOptions.size > 1
+                            ) { Text("−", color = Color(0xFFFF7B9D)) }
+                        }
+                    }
+                    if (switchOptions.size < 10) {
+                        TextButton(onClick = { switchOptions = switchOptions + "Option ${switchOptions.size + 1}" }) {
+                            Text("+ Add option")
+                        }
+                    }
+                    Text("A \"default / else\" output pin is always added automatically.", color = Color(0xFF8A8899), fontSize = 10.sp)
                 }
                 MacroBlockType.END -> {
                     Text("Terminates the macro immediately.", color = Color(0xFF8A8899), fontSize = 12.sp)
@@ -450,6 +486,10 @@ private fun NodeParamDialog(
                         MacroBlockType.IF_ELSE      -> BlockParams.IfElse(ifMsg.ifBlank { "Continue?" })
                         MacroBlockType.VIBRATE      -> BlockParams.Vibrate(vibrateMs.toLongOrNull()?.coerceIn(1L, 5000L) ?: 500L)
                         MacroBlockType.REPEAT       -> BlockParams.Repeat(repeatCount.toIntOrNull()?.coerceIn(1, 999) ?: 3)
+                        MacroBlockType.SWITCH       -> BlockParams.Switch(
+                            message = switchMsg.ifBlank { "Choose an option" },
+                            options = switchOptions.filter { it.isNotBlank() }.take(10).ifEmpty { listOf("Option 1") }
+                        )
                         MacroBlockType.IR_SEND, MacroBlockType.END, MacroBlockType.START -> node.params
                     }
                     onSave(params)

@@ -34,6 +34,14 @@ sealed class MacroStep {
     /** Vibrate the device for N milliseconds. */
     data class Vibrate(val durationMs: Long) : MacroStep()
 
+    /** Ask the user to pick one of N labeled options; runs the matching branch. */
+    data class Switch(
+        val message: String,
+        val options: List<String>,
+        val branches: List<List<MacroStep>>,  // one list per option
+        val defaultBranch: List<MacroStep>
+    ) : MacroStep()
+
     /** Ask the user Yes/No and run the appropriate branch. */
     data class IfConfirm(
         val message: String,
@@ -100,6 +108,13 @@ private fun stepToObj(s: MacroStep): JSONObject = JSONObject().apply {
         is MacroStep.RepeatBlock -> { put("type", "repeat"); put("count", s.count); put("steps", stepsToArr(s.steps)) }
         is MacroStep.LoopUntilStop -> { put("type", "loop_until_stop"); put("steps", stepsToArr(s.steps)) }
         is MacroStep.Vibrate       -> { put("type", "vibrate"); put("durationMs", s.durationMs) }
+        is MacroStep.Switch        -> {
+            put("type", "switch")
+            put("message", s.message)
+            put("options", JSONArray(s.options))
+            put("branches", JSONArray().apply { s.branches.forEach { put(stepsToArr(it)) } })
+            put("defaultBranch", stepsToArr(s.defaultBranch))
+        }
         is MacroStep.IfConfirm -> {
             put("type", "if_confirm"); put("message", s.message)
             put("yesSteps", stepsToArr(s.yesSteps)); put("noSteps", stepsToArr(s.noSteps))
@@ -138,6 +153,14 @@ private fun parseStepObj(o: JSONObject): MacroStep? = when (o.optString("type"))
     "repeat"        -> MacroStep.RepeatBlock(o.optInt("count", 1), parseStepsArr(o.optJSONArray("steps") ?: JSONArray()))
     "loop_until_stop" -> MacroStep.LoopUntilStop(parseStepsArr(o.optJSONArray("steps") ?: JSONArray()))
     "vibrate"         -> MacroStep.Vibrate(o.optLong("durationMs", 500L))
+    "switch"          -> {
+        val optsArr = o.optJSONArray("options") ?: JSONArray()
+        val options  = (0 until optsArr.length()).map { optsArr.optString(it) }
+        val brArr    = o.optJSONArray("branches") ?: JSONArray()
+        val branches = (0 until brArr.length()).map { parseStepsArr(brArr.optJSONArray(it) ?: JSONArray()) }
+        MacroStep.Switch(o.optString("message", "Choose"), options, branches,
+            parseStepsArr(o.optJSONArray("defaultBranch") ?: JSONArray()))
+    }
     "if_confirm"    -> MacroStep.IfConfirm(
         message  = o.optString("message", "Continue?"),
         yesSteps = parseStepsArr(o.optJSONArray("yesSteps") ?: JSONArray()),
@@ -150,9 +173,10 @@ private fun parseStepObj(o: JSONObject): MacroStep? = when (o.optString("type"))
 /** Flat step count (used for progress display; loops counted as 1). */
 fun countMacroSteps(steps: List<MacroStep>): Int = steps.sumOf {
     when (it) {
-        is MacroStep.RepeatBlock   -> 1 + countMacroSteps(it.steps)
+        is MacroStep.RepeatBlock   -> it.count * countMacroSteps(it.steps)
         is MacroStep.LoopUntilStop -> 1 + countMacroSteps(it.steps)
         is MacroStep.IfConfirm     -> 1
+        is MacroStep.Switch        -> 1
         is MacroStep.Stop          -> 1
         is MacroStep.Vibrate       -> 1
         else                       -> 1

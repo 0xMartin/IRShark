@@ -38,13 +38,15 @@ import androidx.compose.foundation.clickable
 import com.vex.irshark.macro.ConfirmRequest
 import com.vex.irshark.macro.IrLogEntry
 import com.vex.irshark.macro.MacroRunState
+import com.vex.irshark.macro.SwitchRequest
 
 @Composable
 fun MacroRunScreen(
     state:      MacroRunState.Running,
     onStop:     () -> Unit,
     onYes:      () -> Unit,   // WaitConfirm OK  /  IfConfirm Yes
-    onNo:       () -> Unit    // IfConfirm No
+    onNo:       () -> Unit,   // IfConfirm No
+    onSwitch:   (Int) -> Unit // Switch option selected (index, -1 = default)
 ) {
     val violet = MaterialTheme.colorScheme.primary
 
@@ -155,6 +157,10 @@ fun MacroRunScreen(
         // ── Confirm prompt ────────────────────────────────────────────────
         state.confirm?.let { req ->
             ConfirmCard(req = req, onYes = onYes, onNo = onNo)
+        }
+        // ── Switch prompt ─────────────────────────────────────────────────
+        state.switch?.let { req ->
+            SwitchCard(req = req, onSelect = onSwitch)
         }
         // ── IR transmission log ─────────────────────────────────────────────────────
         if (state.irLog.isNotEmpty()) {
@@ -272,6 +278,56 @@ private fun ConfirmCard(req: ConfirmRequest, onYes: () -> Unit, onNo: () -> Unit
                         onClick = onNo
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwitchCard(req: SwitchRequest, onSelect: (Int) -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF0D1420))
+            .border(1.dp, Color(0xFF3D8ADF).copy(alpha = 0.50f), RoundedCornerShape(14.dp))
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text       = req.message,
+                color      = Color(0xFF7BB4FF),
+                fontSize   = 15.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign  = TextAlign.Center,
+                modifier   = Modifier.fillMaxWidth()
+            )
+            HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
+            req.options.forEachIndexed { i, opt ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF9B6DFF).copy(alpha = 0.14f))
+                        .border(1.dp, Color(0xFF9B6DFF).copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                        .clickable { onSelect(i) }
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(opt, color = Color.White, fontSize = 13.sp)
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF1A1726))
+                    .border(1.dp, Color(0xFFFFBB6D).copy(alpha = 0.40f), RoundedCornerShape(8.dp))
+                    .clickable { onSelect(-1) }
+                    .padding(10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Default / Skip", color = Color(0xFFFFBB6D), fontSize = 13.sp)
             }
         }
     }

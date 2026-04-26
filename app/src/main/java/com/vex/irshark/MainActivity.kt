@@ -757,10 +757,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         val running = macroState as? MacroRunState.Running
                         if (running != null) {
                             MacroRunScreen(
-                                state  = running,
-                                onStop = { macroEngine.stop(); screen = Screen.MACROS },
-                                onYes  = { macroEngine.respondYes() },
-                                onNo   = { macroEngine.respondNo() }
+                                state     = running,
+                                onStop    = { macroEngine.stop(); screen = Screen.MACROS },
+                                onYes     = { macroEngine.respondYes() },
+                                onNo      = { macroEngine.respondNo() },
+                                onSwitch  = { macroEngine.respondSwitch(it) }
                             )
                         } else {
                             // Finished or Cancelled

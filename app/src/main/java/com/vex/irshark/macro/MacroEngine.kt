@@ -37,8 +37,9 @@ sealed class MacroRunState {
         val macroName:   String,
         val progress:    String,        // e.g. "Step 3 / 10" or "Loop · iter 5"
         val displayText: String?,       // active ShowText message (null = none)
-        val confirm:     ConfirmRequest?,// non-null = waiting for user input
-        val irLog:       List<IrLogEntry> = emptyList()
+        val confirm:     ConfirmRequest?,// non-null = waiting for yes/no input
+        val irLog:       List<IrLogEntry> = emptyList(),
+        val switch:      SwitchRequest? = null  // non-null = waiting for option pick
     ) : MacroRunState()
 
     data class Finished(val macroName: String) : MacroRunState()
@@ -49,6 +50,11 @@ data class ConfirmRequest(
     val message: String,
     val hasNoOption: Boolean     // true → Yes/No  (IfConfirm)
                                   // false → OK/Stop (WaitConfirm)
+)
+
+data class SwitchRequest(
+    val message: String,
+    val options: List<String>
 )
 
 // ── Engine ────────────────────────────────────────────────────────────────────
@@ -64,6 +70,7 @@ class MacroEngine(private val context: Context) {
     private var runJob:  Job? = null
     private var runScope: CoroutineScope? = null
     private var confirmDeferred: CompletableDeferred<Boolean>? = null
+    private var switchDeferred:  CompletableDeferred<Int>? = null
 
     // step counters
     private var flatStep  = 0
@@ -98,6 +105,8 @@ class MacroEngine(private val context: Context) {
     fun stop() {
         confirmDeferred?.complete(false)
         confirmDeferred = null
+        switchDeferred?.complete(-1)
+        switchDeferred = null
         runJob?.cancel()
     }
 
@@ -111,6 +120,12 @@ class MacroEngine(private val context: Context) {
     fun respondNo() {
         confirmDeferred?.complete(false)
         confirmDeferred = null
+    }
+
+    /** Called when user picks an option in a Switch block. index=-1 means default. */
+    fun respondSwitch(index: Int) {
+        switchDeferred?.complete(index)
+        switchDeferred = null
     }
 
     // ── Internal execution ────────────────────────────────────────────────────
@@ -204,6 +219,13 @@ class MacroEngine(private val context: Context) {
                     }
                 }
             }
+            is MacroStep.Switch -> {
+                val idx    = suspendSwitch(step.message, step.options)
+                val branch = if (idx in step.branches.indices) step.branches[idx] else step.defaultBranch
+                totalSteps = flatStep + com.vex.irshark.data.countMacroSteps(branch)
+                pushProgress()
+                executeSteps(branch)
+            }
         }
     }
 
@@ -212,9 +234,19 @@ class MacroEngine(private val context: Context) {
                                     else "Step $flatStep / $totalSteps"
         val current = _state.value
         _state.value = if (current is MacroRunState.Running)
-            current.copy(progress = progress, displayText = displayText, confirm = null, irLog = irLog)
+            current.copy(progress = progress, displayText = displayText, confirm = null, switch = null, irLog = irLog)
         else
             MacroRunState.Running(macroName, progress, displayText, null, irLog)
+    }
+
+    private suspend fun suspendSwitch(message: String, options: List<String>): Int {
+        val deferred = CompletableDeferred<Int>()
+        switchDeferred = deferred
+        val current = _state.value
+        if (current is MacroRunState.Running) {
+            _state.value = current.copy(switch = SwitchRequest(message, options))
+        }
+        return deferred.await()
     }
 
     private suspend fun suspendConfirm(message: String, hasNo: Boolean): Boolean {

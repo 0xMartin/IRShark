@@ -106,7 +106,11 @@ fun MacroNode.blockW(): Float = when (type) {
     }
     MacroBlockType.DELAY   -> 240f
     MacroBlockType.VIBRATE -> 240f
-    MacroBlockType.REPEAT  -> 240f
+    MacroBlockType.REPEAT  -> 300f
+    MacroBlockType.SWITCH  -> {
+        val p = params as? BlockParams.Switch ?: BlockParams.Switch()
+        ((p.options.size + 1) * 72f + 60f).coerceIn(300f, 700f)
+    }
     else                   -> 300f   // SHOW_TEXT, WAIT_CONFIRM, IF_ELSE
 }
 
@@ -115,10 +119,14 @@ fun MacroNode.blockH(): Float = when (type) {
     MacroBlockType.DELAY                     -> 160f
     MacroBlockType.SHOW_TEXT                 -> 220f
     MacroBlockType.WAIT_CONFIRM              -> 200f
-    MacroBlockType.IR_SEND                   -> 220f
+    MacroBlockType.IR_SEND                   -> 240f
     MacroBlockType.IF_ELSE                   -> 260f
     MacroBlockType.VIBRATE                   -> 160f
-    MacroBlockType.REPEAT                    -> 180f
+    MacroBlockType.REPEAT                    -> 220f
+    MacroBlockType.SWITCH                    -> {
+        val p = params as? BlockParams.Switch ?: BlockParams.Switch()
+        (200f + p.options.size * 20f).coerceIn(220f, 420f)
+    }
     else                                     -> 200f
 }
 
@@ -130,12 +138,26 @@ fun inputPinOffset(blockW: Float = BLOCK_W): Offset = Offset(blockW / 2f, 0f)
 
 fun outputPinOffset(pin: PinId, blockW: Float = BLOCK_W, blockH: Float = BLOCK_H): Offset =
     when (pin) {
-        PinId.OUT -> Offset(blockW / 2f,    blockH)
-        PinId.YES -> Offset(blockW * 0.28f, blockH)
-        PinId.NO  -> Offset(blockW * 0.72f, blockH)
+        PinId.OUT  -> Offset(blockW / 2f,    blockH)
+        PinId.YES  -> Offset(blockW * 0.28f, blockH)
+        PinId.NO   -> Offset(blockW * 0.72f, blockH)
+        PinId.BODY -> Offset(blockW * 0.28f, blockH)   // REPEAT body (left)
+        PinId.CONT -> Offset(blockW * 0.72f, blockH)   // REPEAT continue (right)
+        else       -> Offset(blockW / 2f,    blockH)   // OPT0-9, DEFAULT handled via absoluteOutPin
     }
 
-fun absoluteOutPin(node: MacroNode, pin: PinId): Offset = node.pos + outputPinOffset(pin, node.blockW(), node.blockH())
+fun absoluteOutPin(node: MacroNode, pin: PinId): Offset {
+    // SWITCH pins: evenly spaced along the bottom
+    if (node.type == MacroBlockType.SWITCH) {
+        val allPins = node.outputPins()
+        val idx     = allPins.indexOf(pin)
+        if (idx >= 0) {
+            val x = node.blockW() / (allPins.size + 1).toFloat() * (idx + 1)
+            return node.pos + Offset(x, node.blockH())
+        }
+    }
+    return node.pos + outputPinOffset(pin, node.blockW(), node.blockH())
+}
 fun absoluteInPin(node: MacroNode): Offset             = node.pos + inputPinOffset(node.blockW())
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +190,7 @@ fun blockColor(type: MacroBlockType): Color = when (type) {
     MacroBlockType.IF_ELSE      -> Color(0xFF1E8AA8)
     MacroBlockType.VIBRATE      -> Color(0xFF9B3DC2)
     MacroBlockType.REPEAT       -> Color(0xFFD47B1A)
+    MacroBlockType.SWITCH       -> Color(0xFF3D8ADF)
 }
 
 fun blockLabel(type: MacroBlockType): String = when (type) {
@@ -180,6 +203,7 @@ fun blockLabel(type: MacroBlockType): String = when (type) {
     MacroBlockType.IF_ELSE      -> "If / Else"
     MacroBlockType.VIBRATE      -> "Vibrate"
     MacroBlockType.REPEAT       -> "Repeat"
+    MacroBlockType.SWITCH       -> "Switch"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -449,9 +473,12 @@ fun MacroGraphCanvas(
                     val toScreen   = canvasToScreen(absoluteInPin(toNode), pan, zoom)
 
                     val edgeColor = when (edge.fromPin) {
-                        PinId.YES -> Color(0xFF5BFF9A)
-                        PinId.NO  -> Color(0xFFFF7B9D)
-                        PinId.OUT -> Color(0xFF9B6DFF)
+                        PinId.YES     -> Color(0xFF5BFF9A)
+                        PinId.NO      -> Color(0xFFFF7B9D)
+                        PinId.BODY    -> Color(0xFFFFAA3D)
+                        PinId.CONT    -> Color(0xFF6DB4FF)
+                        PinId.DEFAULT -> Color(0xFFFFBB6D)
+                        else          -> Color(0xFF9B6DFF)   // OUT, OPT0-OPT9
                     }
                     drawEdge(fromScreen, toScreen, edgeColor, strokeW = 2.5f * zoom.coerceIn(0.5f, 2f))
                 }
@@ -657,7 +684,12 @@ fun BlockView(
                 )
         ) {
             Column(
-                modifier            = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier            = Modifier.fillMaxSize().padding(
+                    start  = 12.dp,
+                    end    = 12.dp,
+                    top    = 8.dp,
+                    bottom = if (node.type == MacroBlockType.IR_SEND) 30.dp else 8.dp
+                ),
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(label, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold,
@@ -673,20 +705,21 @@ fun BlockView(
                         modifier = Modifier.padding(top = 4.dp)
                     )
                 }
-                // Source badge for IR Send blocks
-                val irSource = (node.params as? BlockParams.IrSend)?.irSource?.takeIf { it.isNotEmpty() }
-                if (irSource != null) {
-                    val badgeColor = if (irSource == "DB") Color(0xFF2E7ADB) else Color(0xFF1E8A5E)
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 6.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(badgeColor.copy(alpha = 0.22f))
-                            .border(1.dp, badgeColor.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 2.dp)
-                    ) {
-                        Text(irSource, color = badgeColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                    }
+            }
+            // Source badge for IR Send blocks — absolute bottom-start so it never gets clipped by column overflow
+            val irSource = (node.params as? BlockParams.IrSend)?.irSource?.takeIf { it.isNotEmpty() }
+            if (irSource != null) {
+                val badgeColor = if (irSource == "DB") Color(0xFF2E7ADB) else Color(0xFF1E8A5E)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 10.dp, bottom = 7.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(badgeColor.copy(alpha = 0.22f))
+                        .border(1.dp, badgeColor.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(irSource, color = badgeColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
             }
             // Settings gear — top-right, only for configurable blocks
@@ -742,6 +775,48 @@ fun BlockView(
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = noPad)
                         .offset(y = -(pinDp + 1.dp)))
             }
+            MacroBlockType.REPEAT -> {
+                val bw       = node.blockW()
+                val bodyPad  = ((bw * 0.28f - PIN_R) / density).dp
+                val contPad  = ((bw * 0.28f - PIN_R) / density).dp
+                val bodyColor = Color(0xFFFFAA3D)
+                val contColor = Color(0xFF6DB4FF)
+                // BODY pin (left)
+                Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = bodyPad)
+                    .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
+                    .background(Color(0xFF0E0B1A))
+                    .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else bodyColor, CircleShape))
+                Text("BODY", color = bodyColor, fontSize = 7.sp,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = bodyPad)
+                        .offset(y = -(pinDp + 1.dp)))
+                // CONT pin (right)
+                Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = contPad)
+                    .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
+                    .background(Color(0xFF0E0B1A))
+                    .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else contColor, CircleShape))
+                Text("OUT", color = contColor, fontSize = 7.sp,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = contPad)
+                        .offset(y = -(pinDp + 1.dp)))
+            }
+            MacroBlockType.SWITCH -> {
+                val p       = node.params as? BlockParams.Switch ?: BlockParams.Switch()
+                val allPins = node.outputPins()
+                val bw      = node.blockW()
+                allPins.forEachIndexed { i, pin ->
+                    val isDefault  = (pin == PinId.DEFAULT)
+                    val pinColor   = if (isDefault) Color(0xFFFFBB6D) else Color(0xFF9B6DFF)
+                    val pinLabel   = if (isDefault) "else" else p.options.getOrNull(i)?.take(5) ?: "opt${i+1}"
+                    val pinX       = bw / (allPins.size + 1).toFloat() * (i + 1)
+                    val pinPadDp   = ((pinX - PIN_R) / density).dp
+                    Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = pinPadDp)
+                        .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
+                        .background(Color(0xFF0E0B1A))
+                        .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else pinColor, CircleShape))
+                    Text(pinLabel, color = pinColor, fontSize = 6.sp, maxLines = 1,
+                        modifier = Modifier.align(Alignment.BottomStart).padding(start = pinPadDp)
+                            .offset(y = -(pinDp + 1.dp)))
+                }
+            }
             MacroBlockType.END -> { /* no output pin */ }
             else -> {
                 Box(modifier = Modifier.align(Alignment.BottomCenter).offset(y = pinOutDp)
@@ -768,7 +843,12 @@ private fun blockSummary(node: MacroNode): String = when (val p = node.params) {
     is BlockParams.WaitConfirm -> p.message.ifEmpty { "Press OK to continue" }
     is BlockParams.IfElse      -> p.message.ifEmpty { "Continue?" }
     is BlockParams.Vibrate     -> "${p.durationMs} ms"
-    is BlockParams.Repeat      -> "× ${p.count} times"
+    is BlockParams.Repeat      -> "× ${p.count} times  •  BODY → loop  •  OUT → continue"
+    is BlockParams.Switch      -> {
+        val opts = p.options.take(3).joinToString(", ")
+        val more = if (p.options.size > 3) " (+${p.options.size - 3})…" else ""
+        "${p.message.take(32)}\n$opts$more"
+    }
     else                       -> ""
 }
 
@@ -826,6 +906,7 @@ private val addableBlockTypes = listOf(
     MacroBlockType.DELAY,
     MacroBlockType.VIBRATE,
     MacroBlockType.REPEAT,
+    MacroBlockType.SWITCH,
     MacroBlockType.SHOW_TEXT,
     MacroBlockType.WAIT_CONFIRM,
     MacroBlockType.IF_ELSE,

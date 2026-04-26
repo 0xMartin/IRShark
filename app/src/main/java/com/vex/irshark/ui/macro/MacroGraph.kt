@@ -14,7 +14,7 @@ import java.util.UUID
 enum class MacroBlockType {
     START, END,
     IR_SEND, DELAY, SHOW_TEXT, WAIT_CONFIRM, IF_ELSE,
-    VIBRATE, REPEAT
+    VIBRATE, REPEAT, SWITCH
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,15 +42,26 @@ sealed class BlockParams {
 
     data class Vibrate(val durationMs: Long = 500L) : BlockParams()
 
-    /** Loop: repeat the downstream chain N times before continuing. */
+    /** Loop: repeat the body chain N times, then follow the continue pin. */
     data class Repeat(val count: Int = 3) : BlockParams()
+
+    data class Switch(
+        val message: String = "Choose an option",
+        val options: List<String> = listOf("Option 1", "Option 2")
+    ) : BlockParams()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Output pin label  (YES / NO for IfElse; OUT for everything else)
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum class PinId { OUT, YES, NO }
+enum class PinId {
+    OUT, YES, NO,
+    BODY, CONT,                              // REPEAT block pins
+    OPT0, OPT1, OPT2, OPT3, OPT4,           // SWITCH option pins
+    OPT5, OPT6, OPT7, OPT8, OPT9,
+    DEFAULT                                   // SWITCH default pin
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Node
@@ -68,7 +79,13 @@ data class MacroNode(
         MacroBlockType.START      -> listOf(PinId.OUT)
         MacroBlockType.END        -> emptyList()
         MacroBlockType.IF_ELSE    -> listOf(PinId.YES, PinId.NO)
-        MacroBlockType.REPEAT     -> listOf(PinId.OUT)
+        MacroBlockType.REPEAT     -> listOf(PinId.BODY, PinId.CONT)
+        MacroBlockType.SWITCH     -> {
+            val p = params as? BlockParams.Switch ?: BlockParams.Switch()
+            val optPins = listOf(PinId.OPT0, PinId.OPT1, PinId.OPT2, PinId.OPT3, PinId.OPT4,
+                                 PinId.OPT5, PinId.OPT6, PinId.OPT7, PinId.OPT8, PinId.OPT9)
+            optPins.take(p.options.size) + listOf(PinId.DEFAULT)
+        }
         else                      -> listOf(PinId.OUT)
     }
 
@@ -248,14 +265,38 @@ class MacroGraph {
             }
             MacroBlockType.REPEAT -> {
                 val p = node.params as? BlockParams.Repeat ?: BlockParams.Repeat()
-                // Compile the downstream chain into body steps, then wrap in RepeatBlock
-                val bodySteps  = mutableListOf<MacroStep>()
+                // BODY pin → steps that execute on each iteration
+                val bodyEdge    = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.BODY }
+                val bodySteps   = mutableListOf<MacroStep>()
                 val bodyVisited = mutableSetOf<String>()
-                val outEdge    = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.OUT }
-                if (outEdge != null) compileFrom(outEdge.toId, bodyVisited, bodySteps)
+                if (bodyEdge != null) compileFrom(bodyEdge.toId, bodyVisited, bodySteps)
                 visited.addAll(bodyVisited)
                 out.add(MacroStep.RepeatBlock(p.count.coerceAtLeast(1), bodySteps))
-                return null   // chain already consumed inside RepeatBlock
+                // CONT pin → steps executed after all iterations complete
+                val contEdge = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.CONT }
+                if (contEdge != null) compileFrom(contEdge.toId, visited, out)
+                return null
+            }
+            MacroBlockType.SWITCH -> {
+                val p = node.params as? BlockParams.Switch ?: BlockParams.Switch()
+                val allOptPins = listOf(PinId.OPT0, PinId.OPT1, PinId.OPT2, PinId.OPT3, PinId.OPT4,
+                                        PinId.OPT5, PinId.OPT6, PinId.OPT7, PinId.OPT8, PinId.OPT9)
+                val branches = p.options.mapIndexed { i, _ ->
+                    val pin = allOptPins.getOrElse(i) { PinId.OPT9 }
+                    val edge = edges.firstOrNull { it.fromId == nodeId && it.fromPin == pin }
+                    val steps = mutableListOf<MacroStep>()
+                    val vis   = mutableSetOf<String>()
+                    if (edge != null) compileFrom(edge.toId, vis, steps)
+                    visited.addAll(vis)
+                    steps.toList()
+                }
+                val defaultEdge  = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.DEFAULT }
+                val defaultSteps = mutableListOf<MacroStep>()
+                val defVis       = mutableSetOf<String>()
+                if (defaultEdge != null) compileFrom(defaultEdge.toId, defVis, defaultSteps)
+                visited.addAll(defVis)
+                out.add(MacroStep.Switch(p.message, p.options, branches, defaultSteps.toList()))
+                return null   // all execution goes through branches
             }
         }
 
@@ -297,6 +338,10 @@ class MacroGraph {
         is BlockParams.IfElse      -> "{\"kind\":\"if\",\"msg\":${jsonStr(p.message)}}"
         is BlockParams.Vibrate     -> "{\"kind\":\"vibrate\",\"ms\":${p.durationMs}}"
         is BlockParams.Repeat      -> "{\"kind\":\"repeat\",\"count\":${p.count}}"
+        is BlockParams.Switch      -> {
+            val opts = p.options.joinToString(",") { jsonStr(it) }
+            "{\"kind\":\"switch\",\"msg\":${jsonStr(p.message)},\"options\":[$opts]}"
+        }
     }
 
     private fun jsonStr(s: String) = "\"${s.replace("\\","\\\\").replace("\"","\\\"")}\""
@@ -322,6 +367,11 @@ class MacroGraph {
                         "if"      -> BlockParams.IfElse(pObj.optString("msg"))
                         "vibrate" -> BlockParams.Vibrate(pObj.optLong("ms", 500L))
                         "repeat"  -> BlockParams.Repeat(pObj.optInt("count", 3))
+                        "switch"  -> {
+                            val arr  = pObj.optJSONArray("options") ?: org.json.JSONArray()
+                            val opts = (0 until arr.length()).map { arr.optString(it) }
+                            BlockParams.Switch(pObj.optString("msg", "Choose an option"), opts)
+                        }
                         else    -> BlockParams.None
                     }
                     g.nodes.add(MacroNode(

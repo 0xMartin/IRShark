@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,8 +33,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vex.irshark.data.SavedMacro
-import com.vex.irshark.data.countMacroSteps
 import com.vex.irshark.ui.components.EmptyCard
+import org.json.JSONObject
 
 @Composable
 fun MacroListScreen(
@@ -66,7 +67,10 @@ private fun MacroRow(
     onDelete: (SavedMacro) -> Unit
 ) {
     val violet   = MaterialTheme.colorScheme.primary
-    val stepCount = countMacroSteps(macro.steps)
+    val blockCount = remember(macro.blocklyXml) {
+        if (macro.blocklyXml.isBlank()) 0
+        else try { JSONObject(macro.blocklyXml).getJSONArray("nodes").length() } catch (_: Exception) { 0 }
+    }
 
     Column {
         Row(
@@ -83,7 +87,7 @@ private fun MacroRow(
             ) {
                 Text(macro.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text(
-                    "$stepCount step${if (stepCount != 1) "s" else ""}",
+                    "$blockCount block${if (blockCount != 1) "s" else ""}",
                     color = Color(0xFF8A8899), fontSize = 11.sp
                 )
             }
