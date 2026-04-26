@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -261,7 +261,7 @@ fun IrFinderScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         when (step) {
             FinderStep.PickCategory -> PickStep(
                 question = "What type of device?",
@@ -372,7 +372,7 @@ private fun PickStep(
     val filtered = if (searchQuery.isBlank()) options
         else options.filter { (display, _) -> display.contains(searchQuery, ignoreCase = true) }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = question,
             color = Color.White,
@@ -407,7 +407,7 @@ private fun PickStep(
             contentPadding = PaddingValues(bottom = 24.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 420.dp)
+                .weight(1f)
         ) {
             items(filtered) { (display, raw) ->
                 Box(
@@ -469,7 +469,7 @@ private fun TestButtonsStep(
     val green  = Color(0xFF3EB47C)
     val selectedBtn = buttons.getOrNull(selectedIndex)
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = "Test buttons",
             color = Color.White,
@@ -492,7 +492,7 @@ private fun TestButtonsStep(
             contentPadding = PaddingValues(bottom = 12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height((buttons.size / 2 * 38 + 46).dp.coerceAtMost(192.dp))
+                .height((buttons.size / 2 * 38 + 46).dp.coerceAtMost(208.dp))
         ) {
             items(buttons.size) { idx ->
                 val btn = buttons[idx]

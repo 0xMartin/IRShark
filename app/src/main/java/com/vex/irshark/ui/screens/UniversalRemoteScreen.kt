@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,9 +81,7 @@ fun UniversalRemoteScreen(
     
     var folderSearchQuery by remember { mutableStateOf("") }
     var flashedCommand by remember { mutableStateOf<String?>(null) }
-    var selectedTab by remember(currentPath) {
-        mutableStateOf(if (resolvedCommands.isNotEmpty()) UniversalTab.Commands else UniversalTab.Categories)
-    }
+    var selectedTab by rememberSaveable { mutableStateOf(UniversalTab.Categories) }
     val scope = rememberCoroutineScope()
 
     val estimatedTimeMs = if (autoSend && activeItem != null && activeCoverage > 0) {
@@ -124,14 +123,34 @@ fun UniversalRemoteScreen(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selected) violet.copy(alpha = 0.16f) else Color(0xFF13101E))
-                                .border(1.dp, if (selected) violet.copy(alpha = 0.45f) else violet.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (selected) Color(0xFF171327) else Color(0xFF100D1C))
+                                .border(1.dp, if (selected) violet.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
                                 .clickable { selectedTab = tab },
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.BottomCenter
                         ) {
-                            Text(label, color = if (selected) violet else Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    label,
+                                    color = if (selected) Color.White else Color(0xFF8A8899),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .height(3.dp)
+                                        .fillMaxWidth(0.42f)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(if (selected) violet else Color.Transparent)
+                                )
+                            }
                         }
                     }
                 }
