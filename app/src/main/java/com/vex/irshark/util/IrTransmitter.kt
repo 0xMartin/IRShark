@@ -19,6 +19,16 @@ private val rc5Lock = Any()
 private var rc5ToggleBit = false
 
 /**
+ * Extracts the protocol name from a payload string.
+ * Payload format: "protocol=RC6; address=...; command=..." etc.
+ * Returns the protocol name (e.g., "RC6", "NEC") or null if not found.
+ */
+fun extractProtocolFromPayload(payload: String): String? {
+    val match = Regex("""protocol\s*=\s*(\S+)""", RegexOption.IGNORE_CASE).find(payload)
+    return match?.groupValues?.get(1)?.uppercase()
+}
+
+/**
  * Transmits an IR code payload via ConsumerIrManager.
  * Supports two formats:
  *  - Parsed: "protocol=NEC; address=0x00FF; command=0x20DF"

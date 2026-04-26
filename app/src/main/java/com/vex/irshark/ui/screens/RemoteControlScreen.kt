@@ -46,9 +46,11 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.ui.components.Badge
 import com.vex.irshark.ui.components.CategorySvgIcon
 import com.vex.irshark.ui.components.RemoteCommandButton
+import com.vex.irshark.util.extractProtocolFromPayload
 
 @Composable
 fun RemoteControlScreen(
@@ -56,7 +58,7 @@ fun RemoteControlScreen(
     deviceIconName: String?,
     typeBadge: String,
     countBadge: String,
-    commands: List<String>,
+    buttons: List<SavedRemoteButton>,
     selectedCommand: String?,
     txCount: Int,
     onBack: () -> Unit,
@@ -73,6 +75,7 @@ fun RemoteControlScreen(
     var columnCount by rememberSaveable { mutableIntStateOf(2) }
     val view = LocalView.current
     val scope = rememberCoroutineScope()
+    val commands = buttons.map { it.label }.filter { it.isNotBlank() }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Back button and device info panel on the same row
@@ -241,9 +244,11 @@ fun RemoteControlScreen(
                 ) {
                     row.forEach { cmd ->
                         val isFlashed = flashedCommand == cmd
+                        val button = buttons.firstOrNull { it.label == cmd }
+                        val protocol = button?.let { extractProtocolFromPayload(it.code) }.orEmpty()
                         RemoteCommandButton(
                             label = cmd,
-                            countLabel = "",
+                            protocol = protocol,
                             isActive = isFlashed,
                             onClick = {
                                 if (hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)

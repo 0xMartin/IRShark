@@ -256,9 +256,10 @@ private fun IrLogTable(entries: List<IrLogEntry>) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Time",   color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(54.dp))
-                Text("Signal", color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("Src",    color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(48.dp), textAlign = TextAlign.End)
+                Text("Time",     color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(48.dp))
+                Text("Protocol", color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(56.dp))
+                Text("Signal",   color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Src",      color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(42.dp), textAlign = TextAlign.End)
             }
             HorizontalDivider(color = Color(0xFF9B6DFF).copy(alpha = 0.20f))
             LazyColumn(
@@ -282,7 +283,16 @@ private fun IrLogTable(entries: List<IrLogEntry>) {
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(timeStr, color = Color(0xFF8A8899), fontSize = 11.sp, modifier = Modifier.width(54.dp))
+                        Text(timeStr, color = Color(0xFF8A8899), fontSize = 11.sp, modifier = Modifier.width(48.dp))
+                        Text(
+                            entry.protocol.ifEmpty { "-" },
+                            color    = Color(0xFFFFC14D),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.width(56.dp),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Text(
                             entry.displayLabel,
                             color    = Color.White.copy(alpha = 0.90f),
@@ -296,7 +306,7 @@ private fun IrLogTable(entries: List<IrLogEntry>) {
                             color    = srcColor,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(48.dp),
+                            modifier = Modifier.width(42.dp),
                             textAlign = TextAlign.End
                         )
                     }

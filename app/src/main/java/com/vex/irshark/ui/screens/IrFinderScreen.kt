@@ -67,6 +67,7 @@ import com.vex.irshark.data.prettyPath
 import com.vex.irshark.data.profilesUnderPath
 import com.vex.irshark.ui.components.CategorySvgIcon
 import com.vex.irshark.util.transmitIrCode
+import com.vex.irshark.util.extractProtocolFromPayload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -581,13 +582,28 @@ private fun TestButtonsStep(
                         .border(1.dp, violet.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
                         .padding(14.dp)
                 ) {
-                    // Progress text
-                    Text(
-                        text = "${prettyButtonLabel(selectedBtn.label)}  —  Code ${selectedBtn.progress} / ${selectedBtn.total}",
-                        color = Color(0xFF8A8899),
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(bottom = 6.dp)
-                    )
+                    // Progress text with protocol
+                    val currentCode = selectedBtn.currentCode
+                    val currentProtocol = currentCode?.let { extractProtocolFromPayload(it) }.orEmpty()
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "${prettyButtonLabel(selectedBtn.label)}  —  Code ${selectedBtn.progress} / ${selectedBtn.total}",
+                            color = Color(0xFF8A8899),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        if (currentProtocol.isNotEmpty()) {
+                            Text(
+                                text = "Protocol: $currentProtocol",
+                                color = Color(0xFFFFC14D),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+                    }
                     LinearProgressIndicator(
                         progress = { if (selectedBtn.total > 0) selectedBtn.progress.toFloat() / selectedBtn.total else 0f },
                         modifier = Modifier

@@ -27,7 +27,8 @@ data class IrLogEntry(
     val remoteName:   String,
     val buttonLabel:  String,
     val irSource:     String = "",
-    val elapsedMs:    Long   = 0L
+    val elapsedMs:    Long   = 0L,
+    val protocol:     String = ""
 )
 
 // ── Public state ──────────────────────────────────────────────────────────────
@@ -151,7 +152,8 @@ class MacroEngine(private val context: Context) {
         when (step) {
             is MacroStep.IrSend -> {
                 val elapsed = System.currentTimeMillis() - macroStartTime
-                val entry = IrLogEntry(step.displayLabel, step.remoteName, step.buttonLabel, step.irSource, elapsed)
+                val protocol = com.vex.irshark.util.extractProtocolFromPayload(step.irCode)
+                val entry = IrLogEntry(step.displayLabel, step.remoteName, step.buttonLabel, step.irSource, elapsed, protocol.orEmpty())
                 irLog = irLog + entry
                 _irTransmitEvent.tryEmit(entry)
                 pushProgress()  // update state with new log entry immediately

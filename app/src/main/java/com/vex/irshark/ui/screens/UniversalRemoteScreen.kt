@@ -223,7 +223,7 @@ fun UniversalRemoteScreen(
                                     val isFlashed = flashedCommand == item.actualCommand
                                     RemoteCommandButton(
                                         label = item.displayLabel,
-                                        countLabel = "x${item.profileCoverage}",
+                                        protocol = "x${item.profileCoverage}",
                                         isActive = isFlashed,
                                         onClick = {
                                             flashedCommand = item.actualCommand

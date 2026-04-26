@@ -830,7 +830,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 },
                             typeBadge = typeBadge,
                             countBadge = countBadge,
-                            commands = commands,
+                            buttons = controlButtons,
                             selectedCommand = controlSelectedCommand,
                             txCount = controlTxCount,
                             hapticEnabled = hapticFeedback,

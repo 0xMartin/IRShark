@@ -198,7 +198,7 @@ fun EmptyCard(message: String) {
 @Composable
 fun RemoteCommandButton(
     label: String,
-    countLabel: String,
+    protocol: String = "",
     isActive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -246,14 +246,15 @@ fun RemoteCommandButton(
                 modifier = Modifier.weight(1f)
             )
 
-            if (countLabel.isNotBlank()) {
+            if (protocol.isNotBlank()) {
                 Text(
-                    text = countLabel,
-                    color = Color(0xFF8A8899),
+                    text = protocol,
+                    color = Color(0xFFFFC14D),
                     fontSize = 10.sp,
                     lineHeight = 10.sp,
                     textAlign = TextAlign.Center,
-                    maxLines = 1
+                    maxLines = 1,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
