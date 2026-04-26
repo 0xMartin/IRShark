@@ -13,7 +13,8 @@ import java.util.UUID
 
 enum class MacroBlockType {
     START, END,
-    IR_SEND, DELAY, SHOW_TEXT, WAIT_CONFIRM, IF_ELSE
+    IR_SEND, DELAY, SHOW_TEXT, WAIT_CONFIRM, IF_ELSE,
+    VIBRATE, REPEAT
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -27,7 +28,8 @@ sealed class BlockParams {
         val displayLabel: String = "",
         val remoteName:   String = "",
         val buttonLabel:  String = "",
-        val irCode:       String = ""
+        val irCode:       String = "",
+        val irSource:     String = ""   // "DB" | "CUSTOM" | ""
     ) : BlockParams()
 
     data class Delay(val ms: Long = 500L) : BlockParams()
@@ -37,6 +39,11 @@ sealed class BlockParams {
     data class WaitConfirm(val message: String = "Press OK to continue") : BlockParams()
 
     data class IfElse(val message: String = "Continue?") : BlockParams()
+
+    data class Vibrate(val durationMs: Long = 500L) : BlockParams()
+
+    /** Loop: repeat the downstream chain N times before continuing. */
+    data class Repeat(val count: Int = 3) : BlockParams()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -61,6 +68,7 @@ data class MacroNode(
         MacroBlockType.START      -> listOf(PinId.OUT)
         MacroBlockType.END        -> emptyList()
         MacroBlockType.IF_ELSE    -> listOf(PinId.YES, PinId.NO)
+        MacroBlockType.REPEAT     -> listOf(PinId.OUT)
         else                      -> listOf(PinId.OUT)
     }
 
@@ -126,7 +134,8 @@ class MacroGraph {
         }
     }
 
-    /** Try to add an edge. Returns error string or null on success. */
+    /** Try to add an edge. Returns error string or null on success.
+     *  If the output pin or input pin is already connected, the old wire is replaced. */
     fun tryConnect(fromId: String, fromPin: PinId, toId: String): String? {
         if (fromId == toId) return "Cannot connect block to itself"
         val fromNode = nodes.firstOrNull { it.id == fromId } ?: return "Source not found"
@@ -134,13 +143,11 @@ class MacroGraph {
         if (!toNode.hasInput()) return "This block has no input"
         if (fromNode.type == MacroBlockType.END) return "End has no outputs"
 
-        // One output pin → max one target
-        if (edges.any { it.fromId == fromId && it.fromPin == fromPin }) return "Output already connected"
-        // One input → max one source
-        if (edges.any { it.toId == toId }) return "Input already connected"
-
         // Basic cycle detection: would toId eventually reach fromId?
         if (wouldCycle(from = toId, reaching = fromId)) return "Connection would create a cycle"
+
+        // Remove any existing wire from this output pin, and any existing wire into the target input
+        edges.removeAll { (it.fromId == fromId && it.fromPin == fromPin) || it.toId == toId }
 
         edges.add(MacroEdge(fromId = fromId, fromPin = fromPin, toId = toId))
         return null
@@ -235,6 +242,21 @@ class MacroGraph {
                 visited.addAll(noVisited)
                 return null   // do not follow OUT pin (IF_ELSE has no OUT)
             }
+            MacroBlockType.VIBRATE -> {
+                val p = node.params as? BlockParams.Vibrate ?: BlockParams.Vibrate()
+                out.add(MacroStep.Vibrate(p.durationMs))
+            }
+            MacroBlockType.REPEAT -> {
+                val p = node.params as? BlockParams.Repeat ?: BlockParams.Repeat()
+                // Compile the downstream chain into body steps, then wrap in RepeatBlock
+                val bodySteps  = mutableListOf<MacroStep>()
+                val bodyVisited = mutableSetOf<String>()
+                val outEdge    = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.OUT }
+                if (outEdge != null) compileFrom(outEdge.toId, bodyVisited, bodySteps)
+                visited.addAll(bodyVisited)
+                out.add(MacroStep.RepeatBlock(p.count.coerceAtLeast(1), bodySteps))
+                return null   // chain already consumed inside RepeatBlock
+            }
         }
 
         // Follow the single OUT edge
@@ -268,11 +290,13 @@ class MacroGraph {
 
     private fun paramsToJson(p: BlockParams): String = when (p) {
         is BlockParams.None        -> "null"
-        is BlockParams.IrSend      -> "{\"kind\":\"ir\",\"label\":${jsonStr(p.displayLabel)},\"remote\":${jsonStr(p.remoteName)},\"button\":${jsonStr(p.buttonLabel)},\"code\":${jsonStr(p.irCode)}}"
+        is BlockParams.IrSend      -> "{\"kind\":\"ir\",\"label\":${jsonStr(p.displayLabel)},\"remote\":${jsonStr(p.remoteName)},\"button\":${jsonStr(p.buttonLabel)},\"code\":${jsonStr(p.irCode)},\"source\":${jsonStr(p.irSource)}}"
         is BlockParams.Delay       -> "{\"kind\":\"delay\",\"ms\":${p.ms}}"
         is BlockParams.ShowText    -> "{\"kind\":\"show\",\"text\":${jsonStr(p.text)},\"dur\":${p.durationMs},\"async\":${p.async}}"
         is BlockParams.WaitConfirm -> "{\"kind\":\"wait\",\"msg\":${jsonStr(p.message)}}"
         is BlockParams.IfElse      -> "{\"kind\":\"if\",\"msg\":${jsonStr(p.message)}}"
+        is BlockParams.Vibrate     -> "{\"kind\":\"vibrate\",\"ms\":${p.durationMs}}"
+        is BlockParams.Repeat      -> "{\"kind\":\"repeat\",\"count\":${p.count}}"
     }
 
     private fun jsonStr(s: String) = "\"${s.replace("\\","\\\\").replace("\"","\\\"")}\""
@@ -290,11 +314,14 @@ class MacroGraph {
                     val params: BlockParams = when (pObj?.optString("kind")) {
                         "ir"    -> BlockParams.IrSend(
                             pObj.optString("label"), pObj.optString("remote"),
-                            pObj.optString("button"), pObj.optString("code"))
+                            pObj.optString("button"), pObj.optString("code"),
+                            pObj.optString("source"))
                         "delay" -> BlockParams.Delay(pObj.optLong("ms", 500))
                         "show"  -> BlockParams.ShowText(pObj.optString("text"), pObj.optLong("dur", 3000L), pObj.optBoolean("async", false))
-                        "wait"  -> BlockParams.WaitConfirm(pObj.optString("msg"))
-                        "if"    -> BlockParams.IfElse(pObj.optString("msg"))
+                        "wait"    -> BlockParams.WaitConfirm(pObj.optString("msg"))
+                        "if"      -> BlockParams.IfElse(pObj.optString("msg"))
+                        "vibrate" -> BlockParams.Vibrate(pObj.optLong("ms", 500L))
+                        "repeat"  -> BlockParams.Repeat(pObj.optInt("count", 3))
                         else    -> BlockParams.None
                     }
                     g.nodes.add(MacroNode(

@@ -190,6 +190,20 @@ class MacroEngine(private val context: Context) {
                 if (yes) executeSteps(step.yesSteps) else executeSteps(step.noSteps)
             }
             is MacroStep.Stop -> throw CancellationException("Stop block reached")
+            is MacroStep.Vibrate -> {
+                withContext(Dispatchers.Main) {
+                    val vib = context.getSystemService(android.content.Context.VIBRATOR_SERVICE)
+                        as? android.os.Vibrator
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        vib?.vibrate(android.os.VibrationEffect.createOneShot(
+                            step.durationMs.coerceIn(1L, 5000L),
+                            android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vib?.vibrate(step.durationMs.coerceIn(1L, 5000L))
+                    }
+                }
+            }
         }
     }
 

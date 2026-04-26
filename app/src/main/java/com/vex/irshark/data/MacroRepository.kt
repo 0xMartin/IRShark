@@ -31,6 +31,9 @@ sealed class MacroStep {
     /** Loop the child steps indefinitely until the user stops the macro. */
     data class LoopUntilStop(val steps: List<MacroStep>) : MacroStep()
 
+    /** Vibrate the device for N milliseconds. */
+    data class Vibrate(val durationMs: Long) : MacroStep()
+
     /** Ask the user Yes/No and run the appropriate branch. */
     data class IfConfirm(
         val message: String,
@@ -96,6 +99,7 @@ private fun stepToObj(s: MacroStep): JSONObject = JSONObject().apply {
         is MacroStep.WaitConfirm -> { put("type", "wait_confirm"); put("message", s.message) }
         is MacroStep.RepeatBlock -> { put("type", "repeat"); put("count", s.count); put("steps", stepsToArr(s.steps)) }
         is MacroStep.LoopUntilStop -> { put("type", "loop_until_stop"); put("steps", stepsToArr(s.steps)) }
+        is MacroStep.Vibrate       -> { put("type", "vibrate"); put("durationMs", s.durationMs) }
         is MacroStep.IfConfirm -> {
             put("type", "if_confirm"); put("message", s.message)
             put("yesSteps", stepsToArr(s.yesSteps)); put("noSteps", stepsToArr(s.noSteps))
@@ -133,6 +137,7 @@ private fun parseStepObj(o: JSONObject): MacroStep? = when (o.optString("type"))
     "wait_confirm"  -> MacroStep.WaitConfirm(o.optString("message", "Continue?"))
     "repeat"        -> MacroStep.RepeatBlock(o.optInt("count", 1), parseStepsArr(o.optJSONArray("steps") ?: JSONArray()))
     "loop_until_stop" -> MacroStep.LoopUntilStop(parseStepsArr(o.optJSONArray("steps") ?: JSONArray()))
+    "vibrate"         -> MacroStep.Vibrate(o.optLong("durationMs", 500L))
     "if_confirm"    -> MacroStep.IfConfirm(
         message  = o.optString("message", "Continue?"),
         yesSteps = parseStepsArr(o.optJSONArray("yesSteps") ?: JSONArray()),
@@ -149,6 +154,7 @@ fun countMacroSteps(steps: List<MacroStep>): Int = steps.sumOf {
         is MacroStep.LoopUntilStop -> 1 + countMacroSteps(it.steps)
         is MacroStep.IfConfirm     -> 1
         is MacroStep.Stop          -> 1
+        is MacroStep.Vibrate       -> 1
         else                       -> 1
     }
 }

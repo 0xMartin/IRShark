@@ -104,20 +104,77 @@ fun MacroEditorScreen(
     var irPickNodeId   by remember { mutableStateOf("") }
 
     // Save / name dialog
-    var showSaveDialog by remember { mutableStateOf(false) }
-    var orphanWarning  by remember { mutableStateOf(0) }
+    var showSaveDialog      by remember { mutableStateOf(false) }
+    var orphanWarning       by remember { mutableStateOf(0) }
+    var missingRemoteWarn   by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    /** Returns display strings for IR Send blocks whose remote can no longer be found. */
+    fun checkMissingRemotes(): List<String> {
+        val savedNames = savedRemotes.map { it.name }.toSet()
+        val dbNames    = dbProfiles.map { it.name }.toSet()
+        return graph.nodes
+            .mapNotNull { it.params as? BlockParams.IrSend }
+            .filter { p -> p.remoteName.isNotEmpty() &&
+                when (p.irSource) {
+                    "CUSTOM" -> p.remoteName !in savedNames
+                    "DB"     -> p.remoteName !in dbNames
+                    else     -> p.remoteName !in savedNames && p.remoteName !in dbNames
+                }
+            }
+            .map { p -> "${p.displayLabel.ifEmpty { p.remoteName }} (${p.irSource.ifEmpty { "?" }})" }
+    }
+
+    // Warning dialog: missing remotes detected before save
+    if (missingRemoteWarn.isNotEmpty()) {
+        Dialog(onDismissRequest = { missingRemoteWarn = emptyList() }) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF121024))
+                    .border(1.dp, Color(0xFFFF5555).copy(alpha = 0.40f), RoundedCornerShape(16.dp))
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("Missing Remotes", color = Color(0xFFFF7B7B), fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold)
+                Text(
+                    "The following IR Send blocks reference remotes that no longer exist:",
+                    color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp
+                )
+                missingRemoteWarn.forEach { label ->
+                    Text("• $label", color = Color(0xFFFF9B7B), fontSize = 12.sp)
+                }
+                Text("Save anyway?", color = Color.White.copy(alpha = 0.60f), fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { missingRemoteWarn = emptyList() }) {
+                        Text("Go Back", color = Color(0xFF8A8899))
+                    }
+                    TextButton(onClick = {
+                        missingRemoteWarn = emptyList()
+                        showSaveDialog    = true
+                    }) {
+                        Text("Save Anyway", color = Color(0xFFFF7B7B))
+                    }
+                }
+            }
+        }
+    }
 
     if (showIrPicker) {
         IrPickerDialog(
             savedRemotes = savedRemotes,
             dbProfiles   = dbProfiles,
             onDismiss    = { showIrPicker = false },
-            onPick       = { remoteName, buttonLabel, irCode ->
+            onPick       = { remoteName, buttonLabel, irCode, irSource ->
                 graph.updateParams(irPickNodeId, BlockParams.IrSend(
                     displayLabel = "$remoteName / $buttonLabel",
                     remoteName   = remoteName,
                     buttonLabel  = buttonLabel,
-                    irCode       = irCode
+                    irCode       = irCode,
+                    irSource     = irSource
                 ))
                 showIrPicker = false
             }
@@ -216,7 +273,12 @@ fun MacroEditorScreen(
                         if (macroName.isBlank()) { nameError = true; return@clickable }
                         val result = graph.compile()
                         orphanWarning = result.orphans
-                        showSaveDialog = true
+                        val missing = checkMissingRemotes()
+                        if (missing.isNotEmpty()) {
+                            missingRemoteWarn = missing
+                        } else {
+                            showSaveDialog = true
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -273,6 +335,8 @@ private fun defaultParams(type: MacroBlockType): BlockParams = when (type) {
     MacroBlockType.SHOW_TEXT    -> BlockParams.ShowText()
     MacroBlockType.WAIT_CONFIRM -> BlockParams.WaitConfirm()
     MacroBlockType.IF_ELSE      -> BlockParams.IfElse()
+    MacroBlockType.VIBRATE      -> BlockParams.Vibrate()
+    MacroBlockType.REPEAT       -> BlockParams.Repeat()
     else                        -> BlockParams.None
 }
 
@@ -296,6 +360,8 @@ private fun NodeParamDialog(
     var showAsync by remember { mutableStateOf((node.params as? BlockParams.ShowText)?.async ?: false) }
     var waitMsg  by remember { mutableStateOf((node.params as? BlockParams.WaitConfirm)?.message ?: "Press OK to continue") }
     var ifMsg    by remember { mutableStateOf((node.params as? BlockParams.IfElse)?.message ?: "Continue?") }
+    var vibrateMs by remember { mutableStateOf(((node.params as? BlockParams.Vibrate)?.durationMs ?: 500L).toString()) }
+    var repeatCount by remember { mutableStateOf(((node.params as? BlockParams.Repeat)?.count ?: 3).toString()) }
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -351,6 +417,18 @@ private fun NodeParamDialog(
                         Text("Pick IR button...")
                     }
                 }
+                MacroBlockType.VIBRATE -> {
+                    OutlinedTextField(value = vibrateMs, onValueChange = { vibrateMs = it },
+                        label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    Text("Max 5000 ms. Vibrates the device.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                }
+                MacroBlockType.REPEAT -> {
+                    OutlinedTextField(value = repeatCount, onValueChange = { repeatCount = it },
+                        label = { Text("Count") }, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                    Text("Repeats the connected downstream chain N times.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                }
                 MacroBlockType.END -> {
                     Text("Terminates the macro immediately.", color = Color(0xFF8A8899), fontSize = 12.sp)
                 }
@@ -370,6 +448,8 @@ private fun NodeParamDialog(
                         MacroBlockType.SHOW_TEXT    -> BlockParams.ShowText(showTxt.ifBlank { "Hello!" }, showDur.toLongOrNull()?.coerceAtLeast(100) ?: 3000L, showAsync)
                         MacroBlockType.WAIT_CONFIRM -> BlockParams.WaitConfirm(waitMsg.ifBlank { "Continue?" })
                         MacroBlockType.IF_ELSE      -> BlockParams.IfElse(ifMsg.ifBlank { "Continue?" })
+                        MacroBlockType.VIBRATE      -> BlockParams.Vibrate(vibrateMs.toLongOrNull()?.coerceIn(1L, 5000L) ?: 500L)
+                        MacroBlockType.REPEAT       -> BlockParams.Repeat(repeatCount.toIntOrNull()?.coerceIn(1, 999) ?: 3)
                         MacroBlockType.IR_SEND, MacroBlockType.END, MacroBlockType.START -> node.params
                     }
                     onSave(params)
@@ -429,7 +509,7 @@ internal fun IrPickerDialog(
     savedRemotes: List<SavedRemote>,
     dbProfiles:   List<FlipperProfile>,
     onDismiss:    () -> Unit,
-    onPick:       (remoteName: String, buttonLabel: String, irCode: String) -> Unit
+    onPick:       (remoteName: String, buttonLabel: String, irCode: String, irSource: String) -> Unit
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
@@ -492,7 +572,7 @@ internal fun IrPickerDialog(
                             itemsIndexed(btns) { _, btn ->
                                 val ok = btn.code.isNotBlank()
                                 IrPickerRow(btn.label, if (ok) btn.code.take(50) else "No IR code", enabled = ok) {
-                                    if (ok) onPick(remote.name, btn.label, btn.code)
+                                    if (ok) onPick(remote.name, btn.label, btn.code, "CUSTOM")
                                 }
                             }
                         }
@@ -519,7 +599,7 @@ internal fun IrPickerDialog(
                             val bts = dbButtons.filter { query.isBlank() || it.label.contains(query, ignoreCase = true) }
                             LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 itemsIndexed(bts) { _, opt ->
-                                    IrPickerRow(opt.label, opt.code.take(60)) { onPick(profile.name, opt.label, opt.code) }
+                                    IrPickerRow(opt.label, opt.code.take(60)) { onPick(profile.name, opt.label, opt.code, "DB") }
                                 }
                             }
                         }

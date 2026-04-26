@@ -105,6 +105,8 @@ fun MacroNode.blockW(): Float = when (type) {
         (240f + len * 8f).coerceIn(240f, 480f)
     }
     MacroBlockType.DELAY   -> 240f
+    MacroBlockType.VIBRATE -> 240f
+    MacroBlockType.REPEAT  -> 240f
     else                   -> 300f   // SHOW_TEXT, WAIT_CONFIRM, IF_ELSE
 }
 
@@ -115,6 +117,8 @@ fun MacroNode.blockH(): Float = when (type) {
     MacroBlockType.WAIT_CONFIRM              -> 200f
     MacroBlockType.IR_SEND                   -> 220f
     MacroBlockType.IF_ELSE                   -> 260f
+    MacroBlockType.VIBRATE                   -> 160f
+    MacroBlockType.REPEAT                    -> 180f
     else                                     -> 200f
 }
 
@@ -162,6 +166,8 @@ fun blockColor(type: MacroBlockType): Color = when (type) {
     MacroBlockType.SHOW_TEXT    -> Color(0xFF1E9A6E)
     MacroBlockType.WAIT_CONFIRM -> Color(0xFFC27C1A)
     MacroBlockType.IF_ELSE      -> Color(0xFF1E8AA8)
+    MacroBlockType.VIBRATE      -> Color(0xFF9B3DC2)
+    MacroBlockType.REPEAT       -> Color(0xFFD47B1A)
 }
 
 fun blockLabel(type: MacroBlockType): String = when (type) {
@@ -172,6 +178,8 @@ fun blockLabel(type: MacroBlockType): String = when (type) {
     MacroBlockType.SHOW_TEXT    -> "Show Text"
     MacroBlockType.WAIT_CONFIRM -> "Wait for OK"
     MacroBlockType.IF_ELSE      -> "If / Else"
+    MacroBlockType.VIBRATE      -> "Vibrate"
+    MacroBlockType.REPEAT       -> "Repeat"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -198,10 +206,12 @@ fun MacroGraphCanvas(
     var dragNodeOffset by remember { mutableStateOf(Offset.Zero) }
 
     // ── Wire drawing
-    var connectFromId  by remember { mutableStateOf<String?>(null) }
-    var connectFromPin by remember { mutableStateOf(PinId.OUT) }
-    var connectCursor  by remember { mutableStateOf(Offset.Zero) }
-    var hoveredInputId by remember { mutableStateOf<String?>(null) }
+    var connectFromId      by remember { mutableStateOf<String?>(null) }
+    var connectFromPin     by remember { mutableStateOf(PinId.OUT) }
+    var connectFromIsInput by remember { mutableStateOf(false) }   // true = drag started from input pin
+    var connectCursor      by remember { mutableStateOf(Offset.Zero) }
+    var hoveredInputId     by remember { mutableStateOf<String?>(null) }
+    var hoveredOutputId    by remember { mutableStateOf<String?>(null) }
 
     // ── Selection rect (canvas-px)
     var selStart by remember { mutableStateOf<Offset?>(null) }
@@ -257,14 +267,23 @@ fun MacroGraphCanvas(
                         var moved    = false
 
                         // 2) Hit-test
-                        val cDown   = screenToCanvas(down.position, pan, zoom)
-                        val pinHit  = findOutputPinHit(cDown)
-                        val nodeHit = if (pinHit == null) findNodeHit(cDown) else null
+                        val cDown    = screenToCanvas(down.position, pan, zoom)
+                        val pinHit   = findOutputPinHit(cDown)
+                        val inPinHit = if (pinHit == null) findInputPinHit(cDown) else null
+                        val nodeHit  = if (pinHit == null && inPinHit == null) findNodeHit(cDown) else null
                         when {
                             pinHit != null -> {
-                                connectFromId  = pinHit.first.id
-                                connectFromPin = pinHit.second
-                                connectCursor  = cDown
+                                connectFromId      = pinHit.first.id
+                                connectFromPin     = pinHit.second
+                                connectFromIsInput = false
+                                connectCursor      = cDown
+                            }
+                            inPinHit != null -> {
+                                // Dragging FROM an input pin → reverse-direction wire
+                                connectFromId      = inPinHit.id
+                                connectFromPin     = PinId.OUT   // placeholder; direction resolved at drop
+                                connectFromIsInput = true
+                                connectCursor      = cDown
                             }
                             nodeHit != null -> {
                                 draggingId     = nodeHit.id
@@ -297,8 +316,14 @@ fun MacroGraphCanvas(
                                     if (connectFromId != null) {
                                         // Wire mode: always update cursor without waiting for touchSlop
                                         connectCursor  = cPos
-                                        hoveredInputId = findInputPinHit(cPos)
-                                            ?.takeIf { it.id != connectFromId && it.hasInput() }?.id
+                                        if (connectFromIsInput) {
+                                            // Dragging from input: highlight nearby output pins
+                                            hoveredOutputId = findOutputPinHit(cPos)
+                                                ?.takeIf { it.first.id != connectFromId }?.first?.id
+                                        } else {
+                                            hoveredInputId = findInputPinHit(cPos)
+                                                ?.takeIf { it.id != connectFromId && it.hasInput() }?.id
+                                        }
                                     } else if (draggingId != null) {
                                         // Node drag: immediate, no touchSlop required
                                         val node = graph.nodes.firstOrNull { it.id == draggingId }
@@ -358,13 +383,27 @@ fun MacroGraphCanvas(
                         // 4) Gesture ended
                         val elapsed = System.currentTimeMillis() - downTime
                         if (connectFromId != null) {
-                            val target = hoveredInputId
-                                ?.let { id -> graph.nodes.firstOrNull { it.id == id } }
-                                ?: findInputPinHit(connectCursor)?.takeIf { it.id != connectFromId && it.hasInput() }
-                                ?: if (moved) findNodeHit(connectCursor)?.takeIf { it.id != connectFromId && it.hasInput() } else null
-                            if (target != null) graph.tryConnect(connectFromId!!, connectFromPin, target.id)
-                            connectFromId  = null
-                            hoveredInputId = null
+                            if (connectFromIsInput) {
+                                // Reverse drag: from input pin → find output pin at cursor
+                                val outHit = hoveredOutputId
+                                    ?.let { id -> graph.nodes.firstOrNull { it.id == id }
+                                        ?.let { n -> findOutputPinHit(connectCursor)
+                                            ?.takeIf { it.first.id == id } } }
+                                    ?: findOutputPinHit(connectCursor)?.takeIf { it.first.id != connectFromId }
+                                if (outHit != null) {
+                                    graph.tryConnect(outHit.first.id, outHit.second, connectFromId!!)
+                                }
+                                hoveredOutputId = null
+                            } else {
+                                val target = hoveredInputId
+                                    ?.let { id -> graph.nodes.firstOrNull { it.id == id } }
+                                    ?: findInputPinHit(connectCursor)?.takeIf { it.id != connectFromId && it.hasInput() }
+                                    ?: if (moved) findNodeHit(connectCursor)?.takeIf { it.id != connectFromId && it.hasInput() } else null
+                                if (target != null) graph.tryConnect(connectFromId!!, connectFromPin, target.id)
+                                hoveredInputId = null
+                            }
+                            connectFromId      = null
+                            connectFromIsInput = false
                         } else if (selStart != null) {
                             // Finished selection rect drag
                             if (!moved) {
@@ -420,15 +459,26 @@ fun MacroGraphCanvas(
                 // Live wire while connecting
                 val cid = connectFromId
                 if (cid != null) {
-                    val fromNode = graph.nodes.firstOrNull { it.id == cid }
-                    if (fromNode != null) {
-                        val wireColor = if (hoveredInputId != null) Color.White
-                                        else Color.White.copy(alpha = 0.45f)
-                        drawEdge(
-                            canvasToScreen(absoluteOutPin(fromNode, connectFromPin), pan, zoom),
-                            canvasToScreen(connectCursor, pan, zoom),
-                            wireColor, 2.2f
-                        )
+                    val anchorNode = graph.nodes.firstOrNull { it.id == cid }
+                    if (anchorNode != null) {
+                        if (connectFromIsInput) {
+                            // Dragging from input pin: draw wire from cursor to the input pin
+                            val wireColor = if (hoveredOutputId != null) Color.White
+                                            else Color.White.copy(alpha = 0.45f)
+                            drawEdge(
+                                canvasToScreen(connectCursor, pan, zoom),
+                                canvasToScreen(absoluteInPin(anchorNode), pan, zoom),
+                                wireColor, 2.2f
+                            )
+                        } else {
+                            val wireColor = if (hoveredInputId != null) Color.White
+                                            else Color.White.copy(alpha = 0.45f)
+                            drawEdge(
+                                canvasToScreen(absoluteOutPin(anchorNode, connectFromPin), pan, zoom),
+                                canvasToScreen(connectCursor, pan, zoom),
+                                wireColor, 2.2f
+                            )
+                        }
                     }
                 }
 
@@ -467,9 +517,10 @@ fun MacroGraphCanvas(
                         .zIndex(if (node.selected || node.id == draggingId) 5f else 1f)
                 ) {
                     BlockView(
-                        node           = node,
-                        highlightInput = node.id == hoveredInputId,
-                        density        = density
+                        node            = node,
+                        highlightInput  = node.id == hoveredInputId,
+                        highlightOutput = node.id == hoveredOutputId,
+                        density         = density
                     )
                 }
             }
@@ -579,9 +630,10 @@ fun MacroGraphCanvas(
 
 @Composable
 fun BlockView(
-    node:           MacroNode,
-    highlightInput: Boolean = false,
-    density:        Float   = 1f
+    node:            MacroNode,
+    highlightInput:  Boolean = false,
+    highlightOutput: Boolean = false,
+    density:         Float   = 1f
 ) {
     val color    = blockColor(node.type)
     val label    = blockLabel(node.type)
@@ -620,6 +672,21 @@ fun BlockView(
                         maxLines = 3,
                         modifier = Modifier.padding(top = 4.dp)
                     )
+                }
+                // Source badge for IR Send blocks
+                val irSource = (node.params as? BlockParams.IrSend)?.irSource?.takeIf { it.isNotEmpty() }
+                if (irSource != null) {
+                    val badgeColor = if (irSource == "DB") Color(0xFF2E7ADB) else Color(0xFF1E8A5E)
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 6.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(badgeColor.copy(alpha = 0.22f))
+                            .border(1.dp, badgeColor.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(irSource, color = badgeColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             // Settings gear — top-right, only for configurable blocks
@@ -679,7 +746,12 @@ fun BlockView(
             else -> {
                 Box(modifier = Modifier.align(Alignment.BottomCenter).offset(y = pinOutDp)
                     .size(pinDp).clip(CircleShape)
-                    .background(Color(0xFF0E0B1A)).border(2.dp, Color(0xFF9B6DFF), CircleShape))
+                    .background(Color(0xFF0E0B1A))
+                    .border(
+                        width = if (highlightOutput) 3.dp else 2.dp,
+                        color = if (highlightOutput) Color.White else Color(0xFF9B6DFF),
+                        shape = CircleShape
+                    ))
             }
         }
     }
@@ -695,6 +767,8 @@ private fun blockSummary(node: MacroNode): String = when (val p = node.params) {
     }
     is BlockParams.WaitConfirm -> p.message.ifEmpty { "Press OK to continue" }
     is BlockParams.IfElse      -> p.message.ifEmpty { "Continue?" }
+    is BlockParams.Vibrate     -> "${p.durationMs} ms"
+    is BlockParams.Repeat      -> "× ${p.count} times"
     else                       -> ""
 }
 
@@ -750,6 +824,8 @@ private fun NavBtn(icon: androidx.compose.ui.graphics.vector.ImageVector, onClic
 private val addableBlockTypes = listOf(
     MacroBlockType.IR_SEND,
     MacroBlockType.DELAY,
+    MacroBlockType.VIBRATE,
+    MacroBlockType.REPEAT,
     MacroBlockType.SHOW_TEXT,
     MacroBlockType.WAIT_CONFIRM,
     MacroBlockType.IF_ELSE,
