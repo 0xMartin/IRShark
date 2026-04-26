@@ -39,6 +39,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -121,7 +122,8 @@ private sealed class FinderStep {
 @Composable
 fun IrFinderScreen(
     dbIndex: FlipperDbIndex,
-    onTransmit: () -> Unit = {}
+    onTransmit: () -> Unit = {},
+    onNavStateChange: (breadcrumb: String?, onBack: (() -> Unit)?, onUndo: (() -> Unit)?) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
@@ -154,6 +156,37 @@ fun IrFinderScreen(
                 val codesInProfile = profileCodesCache[profile.path] ?: return@filter false
                 confirmedCodes.values.all { confirmedCode -> confirmedCode in codesInProfile }
             }
+        }
+    }
+
+    // ── Notify parent of nav state on every recomposition (always-fresh lambdas) ──
+    val lastConfirmedIdx = finderButtons.indexOfLast { it.isConfirmed }
+    SideEffect {
+        when (step) {
+            FinderStep.PickCategory -> onNavStateChange(null, null, null)
+            FinderStep.PickBrand -> onNavStateChange(
+                prettyName(selectedCategory),
+                {
+                    step = FinderStep.PickCategory
+                    selectedCategory = ""
+                },
+                null
+            )
+            FinderStep.TestButtons -> onNavStateChange(
+                "${prettyName(selectedCategory)} › $selectedBrand",
+                {
+                    step = FinderStep.PickBrand
+                    selectedBrand = ""
+                    finderButtons.clear()
+                },
+                if (lastConfirmedIdx >= 0) {
+                    {
+                        finderButtons[lastConfirmedIdx] = finderButtons[lastConfirmedIdx]
+                            .copy(confirmedCode = null, codeIndex = 0)
+                        selectedButtonIdx = lastConfirmedIdx
+                    }
+                } else null
+            )
         }
     }
 
@@ -227,61 +260,6 @@ fun IrFinderScreen(
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Back header
-        if (step != FinderStep.PickCategory) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(bottom = 8.dp)
-            ) {
-                IconButton(onClick = {
-                    when (step) {
-                        FinderStep.PickBrand -> {
-                            step = FinderStep.PickCategory
-                            selectedCategory = ""
-                        }
-                        FinderStep.TestButtons -> {
-                            step = FinderStep.PickBrand
-                            selectedBrand = ""
-                            finderButtons.clear()
-                        }
-                        else -> {}
-                    }
-                }) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = violet)
-                }
-                Text(
-                    text = when (step) {
-                        FinderStep.PickBrand   -> prettyName(selectedCategory)
-                        FinderStep.TestButtons -> "${prettyName(selectedCategory)} › $selectedBrand"
-                        else -> ""
-                    },
-                    color = Color(0xFF8A8899),
-                    fontSize = 13.sp,
-                    modifier = Modifier.weight(1f)
-                )
-                // Reset last confirmed button — only in TestButtons step
-                if (step == FinderStep.TestButtons) {
-                    val lastConfirmedIdx = finderButtons.indexOfLast { it.isConfirmed }
-                    IconButton(
-                        onClick = {
-                            if (lastConfirmedIdx >= 0) {
-                                finderButtons[lastConfirmedIdx] = finderButtons[lastConfirmedIdx]
-                                    .copy(confirmedCode = null, codeIndex = 0)
-                                selectedButtonIdx = lastConfirmedIdx
-                            }
-                        },
-                        enabled = lastConfirmedIdx >= 0
-                    ) {
-                        Icon(
-                            Icons.Filled.Undo,
-                            contentDescription = "Reset last confirmed",
-                            tint = if (lastConfirmedIdx >= 0) violet else Color(0xFF3A3550)
-                        )
-                    }
-                }
-            }
-        }
-
         when (step) {
             FinderStep.PickCategory -> PickStep(
                 question = "What type of device?",
@@ -323,6 +301,37 @@ fun IrFinderScreen(
                     val btn = finderButtons.getOrNull(idx) ?: return@TestButtonsStep
                     val code = btn.currentCode ?: return@TestButtonsStep
                     finderButtons[idx] = btn.copy(confirmedCode = code)
+
+                    // Re-compute matching profiles with this new confirmation included,
+                    // then trim codeOptions on all remaining buttons to codes that actually
+                    // exist in at least one still-matching profile.
+                    val newConfirmedCodes = finderButtons
+                        .filter { it.isConfirmed }
+                        .associate { it.label to it.confirmedCode!! }
+                    val basePath = if (selectedBrand.isNotEmpty())
+                        "flipper_irdb/$selectedCategory/$selectedBrand"
+                    else
+                        "flipper_irdb/$selectedCategory"
+                    val nowMatching = profilesUnderPath(dbIndex, basePath).filter { profile ->
+                        val codesInProfile = profileCodesCache[profile.path] ?: return@filter false
+                        newConfirmedCodes.values.all { c -> c in codesInProfile }
+                    }.map { it.path }.toSet()
+
+                    // Build union of all codes available in still-matching profiles
+                    val availableCodes: Set<String> = profileCodesCache
+                        .filter { (path, _) -> path in nowMatching }
+                        .values.flatten().toSet()
+
+                    // Filter each non-confirmed button's options to only codes in availableCodes
+                    finderButtons.forEachIndexed { i, b ->
+                        if (!b.isConfirmed && b.codeOptions.isNotEmpty()) {
+                            val filtered = b.codeOptions.filter { it.code in availableCodes }
+                            if (filtered.size != b.codeOptions.size) {
+                                finderButtons[i] = b.copy(codeOptions = filtered, codeIndex = 0)
+                            }
+                        }
+                    }
+
                     // Advance to next unconfirmed button
                     val next = finderButtons.indexOfFirst { !it.isConfirmed }
                     selectedButtonIdx = if (next >= 0) next else -1
@@ -462,7 +471,7 @@ private fun TestButtonsStep(
             contentPadding = PaddingValues(bottom = 12.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height((buttons.size / 2 * 48 + 56).dp.coerceAtMost(240.dp))
+                .height((buttons.size / 2 * 38 + 46).dp.coerceAtMost(192.dp))
         ) {
             items(buttons.size) { idx ->
                 val btn = buttons[idx]
@@ -480,7 +489,7 @@ private fun TestButtonsStep(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .height(36.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(bgColor)
                         .border(1.dp, borderColor, RoundedCornerShape(10.dp))

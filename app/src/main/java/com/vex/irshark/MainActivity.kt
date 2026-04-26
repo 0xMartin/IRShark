@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
@@ -212,6 +213,19 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     val macroEngine = remember { MacroEngine(context) }
     val macroState by macroEngine.state.collectAsState()
 
+    // IR Finder nav state (lifted from IrFinderScreen)
+    var irFinderBreadcrumb by remember { mutableStateOf<String?>(null) }
+    var irFinderOnBack by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var irFinderOnUndo by remember { mutableStateOf<(() -> Unit)?>(null) }
+    // Clear IR Finder nav state when navigating away
+    LaunchedEffect(screen) {
+        if (screen != Screen.IR_FINDER) {
+            irFinderBreadcrumb = null
+            irFinderOnBack = null
+            irFinderOnUndo = null
+        }
+    }
+
     // Blink TX LED whenever the macro engine transmits an IR command
     LaunchedEffect(macroEngine) {
         macroEngine.irTransmitEvent.collect { emitTxPulse() }
@@ -366,6 +380,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER)) {
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
+                    breadcrumb = if (screen == Screen.IR_FINDER) irFinderBreadcrumb else null,
+                    onBack = if (screen == Screen.IR_FINDER) irFinderOnBack else null,
+                    extraActions = if (screen == Screen.IR_FINDER && irFinderOnUndo != null)
+                        listOf(Icons.Filled.Undo to irFinderOnUndo!!)
+                    else emptyList(),
                     searchQuery = when (screen) {
                         Screen.MACROS -> macrosQuery
                         Screen.MY_REMOTES -> myRemotesQuery
@@ -762,7 +781,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     Screen.IR_FINDER -> {
                         IrFinderScreen(
                             dbIndex = dbIndex,
-                            onTransmit = { emitTxPulse() }
+                            onTransmit = { emitTxPulse() },
+                            onNavStateChange = { breadcrumb, onBack, onUndo ->
+                                irFinderBreadcrumb = breadcrumb
+                                irFinderOnBack = onBack
+                                irFinderOnUndo = onUndo
+                            }
                         )
                     }
 

@@ -362,7 +362,11 @@ fun SectionNavBar(
     // Optional search field between home button and actions
     searchQuery: String? = null,
     searchPlaceholder: String = "Search",
-    onSearchQuery: ((String) -> Unit)? = null
+    onSearchQuery: ((String) -> Unit)? = null,
+    // Optional breadcrumb/back for sub-screens (e.g. IR Finder steps)
+    breadcrumb: String? = null,
+    onBack: (() -> Unit)? = null,
+    extraActions: List<Pair<ImageVector, () -> Unit>> = emptyList()
 ) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
@@ -383,52 +387,82 @@ fun SectionNavBar(
         ) {
             HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
             // Search field (if provided)
-            if (searchQuery != null && onSearchQuery != null) {
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchQuery,
-                    singleLine = true,
-                    cursorBrush = SolidColor(Color.White),
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        color = Color.White,
-                        fontSize = 13.sp
-                    ),
-                    modifier = Modifier.weight(1f),
-                    decorationBox = { inner ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF0E0B1A))
-                                .border(1.dp, violet.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
-                        ) {
-                            if (searchQuery.isEmpty()) {
-                                Text(searchPlaceholder, color = Color(0xFF8A8899), fontSize = 13.sp)
-                            }
-                            inner()
-                        }
-                    }
-                )
-            } else {
-                Spacer(modifier = Modifier.weight(1f))
-            }
-            actions.forEach { (icon, onClick) ->
-                Box(
+            if (breadcrumb != null && onBack != null) {
+                // Breadcrumb mode: back button + label + extraActions
+                BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp))
+                Text(
+                    text = breadcrumb,
+                    color = Color(0xFF8A8899),
+                    fontSize = 13.sp,
                     modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(violet.copy(alpha = 0.14f))
-                        .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                        .clickable(onClick = onClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = violet,
-                        modifier = Modifier.size(20.dp)
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                extraActions.forEach { (icon, onClick) ->
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(violet.copy(alpha = 0.14f))
+                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                            .clickable(onClick = onClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = icon, contentDescription = null,
+                            tint = violet, modifier = Modifier.size(20.dp))
+                    }
+                }
+            } else {
+                // Normal mode: search + actions (home button already shown above)
+                if (searchQuery != null && onSearchQuery != null) {
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchQuery,
+                        singleLine = true,
+                        cursorBrush = SolidColor(Color.White),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = Color.White,
+                            fontSize = 13.sp
+                        ),
+                        modifier = Modifier.weight(1f),
+                        decorationBox = { inner ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF0E0B1A))
+                                    .border(1.dp, violet.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                            ) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(searchPlaceholder, color = Color(0xFF8A8899), fontSize = 13.sp)
+                                }
+                                inner()
+                            }
+                        }
                     )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                actions.forEach { (icon, onClick) ->
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(violet.copy(alpha = 0.14f))
+                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                            .clickable(onClick = onClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = violet,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
