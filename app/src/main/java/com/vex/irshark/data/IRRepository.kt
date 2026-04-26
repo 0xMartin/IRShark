@@ -75,20 +75,36 @@ data class UniversalCommandItem(
     val profileCoverage: Int
 )
 
-suspend fun loadFlipperDbIndex(context: Context): FlipperDbIndex {
+data class DbLoadProgress(
+    val loadedFiles: Int = 0,
+    val totalFiles: Int = 0
+)
+
+suspend fun loadFlipperDbIndex(
+    context: Context,
+    onProgress: ((DbLoadProgress) -> Unit)? = null
+): FlipperDbIndex {
     return withContext(Dispatchers.IO) {
         runCatching {
             val lintConfig = parseLintConfig(context)
             val folders = mutableMapOf<String, MutableList<String>>()
             val profilesByFolder = mutableMapOf<String, MutableList<FlipperProfile>>()
             val allProfiles = mutableListOf<FlipperProfile>()
+            val totalFiles = countIrFiles(context, DB_ROOT)
+            var loadedFiles = 0
 
-            fun walk(path: String) {
+            if (onProgress != null) {
+                withContext(Dispatchers.Main) {
+                    onProgress(DbLoadProgress(loadedFiles = 0, totalFiles = totalFiles))
+                }
+            }
+
+            suspend fun walk(path: String) {
                 val children = context.assets.list(path)?.sorted().orEmpty()
                 folders.putIfAbsent(path, mutableListOf())
                 profilesByFolder.putIfAbsent(path, mutableListOf())
 
-                children.forEach { child ->
+                for (child in children) {
                     val childPath = "$path/$child"
                     if (child.endsWith(".ir", ignoreCase = true)) {
                         val commands = parseIrCommands(context, childPath)
@@ -100,6 +116,12 @@ suspend fun loadFlipperDbIndex(context: Context): FlipperDbIndex {
                         )
                         profilesByFolder[path]?.add(profile)
                         allProfiles += profile
+                        loadedFiles += 1
+                        if (onProgress != null) {
+                            withContext(Dispatchers.Main) {
+                                onProgress(DbLoadProgress(loadedFiles = loadedFiles, totalFiles = totalFiles))
+                            }
+                        }
                     } else {
                         val nested = context.assets.list(childPath).orEmpty()
                         if (nested.isNotEmpty()) {
@@ -450,6 +472,23 @@ private fun parseIrCodeBlocks(context: Context, assetPath: String): List<ParsedI
         flushCurrent()
         blocks
     }.getOrElse { emptyList() }
+}
+
+private fun countIrFiles(context: Context, path: String): Int {
+    val children = context.assets.list(path).orEmpty()
+    var count = 0
+    for (child in children) {
+        val childPath = "$path/$child"
+        if (child.endsWith(".ir", ignoreCase = true)) {
+            count += 1
+        } else {
+            val nested = context.assets.list(childPath).orEmpty()
+            if (nested.isNotEmpty()) {
+                count += countIrFiles(context, childPath)
+            }
+        }
+    }
+    return count
 }
 
 private fun parseLintConfig(context: Context): FlipperLintConfig {

@@ -23,6 +23,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,10 +35,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vex.irshark.R
+import kotlin.math.roundToInt
 
 @Composable
-fun SplashScreen() {
+fun SplashScreen(
+    loadedFiles: Int = 0,
+    totalFiles: Int = 0
+) {
     val violet = MaterialTheme.colorScheme.primary
+    val progress = remember(loadedFiles, totalFiles) {
+        if (totalFiles > 0) {
+            (loadedFiles.toFloat() / totalFiles.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+    }
 
     val pulse = rememberInfiniteTransition(label = "logo-pulse")
     val logoAlpha = pulse.animateFloat(
@@ -86,15 +99,34 @@ fun SplashScreen() {
                 fontSize = 12.sp
             )
 
+            if (totalFiles > 0) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "$loadedFiles / $totalFiles files",
+                    color = Color(0xFF8A8899),
+                    fontSize = 11.sp
+                )
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
             LinearProgressIndicator(
+                progress = { progress },
                 modifier = Modifier
                     .width(200.dp)
                     .clip(RoundedCornerShape(999.dp)),
                 color = violet,
                 trackColor = violet.copy(alpha = 0.18f)
             )
+
+            if (totalFiles > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${(progress * 100f).roundToInt()}%",
+                    color = Color(0xFF8A8899),
+                    fontSize = 11.sp
+                )
+            }
         }
     }
 }

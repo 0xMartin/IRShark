@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.vex.irshark.data.FlipperDbIndex
+import com.vex.irshark.data.DbLoadProgress
 import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
@@ -145,6 +146,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var settingsDirty by remember { mutableStateOf(false) }
     var settingsToastPending by remember { mutableStateOf(false) }
     var settingsLoaded by remember { mutableStateOf(false) }
+    var dbLoaded by remember { mutableStateOf(false) }
+    var dbLoadProgress by remember { mutableStateOf(DbLoadProgress()) }
     var remotesLoaded by remember { mutableStateOf(false) }
     var txPulseJob by remember { mutableStateOf<Job?>(null) }
     val toastController = remember { AppToastController() }
@@ -374,7 +377,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
     // Load data
     LaunchedEffect(Unit) {
-        dbIndex = loadFlipperDbIndex(context)
+        dbIndex = loadFlipperDbIndex(context) { progress ->
+            dbLoadProgress = progress
+        }
+        dbLoaded = true
         savedRemotes = loadSavedRemotes(context)
         remotesLoaded = true
         savedMacros = loadSavedMacros(context)
@@ -454,8 +460,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     // Control command labels
     val controlCommands = controlButtons.map { it.label }.filter { it.isNotBlank() }
     // Show splash while loading
-    if (!settingsLoaded) {
-        SplashScreen()
+    if (!settingsLoaded || !dbLoaded) {
+        SplashScreen(
+            loadedFiles = dbLoadProgress.loadedFiles,
+            totalFiles = dbLoadProgress.totalFiles
+        )
         return
     }
     Box(
