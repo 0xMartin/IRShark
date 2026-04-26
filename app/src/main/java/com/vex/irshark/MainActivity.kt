@@ -514,6 +514,15 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 }
                                 remote.name to subtitle
                             },
+                            iconNameForItem = { idx ->
+                                val remote = indexedFiltered[idx].value
+                                val pathForIcon = remote.sourceProfilePath
+                                    ?: remote.profilePath
+                                pathForIcon
+                                    .substringAfter("flipper_irdb/", "")
+                                    .substringBefore('/')
+                                    .ifBlank { null }
+                            },
                             isFavoriteForItem = { idx -> indexedFiltered[idx].value.favorite },
                             onFavoriteToggleForItem = { idx ->
                                 val originalIndex = indexedFiltered[idx].index
@@ -581,6 +590,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         RemotesListScreen(
                             emptyText = "No matching remotes in database.",
                             items = filtered.map { it.name to prettyPath(it.parentPath) },
+                            iconNameForItem = { idx ->
+                                filtered[idx].parentPath
+                                    .substringAfter("flipper_irdb/", "")
+                                    .substringBefore('/')
+                                    .ifBlank { null }
+                            },
                             onOpen = { index ->
                                 val profile = filtered[index]
                                 controlProfilePath = profile.path
@@ -663,6 +678,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
                         RemoteControlScreen(
                             title = title,
+                            deviceIconName = (activeSavedRemote?.sourceProfilePath
+                                ?: currentProfile?.parentPath
+                                ?: profilePath)
+                                .substringAfter("flipper_irdb/", "")
+                                .substringBefore('/')
+                                .ifBlank { null },
                             typeBadge = typeBadge,
                             countBadge = countBadge,
                             commands = commands,

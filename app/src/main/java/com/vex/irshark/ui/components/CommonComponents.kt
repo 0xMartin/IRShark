@@ -269,6 +269,7 @@ fun ListRow(
     actionIcon: ImageVector? = null,
     onOpen: () -> Unit,
     onAction: () -> Unit,
+    leadingIconName: String? = null,
     isFavorite: Boolean = false,
     onFavoriteToggle: (() -> Unit)? = null,
     onDuplicate: (() -> Unit)? = null
@@ -299,7 +300,27 @@ fun ListRow(
                     .clickable(onClick = onOpen)
                     .padding(6.dp)
             ) {
-                Text(title, color = Color.White, fontSize = 14.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (!leadingIconName.isNullOrBlank()) {
+                        CategorySvgIcon(
+                            name = leadingIconName,
+                            tint = violet,
+                            size = 18.dp
+                        )
+                    }
+                    Text(
+                        title,
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 Text(subtitle, color = Color(0xFF8A8899), fontSize = 11.sp, maxLines = 1)
             }
             Row(

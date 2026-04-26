@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,10 +41,11 @@ fun RemotesListScreen(
     isFavoriteForItem: ((Int) -> Boolean)? = null,
     onFavoriteToggleForItem: ((Int) -> Unit)? = null,
     onDuplicateForItem: ((Int) -> Unit)? = null,
-    secondaryActionIcon: ImageVector? = null
+    secondaryActionIcon: ImageVector? = null,
+    iconNameForItem: ((Int) -> String?)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         if (!topActionLabel.isNullOrBlank() && onTopAction != null) {
             Box(
                 modifier = Modifier
@@ -67,7 +69,7 @@ fun RemotesListScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(500.dp),
+                    .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(items.indices.toList()) { index ->
@@ -80,6 +82,7 @@ fun RemotesListScreen(
                         actionIcon = secondaryActionIcon,
                         onOpen = { onOpen(index) },
                         onAction = { onSecondaryAction(index) },
+                        leadingIconName = iconNameForItem?.invoke(index),
                         isFavorite = isFavoriteForItem?.invoke(index) ?: false,
                         onFavoriteToggle = onFavoriteToggleForItem?.let { { it(index) } },
                         onDuplicate = onDuplicateForItem?.let { { it(index) } }

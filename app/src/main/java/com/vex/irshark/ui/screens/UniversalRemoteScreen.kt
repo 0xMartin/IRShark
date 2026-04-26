@@ -151,6 +151,11 @@ fun UniversalRemoteScreen(
                     ) {
                         items(filteredFolders) { path ->
                             val name = prettyName(path)
+                            val iconSourceName = if (currentPath == root) {
+                                name
+                            } else {
+                                prettyName(currentPath)
+                            }
                             FolderButton(
                                 title = name,
                                 onClick = {
@@ -158,9 +163,7 @@ fun UniversalRemoteScreen(
                                     onOpenFolder(path)
                                 },
                                 modifier = Modifier.fillMaxWidth(),
-                                icon = if (currentPath == root) {
-                                    { CategorySvgIcon(name = name, tint = violet, size = 24.dp) }
-                                } else null
+                                icon = { CategorySvgIcon(name = iconSourceName, tint = violet, size = 24.dp) }
                             )
                         }
                     }

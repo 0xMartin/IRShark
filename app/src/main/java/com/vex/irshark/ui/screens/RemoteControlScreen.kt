@@ -35,11 +35,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vex.irshark.ui.components.BackIconButton
 import com.vex.irshark.ui.components.Badge
+import com.vex.irshark.ui.components.CategorySvgIcon
 import com.vex.irshark.ui.components.RemoteCommandButton
 
 @Composable
 fun RemoteControlScreen(
     title: String,
+    deviceIconName: String?,
     typeBadge: String,
     countBadge: String,
     commands: List<String>,
@@ -60,20 +62,6 @@ fun RemoteControlScreen(
         // Top navigation row
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp))
-            if (showEditButton) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xFF13101E))
-                        .border(1.dp, violet.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                        .clickable(onClick = onEdit),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Edit", color = violet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
             if (showSaveButton) {
                 Box(
                     modifier = Modifier
@@ -102,7 +90,49 @@ fun RemoteControlScreen(
                 .padding(12.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (!deviceIconName.isNullOrBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(violet.copy(alpha = 0.12f))
+                                .border(1.dp, violet.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CategorySvgIcon(
+                                name = deviceIconName,
+                                tint = violet,
+                                size = 20.dp
+                            )
+                        }
+                    }
+                    Text(
+                        title,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (showEditButton) {
+                        Box(
+                            modifier = Modifier
+                                .height(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(violet.copy(alpha = 0.14f))
+                                .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .clickable(onClick = onEdit)
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Edit", color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Badge(typeBadge)
                     Badge(countBadge)
