@@ -385,7 +385,7 @@ fun SectionNavBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (breadcrumb != null && onBack != null) {
+            if (breadcrumb != null) {
                 // Breadcrumb mode: connected home + path box, right-side circular actions + back
                 Row(
                     modifier = Modifier
@@ -412,7 +412,7 @@ fun SectionNavBar(
                     ) {
                         Text(
                             text = breadcrumb,
-                            color = Color(0xFF8A8899),
+                            color = Color.White,
                             fontSize = 13.sp,
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
@@ -435,21 +435,23 @@ fun SectionNavBar(
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0xFF13101E))
-                        .border(1.dp, violet.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
-                        .clickable(onClick = onBack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = violet,
-                        modifier = Modifier.size(20.dp)
-                    )
+                if (onBack != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFF13101E))
+                            .border(1.dp, violet.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+                            .clickable(onClick = onBack),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = violet,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             } else {
                 // Normal mode: home button + optional search + actions

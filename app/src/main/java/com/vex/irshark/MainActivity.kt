@@ -17,7 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
@@ -380,10 +380,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER)) {
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
-                    breadcrumb = if (screen == Screen.IR_FINDER) irFinderBreadcrumb else null,
+                    breadcrumb = if (screen == Screen.IR_FINDER) (irFinderBreadcrumb ?: "Root") else null,
                     onBack = if (screen == Screen.IR_FINDER) irFinderOnBack else null,
                     extraActions = if (screen == Screen.IR_FINDER && irFinderOnUndo != null)
-                        listOf(Icons.Filled.Undo to irFinderOnUndo!!)
+                        listOf(Icons.Filled.RestartAlt to irFinderOnUndo!!)
                     else emptyList(),
                     searchQuery = when (screen) {
                         Screen.MACROS -> macrosQuery
@@ -782,6 +782,30 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         IrFinderScreen(
                             dbIndex = dbIndex,
                             onTransmit = { emitTxPulse() },
+                            addedProfilePaths = savedRemotes.mapNotNull { it.sourceProfilePath }.toSet(),
+                            onAddRemote = { profilePath, profileName, commands ->
+                                if (savedRemotes.none { it.sourceProfilePath == profilePath }) {
+                                    scope.launch {
+                                        val dbCodes = loadDbIrCodeOptions(context, profilePath)
+                                        val seededButtons = commands.map { cmd ->
+                                            SavedRemoteButton(
+                                                label = cmd,
+                                                code = ""
+                                            )
+                                        }
+                                        val hydratedButtons = hydrateMissingCodesFromDb(seededButtons, dbCodes)
+                                        val resolvedName = uniqueRemoteName(profileName)
+                                        savedRemotes = savedRemotes + SavedRemote(
+                                            name = resolvedName,
+                                            profilePath = profilePath,
+                                            commands = hydratedButtons.map { it.label },
+                                            buttons = hydratedButtons,
+                                            sourceProfilePath = profilePath
+                                        )
+                                        toastController.show("Added to My Remotes")
+                                    }
+                                }
+                            },
                             onNavStateChange = { breadcrumb, onBack, onUndo ->
                                 irFinderBreadcrumb = breadcrumb
                                 irFinderOnBack = onBack

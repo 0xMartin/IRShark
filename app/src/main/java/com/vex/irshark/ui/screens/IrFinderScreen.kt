@@ -26,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -123,6 +122,8 @@ private sealed class FinderStep {
 fun IrFinderScreen(
     dbIndex: FlipperDbIndex,
     onTransmit: () -> Unit = {},
+    addedProfilePaths: Set<String> = emptySet(),
+    onAddRemote: (profilePath: String, profileName: String, commands: List<String>) -> Unit = { _, _, _ -> },
     onNavStateChange: (breadcrumb: String?, onBack: (() -> Unit)?, onUndo: (() -> Unit)?) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
@@ -163,7 +164,7 @@ fun IrFinderScreen(
     val lastConfirmedIdx = finderButtons.indexOfLast { it.isConfirmed }
     SideEffect {
         when (step) {
-            FinderStep.PickCategory -> onNavStateChange(null, null, null)
+            FinderStep.PickCategory -> onNavStateChange("Root", null, null)
             FinderStep.PickBrand -> onNavStateChange(
                 prettyName(selectedCategory),
                 {
@@ -289,7 +290,8 @@ fun IrFinderScreen(
                 } else {
                     profilesUnderPath(dbIndex, "flipper_irdb/$selectedCategory").size
                 },
-                matchingProfiles = matchingProfiles.map { it.name to prettyPath(it.parentPath) },
+                matchingProfiles = matchingProfiles,
+                addedProfilePaths = addedProfilePaths,
                 onSelectButton = { idx -> selectedButtonIdx = idx },
                 onSend = { idx ->
                     val btn = finderButtons.getOrNull(idx) ?: return@TestButtonsStep
@@ -345,6 +347,9 @@ fun IrFinderScreen(
                 onResetButton = { idx ->
                     val btn = finderButtons.getOrNull(idx) ?: return@TestButtonsStep
                     finderButtons[idx] = btn.copy(confirmedCode = null, codeIndex = 0)
+                },
+                onAddRemote = { profile ->
+                    onAddRemote(profile.path, profile.name, profile.commands)
                 }
             )
         }
@@ -437,12 +442,14 @@ private fun TestButtonsStep(
     isLoading: Boolean,
     matchingCount: Int,
     totalCount: Int,
-    matchingProfiles: List<Pair<String, String>>,
+    matchingProfiles: List<com.vex.irshark.data.FlipperProfile>,
+    addedProfilePaths: Set<String>,
     onSelectButton: (Int) -> Unit,
     onSend: (Int) -> Unit,
     onWorks: (Int) -> Unit,
     onNextCode: (Int) -> Unit,
-    onResetButton: (Int) -> Unit
+    onResetButton: (Int) -> Unit,
+    onAddRemote: (com.vex.irshark.data.FlipperProfile) -> Unit
 ) {
     val violet = MaterialTheme.colorScheme.primary
     val green  = Color(0xFF3EB47C)
@@ -658,7 +665,8 @@ private fun TestButtonsStep(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     contentPadding = PaddingValues(bottom = 8.dp)
                 ) {
-                    items(matchingProfiles) { (name, path) ->
+                    items(matchingProfiles) { profile ->
+                        val isAdded = addedProfilePaths.contains(profile.path)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -668,22 +676,43 @@ private fun TestButtonsStep(
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = name,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = path,
-                                color = Color(0xFF8A8899),
-                                fontSize = 11.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = profile.name,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = prettyPath(profile.parentPath),
+                                    color = Color(0xFF8A8899),
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            OutlinedButton(
+                                onClick = { onAddRemote(profile) },
+                                enabled = !isAdded,
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, violet.copy(alpha = 0.6f)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = violet,
+                                    disabledContentColor = Color(0xFF8A8899)
+                                ),
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text(
+                                    text = if (isAdded) "Added" else "Add",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 }
