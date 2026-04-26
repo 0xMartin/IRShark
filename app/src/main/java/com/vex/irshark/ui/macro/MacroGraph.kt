@@ -225,7 +225,7 @@ class MacroGraph {
 
             MacroBlockType.IR_SEND -> {
                 val p = node.params as? BlockParams.IrSend ?: BlockParams.IrSend()
-                out.add(MacroStep.IrSend(p.displayLabel, p.remoteName, p.buttonLabel, p.irCode))
+                out.add(MacroStep.IrSend(p.displayLabel, p.remoteName, p.buttonLabel, p.irCode, p.irSource))
             }
             MacroBlockType.DELAY -> {
                 val p = node.params as? BlockParams.Delay ?: BlockParams.Delay()

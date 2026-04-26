@@ -67,6 +67,7 @@ import com.vex.irshark.ui.components.SectionNavBar
 import com.vex.irshark.ui.screens.HomeScreen
 import com.vex.irshark.ui.screens.MacroEditorScreen
 import com.vex.irshark.ui.screens.MacroListScreen
+import com.vex.irshark.ui.screens.MacroDoneScreen
 import com.vex.irshark.ui.screens.MacroRunScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
@@ -764,26 +765,23 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 onSwitch  = { macroEngine.respondSwitch(it) }
                             )
                         } else {
-                            // Finished or Cancelled
-                            val msg = when (macroState) {
-                                is MacroRunState.Finished  -> "Macro complete: ${(macroState as MacroRunState.Finished).macroName}"
-                                is MacroRunState.Cancelled -> "Macro stopped: ${(macroState as MacroRunState.Cancelled).macroName}"
-                                else -> "Macro done"
+                            val snap      = macroState
+                            val finished  = snap is MacroRunState.Finished
+                            val irLog     = when (snap) {
+                                is MacroRunState.Finished  -> snap.irLog
+                                is MacroRunState.Cancelled -> snap.irLog
+                                else                       -> emptyList()
                             }
-                            androidx.compose.foundation.layout.Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                androidx.compose.foundation.layout.Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp)
-                                ) {
-                                    Text(msg, color = androidx.compose.ui.graphics.Color.White)
-                                    TextButton(onClick = { screen = Screen.MACROS }) {
-                                        Text("Done")
-                                    }
-                                }
-                            }
+                            MacroDoneScreen(
+                                finished  = finished,
+                                macroName = when (snap) {
+                                    is MacroRunState.Finished  -> snap.macroName
+                                    is MacroRunState.Cancelled -> snap.macroName
+                                    else                       -> ""
+                                },
+                                irLog   = irLog,
+                                onDone  = { screen = Screen.MACROS }
+                            )
                         }
                     }
                 }

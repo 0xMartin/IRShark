@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -25,13 +29,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.clickable
@@ -162,54 +170,132 @@ fun MacroRunScreen(
         state.switch?.let { req ->
             SwitchCard(req = req, onSelect = onSwitch)
         }
-        // ── IR transmission log ─────────────────────────────────────────────────────
+        // ── IR transmission log ────────────────────────────────────────
         if (state.irLog.isNotEmpty()) {
-            Box(
+            IrLogTable(entries = state.irLog)
+        }
+    }
+}
+
+@Composable
+fun MacroDoneScreen(
+    finished:  Boolean,        // true = Finished, false = Cancelled
+    macroName: String,
+    irLog:     List<IrLogEntry>,
+    onDone:    () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 14.dp)
+            .padding(bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Text(
+            text       = if (finished) "Macro ended" else "Macro stopped",
+            color      = if (finished) Color(0xFF5BFF9A) else Color(0xFFFF7B9D),
+            fontSize   = 26.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign  = TextAlign.Center
+        )
+
+        if (irLog.isNotEmpty()) {
+            IrLogTable(entries = irLog)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.6f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF1A1726))
+                .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                .clickable(onClick = onDone)
+                .padding(vertical = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Done", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun IrLogTable(entries: List<IrLogEntry>) {
+    val screenH  = LocalConfiguration.current.screenHeightDp.dp
+    val maxH     = screenH * 0.35f
+    // entries already in chronological order; newest on top
+    val reversed = entries.reversed()
+    val listState = rememberLazyListState()
+    LaunchedEffect(entries.size) {
+        if (entries.isNotEmpty()) listState.animateScrollToItem(0)
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF0D0A1A))
+            .border(1.dp, Color(0xFF9B6DFF).copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .padding(12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Time",   color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(54.dp))
+                Text("Signal", color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Src",    color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(48.dp), textAlign = TextAlign.End)
+            }
+            HorizontalDivider(color = Color(0xFF9B6DFF).copy(alpha = 0.20f))
+            LazyColumn(
+                state   = listState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF0D0A1A))
-                    .border(1.dp, Color(0xFF9B6DFF).copy(alpha = 0.25f), RoundedCornerShape(14.dp))
-                    .padding(12.dp)
+                    .heightIn(max = maxH),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("IR Log", color = Color(0xFF9B6DFF), fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(2.dp))
-                    state.irLog.takeLast(10).reversed().forEach { entry ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF9B6DFF).copy(alpha = 0.70f))
-                                )
-                                Text(
-                                    entry.displayLabel,
-                                    color    = Color.White.copy(alpha = 0.90f),
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            Text(
-                                entry.remoteName,
-                                color    = Color(0xFF9B6DFF).copy(alpha = 0.65f),
-                                fontSize = 11.sp
-                            )
-                        }
+                items(reversed) { entry ->
+                    val totalSec = entry.elapsedMs / 1000L
+                    val mm = totalSec / 60
+                    val ss = totalSec % 60
+                    val timeStr = "%d:%02d".format(mm, ss)
+                    val srcColor = when (entry.irSource) {
+                        "DB"     -> Color(0xFF2E7ADB)
+                        "CUSTOM" -> Color(0xFF1E8A5E)
+                        else     -> Color(0xFF8A8899)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(timeStr, color = Color(0xFF8A8899), fontSize = 11.sp, modifier = Modifier.width(54.dp))
+                        Text(
+                            entry.displayLabel,
+                            color    = Color.White.copy(alpha = 0.90f),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            entry.irSource.ifEmpty { "-" },
+                            color    = srcColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(48.dp),
+                            textAlign = TextAlign.End
+                        )
                     }
                 }
             }
-        }    }
+        }
+    }
 }
 
 @Composable

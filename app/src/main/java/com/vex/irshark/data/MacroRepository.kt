@@ -13,7 +13,8 @@ sealed class MacroStep {
         val displayLabel: String,
         val remoteName: String,
         val buttonLabel: String,
-        val irCode: String
+        val irCode: String,
+        val irSource: String = ""
     ) : MacroStep()
 
     /** Wait N milliseconds. */
@@ -101,6 +102,7 @@ private fun stepToObj(s: MacroStep): JSONObject = JSONObject().apply {
             put("remoteName", s.remoteName)
             put("buttonLabel", s.buttonLabel)
             put("irCode", s.irCode)
+            put("irSource", s.irSource)
         }
         is MacroStep.Delay -> { put("type", "delay"); put("ms", s.ms) }
         is MacroStep.ShowText -> { put("type", "show_text"); put("text", s.text); put("durationMs", s.durationMs); put("async", s.async) }
@@ -145,7 +147,8 @@ private fun parseStepObj(o: JSONObject): MacroStep? = when (o.optString("type"))
         displayLabel = o.optString("displayLabel"),
         remoteName   = o.optString("remoteName"),
         buttonLabel  = o.optString("buttonLabel"),
-        irCode       = o.optString("irCode")
+        irCode       = o.optString("irCode"),
+        irSource     = o.optString("irSource", "")
     )
     "delay"         -> MacroStep.Delay(o.optLong("ms", 500L))
     "show_text"     -> MacroStep.ShowText(o.optString("text"), o.optLong("durationMs", 3000L), o.optBoolean("async", false))

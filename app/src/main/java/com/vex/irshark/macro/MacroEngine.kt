@@ -25,7 +25,9 @@ import kotlinx.coroutines.withContext
 data class IrLogEntry(
     val displayLabel: String,
     val remoteName:   String,
-    val buttonLabel:  String
+    val buttonLabel:  String,
+    val irSource:     String = "",
+    val elapsedMs:    Long   = 0L
 )
 
 // ── Public state ──────────────────────────────────────────────────────────────
@@ -42,8 +44,8 @@ sealed class MacroRunState {
         val switch:       SwitchRequest? = null  // non-null = waiting for option pick
     ) : MacroRunState()
 
-    data class Finished(val macroName: String) : MacroRunState()
-    data class Cancelled(val macroName: String) : MacroRunState()
+    data class Finished(val macroName: String, val irLog: List<IrLogEntry> = emptyList()) : MacroRunState()
+    data class Cancelled(val macroName: String, val irLog: List<IrLogEntry> = emptyList()) : MacroRunState()
 }
 
 data class ConfirmRequest(
@@ -78,6 +80,7 @@ class MacroEngine(private val context: Context) {
     private var loopIter  = 0
     private var inLoop    = false
     private var macroName = ""
+    private var macroStartTime = 0L
     private val displayTexts = java.util.concurrent.CopyOnWriteArrayList<String>()
     private var irLog: List<IrLogEntry> = emptyList()
 
@@ -87,7 +90,8 @@ class MacroEngine(private val context: Context) {
         loopIter    = 0
         inLoop      = false
         displayTexts.clear()
-        irLog       = emptyList()
+        irLog           = emptyList()
+        macroStartTime  = System.currentTimeMillis()
         runScope    = scope
         macroName   = macro.name
         totalSteps  = com.vex.irshark.data.countMacroSteps(macro.steps)
@@ -95,9 +99,9 @@ class MacroEngine(private val context: Context) {
             try {
                 pushProgress()
                 executeSteps(macro.steps)
-                _state.value = MacroRunState.Finished(macroName)
+                _state.value = MacroRunState.Finished(macroName, irLog)
             } catch (_: CancellationException) {
-                _state.value = MacroRunState.Cancelled(macroName)
+                _state.value = MacroRunState.Cancelled(macroName, irLog)
             }
         }
     }
@@ -144,7 +148,8 @@ class MacroEngine(private val context: Context) {
 
         when (step) {
             is MacroStep.IrSend -> {
-                val entry = IrLogEntry(step.displayLabel, step.remoteName, step.buttonLabel)
+                val elapsed = System.currentTimeMillis() - macroStartTime
+                val entry = IrLogEntry(step.displayLabel, step.remoteName, step.buttonLabel, step.irSource, elapsed)
                 irLog = irLog + entry
                 _irTransmitEvent.tryEmit(entry)
                 pushProgress()  // update state with new log entry immediately
