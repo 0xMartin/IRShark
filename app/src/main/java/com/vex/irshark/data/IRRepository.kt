@@ -420,14 +420,22 @@ suspend fun loadDbIrCodeOptions(context: Context, assetPath: String): List<DbIrC
     return withContext(Dispatchers.IO) {
         parseIrCodeBlocks(context, assetPath).map { block ->
             val data = block.fields["data"].orEmpty()
+            val frequency = block.fields["frequency"].orEmpty()
             val protocol = block.fields["protocol"].orEmpty()
             val address = block.fields["address"].orEmpty()
             val command = block.fields["command"].orEmpty()
 
             val codeValue = when {
-                data.isNotBlank() -> data
+                data.isNotBlank() -> {
+                    listOf(
+                        "type=raw",
+                        "frequency=$frequency",
+                        "data=$data"
+                    ).joinToString("; ")
+                }
                 protocol.isNotBlank() || address.isNotBlank() || command.isNotBlank() -> {
                     listOf(
+                        "type=parsed",
                         "protocol=$protocol",
                         "address=$address",
                         "command=$command"
