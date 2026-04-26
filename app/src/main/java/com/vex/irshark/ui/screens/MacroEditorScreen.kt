@@ -459,7 +459,7 @@ private fun NodeParamDialog(
                     Text("A \"default / else\" output pin is always added automatically.", color = Color(0xFF8A8899), fontSize = 10.sp)
                 }
                 MacroBlockType.END -> {
-                    Text("Terminates the macro immediately.", color = Color(0xFF8A8899), fontSize = 12.sp)
+                    Text("Stops the macro immediately.", color = Color(0xFF8A8899), fontSize = 12.sp)
                 }
                 else -> {}
             }

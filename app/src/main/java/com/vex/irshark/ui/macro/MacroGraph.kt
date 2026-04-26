@@ -158,7 +158,7 @@ class MacroGraph {
         val fromNode = nodes.firstOrNull { it.id == fromId } ?: return "Source not found"
         val toNode   = nodes.firstOrNull { it.id == toId }   ?: return "Target not found"
         if (!toNode.hasInput()) return "This block has no input"
-        if (fromNode.type == MacroBlockType.END) return "End has no outputs"
+        if (fromNode.type == MacroBlockType.END) return "Stop has no outputs"
 
         // Basic cycle detection: would toId eventually reach fromId?
         if (wouldCycle(from = toId, reaching = fromId)) return "Connection would create a cycle"

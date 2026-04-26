@@ -195,7 +195,7 @@ fun blockColor(type: MacroBlockType): Color = when (type) {
 
 fun blockLabel(type: MacroBlockType): String = when (type) {
     MacroBlockType.START        -> "START"
-    MacroBlockType.END          -> "END"
+    MacroBlockType.END          -> "STOP"
     MacroBlockType.IR_SEND      -> "IR Send"
     MacroBlockType.DELAY        -> "Delay"
     MacroBlockType.SHOW_TEXT    -> "Show Text"

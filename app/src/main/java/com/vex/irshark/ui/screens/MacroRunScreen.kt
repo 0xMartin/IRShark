@@ -196,12 +196,20 @@ fun MacroDoneScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text       = if (finished) "Macro ended" else "Macro stopped",
-            color      = if (finished) Color(0xFF5BFF9A) else Color(0xFFFF7B9D),
+            text       = if (finished) "Macro finished ✓" else "Macro finished",
+            color      = Color(0xFF5BFF9A),
             fontSize   = 26.sp,
             fontWeight = FontWeight.Bold,
             textAlign  = TextAlign.Center
         )
+        if (!finished) {
+            Text(
+                text      = "Stopped early",
+                color     = Color(0xFFFF7B9D),
+                fontSize  = 13.sp,
+                textAlign = TextAlign.Center
+            )
+        }
 
         if (irLog.isNotEmpty()) {
             IrLogTable(entries = irLog)
