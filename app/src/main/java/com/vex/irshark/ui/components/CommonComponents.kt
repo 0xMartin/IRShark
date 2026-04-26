@@ -47,8 +47,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -140,6 +142,39 @@ fun FolderButton(title: String, onClick: () -> Unit, modifier: Modifier = Modifi
             )
         }
     }
+}
+
+private fun categoryIconRes(name: String): Int {
+    val lname = name.lowercase()
+    return when {
+        "tv" in lname || "television" in lname -> R.drawable.ic_cat_tvs
+        "ac" in lname || "air" in lname || "condition" in lname -> R.drawable.ic_cat_acs
+        "projector" in lname -> R.drawable.ic_cat_projectors
+        "dvd" in lname || "blu" in lname || "disc" in lname -> R.drawable.ic_cat_dvd_players
+        "fan" in lname -> R.drawable.ic_cat_fans
+        "camera" in lname || "cctv" in lname -> R.drawable.ic_cat_cameras
+        "console" in lname || "game" in lname || "xbox" in lname || "playstation" in lname || "nintendo" in lname -> R.drawable.ic_cat_consoles
+        "audio" in lname || "receiver" in lname || "av" in lname -> R.drawable.ic_cat_av_receivers
+        "set_top" in lname || "set top" in lname || "stb" in lname || "cable" in lname || "box" in lname -> R.drawable.ic_cat_set_top_boxes
+        "light" in lname || "lamp" in lname || "led" in lname -> R.drawable.ic_cat_lights
+        "micro" in lname || "oven" in lname -> R.drawable.ic_cat_microwaves
+        else -> R.drawable.ic_cat_other
+    }
+}
+
+@Composable
+fun CategorySvgIcon(
+    name: String,
+    tint: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 24.dp
+) {
+    Image(
+        painter = painterResource(id = categoryIconRes(name)),
+        contentDescription = null,
+        colorFilter = ColorFilter.tint(tint),
+        modifier = modifier.size(size)
+    )
 }
 
 // ── Empty state card ─────────────────────────────────────────────────────────
