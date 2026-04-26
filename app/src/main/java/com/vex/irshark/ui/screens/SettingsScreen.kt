@@ -31,9 +31,11 @@ fun SettingsScreen(
     intervalMs: Float,
     autoStopAtEnd: Boolean,
     showTxLed: Boolean,
+    hapticFeedback: Boolean,
     onIntervalChange: (Float) -> Unit,
     onAutoStopAtEndChange: (Boolean) -> Unit,
     onShowTxLedChange: (Boolean) -> Unit,
+    onHapticFeedbackChange: (Boolean) -> Unit,
     onIntervalPresetSelect: (Float) -> Unit,
     onResetDefaults: () -> Unit
 ) {
@@ -85,6 +87,15 @@ fun SettingsScreen(
             subtitle = "Animated indicator in header when IR transmission is active",
             checked = showTxLed,
             onCheckedChange = onShowTxLedChange
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        SettingToggleCard(
+            title = "Haptic feedback",
+            subtitle = "Vibrate briefly when an IR button is pressed",
+            checked = hapticFeedback,
+            onCheckedChange = onHapticFeedbackChange
         )
 
         Spacer(modifier = Modifier.height(10.dp))

@@ -1,6 +1,7 @@
 package com.vex.irshark.ui.screens
 
 import android.content.Context
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -125,7 +127,10 @@ fun IrFinderScreen(
     onTransmit: () -> Unit = {},
     addedProfilePaths: Set<String> = emptySet(),
     onAddRemote: (profilePath: String, profileName: String, commands: List<String>) -> Unit = { _, _, _ -> },
-    onNavStateChange: (breadcrumb: String?, onBack: (() -> Unit)?, onUndo: (() -> Unit)?) -> Unit = { _, _, _ -> }
+    onNavStateChange: (breadcrumb: String?, onBack: (() -> Unit)?, onUndo: (() -> Unit)?) -> Unit = { _, _, _ -> },
+    lastTested: String? = null,
+    onUpdateLastTested: (String) -> Unit = {},
+    hapticEnabled: Boolean = true
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
@@ -135,6 +140,13 @@ fun IrFinderScreen(
     var step            by remember { mutableStateOf<FinderStep>(FinderStep.PickCategory) }
     var selectedCategory by remember { mutableStateOf("") }
     var selectedBrand    by remember { mutableStateOf("") }
+
+    // Notify parent when entering TestButtons so it can save lastTested
+    LaunchedEffect(step, selectedBrand) {
+        if (step == FinderStep.TestButtons && selectedBrand.isNotEmpty()) {
+            onUpdateLastTested("${prettyName(selectedCategory)} › ${prettyName(selectedBrand)}")
+        }
+    }
 
     // Finder button state — loaded for the chosen category+brand combination
     val finderButtons = remember { mutableStateListOf<FinderButton>() }
@@ -263,7 +275,28 @@ fun IrFinderScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         when (step) {
-            FinderStep.PickCategory -> PickStep(
+        FinderStep.PickCategory -> Column(modifier = Modifier.fillMaxSize()) {
+            if (lastTested != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(violet.copy(alpha = 0.08f))
+                        .border(1.dp, violet.copy(alpha = 0.22f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Last session:", color = Color(0xFF8A8899), fontSize = 11.sp)
+                        Text(lastTested, color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            PickStep(
+                modifier = Modifier.weight(1f),
                 question = "What type of device?",
                 options = categories.map { prettyName(it) to it },
                 showDeviceIcons = true,
@@ -272,6 +305,7 @@ fun IrFinderScreen(
                     step = FinderStep.PickBrand
                 }
             )
+        }
 
             FinderStep.PickBrand -> PickStep(
                 question = "What brand?",
@@ -294,6 +328,7 @@ fun IrFinderScreen(
                 },
                 matchingProfiles = matchingProfiles,
                 addedProfilePaths = addedProfilePaths,
+                hapticEnabled = hapticEnabled,
                 onSelectButton = { idx -> selectedButtonIdx = idx },
                 onSend = { idx ->
                     val btn = finderButtons.getOrNull(idx) ?: return@TestButtonsStep
@@ -362,8 +397,9 @@ fun IrFinderScreen(
 
 @Composable
 private fun PickStep(
+    modifier: Modifier = Modifier.fillMaxSize(),
     question: String,
-    options: List<Pair<String, String>>,   // display → raw
+    options: List<Pair<String, String>>,
     showDeviceIcons: Boolean = false,
     onSelect: (String) -> Unit
 ) {
@@ -372,7 +408,7 @@ private fun PickStep(
     val filtered = if (searchQuery.isBlank()) options
         else options.filter { (display, _) -> display.contains(searchQuery, ignoreCase = true) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier) {
         Text(
             text = question,
             color = Color.White,
@@ -458,6 +494,7 @@ private fun TestButtonsStep(
     totalCount: Int,
     matchingProfiles: List<com.vex.irshark.data.FlipperProfile>,
     addedProfilePaths: Set<String>,
+    hapticEnabled: Boolean = true,
     onSelectButton: (Int) -> Unit,
     onSend: (Int) -> Unit,
     onWorks: (Int) -> Unit,
@@ -468,6 +505,7 @@ private fun TestButtonsStep(
     val violet = MaterialTheme.colorScheme.primary
     val green  = Color(0xFF3EB47C)
     val selectedBtn = buttons.getOrNull(selectedIndex)
+    val view = LocalView.current
 
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
@@ -582,7 +620,10 @@ private fun TestButtonsStep(
                     ) {
                         // Send code button
                         Button(
-                            onClick = { onSend(selectedIndex) },
+                            onClick = {
+                                if (hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                onSend(selectedIndex)
+                            },
                             modifier = Modifier.weight(1f).height(44.dp),
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = violet)

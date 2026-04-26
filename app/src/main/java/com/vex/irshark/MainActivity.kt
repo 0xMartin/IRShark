@@ -1,5 +1,6 @@
 package com.vex.irshark
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -132,6 +133,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var universalIntervalMs by rememberSaveable { mutableStateOf(250f) }
     var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
     var showTxLed by rememberSaveable { mutableStateOf(true) }
+    var hapticFeedback by rememberSaveable { mutableStateOf(true) }
+    var irFinderLastTested by rememberSaveable { mutableStateOf<String?>(null) }
     var txPulseActive by remember { mutableStateOf(false) }
     var settingsDirty by remember { mutableStateOf(false) }
     var settingsToastPending by remember { mutableStateOf(false) }
@@ -279,6 +282,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         universalIntervalMs = settings.globalIntervalMs
         autoStopAtEnd = settings.autoStopAtEnd
         showTxLed = settings.showTxLed
+        hapticFeedback = settings.hapticFeedback
+        irFinderLastTested = settings.irFinderLastTested
         settingsLoaded = true
     }
 
@@ -292,14 +297,16 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         saveSavedMacros(context, savedMacros)
     }
 
-    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed) {
+    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed, hapticFeedback) {
         if (!settingsLoaded || !settingsDirty) return@LaunchedEffect
         saveAppSettings(
             context,
             com.vex.irshark.data.AppSettings(
                 globalIntervalMs = universalIntervalMs,
                 autoStopAtEnd = autoStopAtEnd,
-                showTxLed = showTxLed
+                showTxLed = showTxLed,
+                hapticFeedback = hapticFeedback,
+                irFinderLastTested = irFinderLastTested
             )
         )
         settingsDirty = false
@@ -682,6 +689,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             commands = commands,
                             selectedCommand = controlSelectedCommand,
                             txCount = controlTxCount,
+                            hapticEnabled = hapticFeedback,
                             onBack = {
                                 controlRemoteIndex = -1
                                 screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
@@ -717,7 +725,19 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 }
                             },
                             showSaveButton = controlSource == ControlSource.REMOTE_DB,
-                            showEditButton = controlSource == ControlSource.MY_REMOTES
+                            showEditButton = controlSource == ControlSource.MY_REMOTES,
+                            onShare = if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
+                                {
+                                    val remote = savedRemotes[controlRemoteIndex]
+                                    val json = exportRemotesToJson(listOf(remote))
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, "IRShark Remote: ${remote.name}")
+                                        putExtra(Intent.EXTRA_TEXT, json)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "Share \"${remote.name}\""))
+                                }
+                            } else null
                         )
                     }
 
@@ -726,6 +746,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             intervalMs = universalIntervalMs,
                             autoStopAtEnd = autoStopAtEnd,
                             showTxLed = showTxLed,
+                            hapticFeedback = hapticFeedback,
                             onIntervalChange = {
                                 universalIntervalMs = it
                                 settingsDirty = true
@@ -738,6 +759,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 showTxLed = it
                                 settingsDirty = true
                             },
+                            onHapticFeedbackChange = {
+                                hapticFeedback = it
+                                settingsDirty = true
+                            },
                             onIntervalPresetSelect = {
                                 universalIntervalMs = it
                                 settingsDirty = true
@@ -746,6 +771,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 universalIntervalMs = 250f
                                 autoStopAtEnd = true
                                 showTxLed = true
+                                hapticFeedback = true
                                 settingsDirty = true
                             }
                         )
@@ -797,6 +823,23 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             dbIndex = dbIndex,
                             onTransmit = { emitTxPulse() },
                             addedProfilePaths = savedRemotes.mapNotNull { it.sourceProfilePath }.toSet(),
+                            hapticEnabled = hapticFeedback,
+                            lastTested = irFinderLastTested,
+                            onUpdateLastTested = { tested ->
+                                irFinderLastTested = tested
+                                scope.launch(Dispatchers.IO) {
+                                    saveAppSettings(
+                                        context,
+                                        com.vex.irshark.data.AppSettings(
+                                            globalIntervalMs = universalIntervalMs,
+                                            autoStopAtEnd = autoStopAtEnd,
+                                            showTxLed = showTxLed,
+                                            hapticFeedback = hapticFeedback,
+                                            irFinderLastTested = tested
+                                        )
+                                    )
+                                }
+                            },
                             onAddRemote = { profilePath, profileName, commands ->
                                 if (savedRemotes.none { it.sourceProfilePath == profilePath }) {
                                     scope.launch {

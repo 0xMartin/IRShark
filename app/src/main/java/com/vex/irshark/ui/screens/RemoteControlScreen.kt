@@ -16,20 +16,29 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import android.view.HapticFeedbackConstants
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,10 +61,14 @@ fun RemoteControlScreen(
     onEdit: () -> Unit,
     onSave: () -> Unit,
     showSaveButton: Boolean,
-    showEditButton: Boolean
+    showEditButton: Boolean,
+    hapticEnabled: Boolean = true,
+    onShare: (() -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     var flashedCommand by remember { mutableStateOf<String?>(null) }
+    var columnCount by rememberSaveable { mutableIntStateOf(2) }
+    val view = LocalView.current
     val scope = rememberCoroutineScope()
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -132,6 +145,24 @@ fun RemoteControlScreen(
                             Text("Edit", color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
+                    if (onShare != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(violet.copy(alpha = 0.14f))
+                                .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .clickable(onClick = onShare),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.Share,
+                                contentDescription = "Share",
+                                tint = violet,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Badge(typeBadge)
@@ -147,11 +178,41 @@ fun RemoteControlScreen(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
-            Text("Controls", color = violet, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Controls",
+                    color = violet,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    listOf(1 to Icons.Filled.ViewList, 2 to Icons.Filled.GridView).forEach { (cols, icon) ->
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (columnCount == cols) violet.copy(alpha = 0.18f) else Color.Transparent)
+                                .clickable { columnCount = cols },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                icon,
+                                contentDescription = null,
+                                tint = if (columnCount == cols) violet else Color(0xFF8A8899),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
 
             // Command buttons grid
-            commands.chunked(2).forEach { row ->
+            commands.chunked(columnCount).forEach { row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -163,6 +224,7 @@ fun RemoteControlScreen(
                             countLabel = "x1",
                             isActive = isFlashed,
                             onClick = {
+                                if (hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                                 flashedCommand = cmd
                                 scope.launch { delay(220); flashedCommand = null }
                                 onCommandClick(cmd)
@@ -171,7 +233,7 @@ fun RemoteControlScreen(
                                 .weight(1f)
                         )
                     }
-                    repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                    repeat(columnCount - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
