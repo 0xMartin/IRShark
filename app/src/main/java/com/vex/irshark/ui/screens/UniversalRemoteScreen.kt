@@ -49,7 +49,7 @@ import com.vex.irshark.data.FlipperDbIndex
 import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.prettyName
-import com.vex.irshark.data.prettyPath
+import com.vex.irshark.data.prettyPathWithChevron
 import com.vex.irshark.data.profilesUnderPath
 import com.vex.irshark.data.resolveUniversalCommandsForPath
 import com.vex.irshark.ui.components.AutoSendProgressModal
@@ -101,7 +101,7 @@ fun UniversalRemoteScreen(
         ) {
             // Top header bar
             UniversalRemoteHeader(
-                currentPath = prettyPath(currentPath),
+                currentPath = prettyPathWithChevron(currentPath),
                 count = profilesUnderPath(dbIndex, currentPath).size,
                 onHome = {
                     if (autoSend) onToggleAutoSend()

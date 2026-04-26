@@ -385,28 +385,48 @@ fun SectionNavBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
-            // Search field (if provided)
             if (breadcrumb != null && onBack != null) {
-                // Breadcrumb mode: back button + label + extraActions
-                BackIconButton(onClick = onBack, modifier = Modifier.size(40.dp))
-                Text(
-                    text = breadcrumb,
-                    color = Color(0xFF8A8899),
-                    fontSize = 13.sp,
+                // Breadcrumb mode: connected home + path box, right-side circular actions + back
+                Row(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 8.dp),
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                )
+                        .height(40.dp),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HomeIconButton(
+                        onClick = onHome,
+                        modifier = Modifier.size(40.dp),
+                        shape = RoundedCornerShape(10.dp, 0.dp, 0.dp, 10.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
+                            .background(violet.copy(alpha = 0.08f))
+                            .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
+                            .padding(horizontal = 14.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            text = breadcrumb,
+                            color = Color(0xFF8A8899),
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
                 extraActions.forEach { (icon, onClick) ->
                     Box(
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(violet.copy(alpha = 0.14f))
-                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFF13101E))
+                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
                             .clickable(onClick = onClick),
                         contentAlignment = Alignment.Center
                     ) {
@@ -414,8 +434,26 @@ fun SectionNavBar(
                             tint = violet, modifier = Modifier.size(20.dp))
                     }
                 }
+
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFF13101E))
+                        .border(1.dp, violet.copy(alpha = 0.4f), RoundedCornerShape(999.dp))
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = violet,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             } else {
-                // Normal mode: search + actions (home button already shown above)
+                // Normal mode: home button + optional search + actions
+                HomeIconButton(onClick = onHome, modifier = Modifier.size(40.dp))
                 if (searchQuery != null && onSearchQuery != null) {
                     BasicTextField(
                         value = searchQuery,

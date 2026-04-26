@@ -197,6 +197,18 @@ fun prettyPath(path: String): String {
         .replace('_', ' ')
 }
 
+fun prettyPathWithChevron(path: String): String {
+    val normalized = path
+        .removePrefix("$DB_ROOT/")
+        .removePrefix(DB_ROOT)
+
+    if (normalized.isBlank()) return "Root"
+
+    return normalized
+        .split('/')
+        .joinToString(" > ") { segment -> segment.replace('_', ' ') }
+}
+
 fun dbRootPath(): String = DB_ROOT
 
 fun loadSavedRemotes(context: Context): List<SavedRemote> {
