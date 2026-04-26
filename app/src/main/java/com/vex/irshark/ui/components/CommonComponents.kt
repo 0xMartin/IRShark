@@ -185,8 +185,8 @@ fun ListRow(
                     .clickable(onClick = onOpen)
                     .padding(6.dp)
             ) {
-                Text(title, color = Color.White, fontSize = 12.sp)
-                Text(subtitle, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
+                Text(title, color = Color.White, fontSize = 14.sp)
+                Text(subtitle, color = Color(0xFF8A8899), fontSize = 11.sp, maxLines = 1)
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -195,7 +195,7 @@ fun ListRow(
                 if (onDuplicate != null) {
                     Box(
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(36.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFF1A1726))
                             .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
@@ -206,13 +206,13 @@ fun ListRow(
                             imageVector = Icons.Filled.ContentCopy,
                             contentDescription = "Duplicate",
                             tint = Color(0xFF8A8899),
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
                 Box(
                     modifier = Modifier
-                        .size(28.dp)
+                        .size(36.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(if (actionEnabled) violet.copy(alpha = 0.18f) else Color(0xFF1A1726))
                         .border(
@@ -228,7 +228,7 @@ fun ListRow(
                             imageVector = actionIcon,
                             contentDescription = actionLabel,
                             tint = if (actionEnabled) violet else Color(0xFF8A8899),
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     } else {
                         Text(

@@ -299,22 +299,21 @@ fun MacroGraphCanvas(
                                         connectCursor  = cPos
                                         hoveredInputId = findInputPinHit(cPos)
                                             ?.takeIf { it.id != connectFromId && it.hasInput() }?.id
+                                    } else if (draggingId != null) {
+                                        // Node drag: immediate, no touchSlop required
+                                        val node = graph.nodes.firstOrNull { it.id == draggingId }
+                                        if (node != null) {
+                                            val rawPos = cPos - dragNodeOffset
+                                            val newPos = snapToGrid(rawPos)
+                                            if (graph.nodes.count { it.selected } > 1 && node.selected) {
+                                                val d = newPos - node.pos
+                                                graph.moveNodes(graph.nodes.filter { it.selected }.map { it.id }.toSet(), d)
+                                            } else {
+                                                graph.moveNode(draggingId!!, newPos)
+                                            }
+                                        }
                                     } else if (moved) {
                                         when {
-                                            draggingId != null -> {
-                                                val node = graph.nodes.firstOrNull { it.id == draggingId }
-                                                if (node != null) {
-                                                    // Apply snap only to the final position, keep dragNodeOffset raw
-                                                    val rawPos = cPos - dragNodeOffset
-                                                    val newPos = snapToGrid(rawPos)
-                                                    if (graph.nodes.count { it.selected } > 1 && node.selected) {
-                                                        val d = newPos - node.pos
-                                                        graph.moveNodes(graph.nodes.filter { it.selected }.map { it.id }.toSet(), d)
-                                                    } else {
-                                                        graph.moveNode(draggingId!!, newPos)
-                                                    }
-                                                }
-                                            }
                                             selStart != null -> {
                                                 // Expanding selection rectangle
                                                 selEnd = cPos
@@ -490,25 +489,24 @@ fun MacroGraphCanvas(
             // Select / Pan mode toggle
             Box(
                 modifier = Modifier
-                    .height(28.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(
                         if (isSelectMode) Color(0xFF9B6DFF).copy(alpha = 0.18f)
-                        else Color(0xFF0E0B1A).copy(alpha = 0.85f)
+                        else Color(0xFF1A1730)
                     )
                     .border(
                         1.dp,
-                        if (isSelectMode) Color(0xFF9B6DFF) else Color(0xFF3A3460),
-                        RoundedCornerShape(6.dp)
+                        if (isSelectMode) Color(0xFF9B6DFF).copy(alpha = 0.70f) else Color(0xFF3A3460),
+                        RoundedCornerShape(8.dp)
                     )
                     .clickable { isSelectMode = !isSelectMode }
-                    .padding(horizontal = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     if (isSelectMode) "SELECT" else "MOVE",
                     color      = if (isSelectMode) Color(0xFF9B6DFF) else Color(0xFF8A8899),
-                    fontSize   = 10.sp,
+                    fontSize   = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
             }

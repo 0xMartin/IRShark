@@ -81,10 +81,10 @@ private fun MacroRow(
                     .clip(RoundedCornerShape(8.dp))
                     .padding(6.dp)
             ) {
-                Text(macro.name, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(macro.name, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Text(
                     "$stepCount step${if (stepCount != 1) "s" else ""}",
-                    color = Color(0xFF8A8899), fontSize = 10.sp
+                    color = Color(0xFF8A8899), fontSize = 11.sp
                 )
             }
 
@@ -114,13 +114,13 @@ private fun MacroActionBox(
 ) {
     Box(
         modifier = Modifier
-            .size(28.dp)
+            .size(36.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(bg)
             .border(1.dp, border, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
+        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
     }
 }
