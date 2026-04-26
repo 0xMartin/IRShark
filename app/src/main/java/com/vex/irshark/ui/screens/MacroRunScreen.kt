@@ -133,8 +133,8 @@ fun MacroRunScreen(
             }
         }
 
-        // ── Display text (ShowText step) ──────────────────────────────────
-        if (!state.displayText.isNullOrBlank()) {
+        // ── Display text(s) (ShowText step) ──────────────────────────────
+        state.displayTexts.forEach { msg ->
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -145,11 +145,11 @@ fun MacroRunScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text      = state.displayText,
-                    color     = Color(0xFF5BFF9A),
-                    fontSize  = 20.sp,
+                    text       = msg,
+                    color      = Color(0xFF5BFF9A),
+                    fontSize   = 20.sp,
                     fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center
+                    textAlign  = TextAlign.Center
                 )
             }
         }

@@ -34,12 +34,12 @@ sealed class MacroRunState {
     object Idle : MacroRunState()
 
     data class Running(
-        val macroName:   String,
-        val progress:    String,        // e.g. "Step 3 / 10" or "Loop · iter 5"
-        val displayText: String?,       // active ShowText message (null = none)
-        val confirm:     ConfirmRequest?,// non-null = waiting for yes/no input
-        val irLog:       List<IrLogEntry> = emptyList(),
-        val switch:      SwitchRequest? = null  // non-null = waiting for option pick
+        val macroName:    String,
+        val progress:     String,        // e.g. "Step 3 / 10" or "Loop · iter 5"
+        val displayTexts: List<String>,  // active ShowText messages (empty = none)
+        val confirm:      ConfirmRequest?,// non-null = waiting for yes/no input
+        val irLog:        List<IrLogEntry> = emptyList(),
+        val switch:       SwitchRequest? = null  // non-null = waiting for option pick
     ) : MacroRunState()
 
     data class Finished(val macroName: String) : MacroRunState()
@@ -78,7 +78,7 @@ class MacroEngine(private val context: Context) {
     private var loopIter  = 0
     private var inLoop    = false
     private var macroName = ""
-    private var displayText: String? = null
+    private val displayTexts = java.util.concurrent.CopyOnWriteArrayList<String>()
     private var irLog: List<IrLogEntry> = emptyList()
 
     fun launch(macro: SavedMacro, scope: CoroutineScope) {
@@ -86,7 +86,7 @@ class MacroEngine(private val context: Context) {
         flatStep    = 0
         loopIter    = 0
         inLoop      = false
-        displayText = null
+        displayTexts.clear()
         irLog       = emptyList()
         runScope    = scope
         macroName   = macro.name
@@ -153,28 +153,25 @@ class MacroEngine(private val context: Context) {
             }
             is MacroStep.Delay -> delay(step.ms.coerceAtLeast(1L))
             is MacroStep.ShowText -> {
-                displayText = step.text
+                displayTexts.add(step.text)
                 pushProgress()
                 if (step.async) {
-                    // Non-blocking: clear text after duration without halting execution
+                    // Non-blocking: remove this text after duration without halting execution
                     val textSnapshot = step.text
                     val durationMs   = step.durationMs.coerceAtLeast(100L)
                     runScope?.launch(Dispatchers.Default) {
                         delay(durationMs)
-                        if (displayText == textSnapshot) {
-                            displayText = null
-                            pushProgress()
-                        }
+                        displayTexts.remove(textSnapshot)
+                        pushProgress()
                     }
                 } else {
                     delay(step.durationMs.coerceAtLeast(100L))
-                    displayText = null
+                    displayTexts.remove(step.text)
                     pushProgress()
                 }
             }
             is MacroStep.WaitConfirm -> {
                 val ok = suspendConfirm(step.message, hasNo = false)
-                displayText = null
                 if (!ok) throw CancellationException("User stopped macro")
             }
             is MacroStep.RepeatBlock -> {
@@ -197,7 +194,6 @@ class MacroEngine(private val context: Context) {
             }
             is MacroStep.IfConfirm -> {
                 val yes    = suspendConfirm(step.message, hasNo = true)
-                displayText = null
                 val branch = if (yes) step.yesSteps else step.noSteps
                 // Dynamically recalculate total: steps executed so far + steps in chosen branch
                 totalSteps = flatStep + com.vex.irshark.data.countMacroSteps(branch)
@@ -206,7 +202,8 @@ class MacroEngine(private val context: Context) {
             }
             is MacroStep.Stop -> throw CancellationException("Stop block reached")
             is MacroStep.Vibrate -> {
-                withContext(Dispatchers.Main) {
+                // Fire-and-forget: vibrate without blocking macro execution
+                runScope?.launch(Dispatchers.Main) {
                     val vib = context.getSystemService(android.content.Context.VIBRATOR_SERVICE)
                         as? android.os.Vibrator
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -234,9 +231,9 @@ class MacroEngine(private val context: Context) {
                                     else "Step $flatStep / $totalSteps"
         val current = _state.value
         _state.value = if (current is MacroRunState.Running)
-            current.copy(progress = progress, displayText = displayText, confirm = null, switch = null, irLog = irLog)
+            current.copy(progress = progress, displayTexts = displayTexts.toList(), confirm = null, switch = null, irLog = irLog)
         else
-            MacroRunState.Running(macroName, progress, displayText, null, irLog)
+            MacroRunState.Running(macroName, progress, displayTexts.toList(), null, irLog)
     }
 
     private suspend fun suspendSwitch(message: String, options: List<String>): Int {

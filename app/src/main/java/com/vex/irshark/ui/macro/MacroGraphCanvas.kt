@@ -706,21 +706,19 @@ fun BlockView(
                     )
                 }
             }
-            // Source badge for IR Send blocks — absolute bottom-start so it never gets clipped by column overflow
+            // Source badge for IR Send blocks — absolute bottom-start, plain text only
             val irSource = (node.params as? BlockParams.IrSend)?.irSource?.takeIf { it.isNotEmpty() }
             if (irSource != null) {
                 val badgeColor = if (irSource == "DB") Color(0xFF2E7ADB) else Color(0xFF1E8A5E)
-                Box(
-                    modifier = Modifier
+                Text(
+                    text       = irSource,
+                    color      = badgeColor,
+                    fontSize   = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier   = Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 10.dp, bottom = 7.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(badgeColor.copy(alpha = 0.22f))
-                        .border(1.dp, badgeColor.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                ) {
-                    Text(irSource, color = badgeColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
+                )
             }
             // Settings gear — top-right, only for configurable blocks
             val hasSettings = node.type !in listOf(MacroBlockType.START, MacroBlockType.END)
@@ -764,16 +762,16 @@ fun BlockView(
                 Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = yesPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
                     .background(Color(0xFF0E0B1A)).border(2.dp, Color(0xFF5BFF9A), CircleShape))
-                Text("YES", color = Color(0xFF5BFF9A), fontSize = 7.sp,
+                Text("YES", color = Color(0xFF5BFF9A), fontSize = 14.sp,
                     modifier = Modifier.align(Alignment.BottomStart).padding(start = yesPad)
-                        .offset(y = -(pinDp + 1.dp)))
+                        .offset(y = -2.dp))
                 // NO
                 Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = noPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
                     .background(Color(0xFF0E0B1A)).border(2.dp, Color(0xFFFF7B9D), CircleShape))
-                Text("NO", color = Color(0xFFFF7B9D), fontSize = 7.sp,
+                Text("NO", color = Color(0xFFFF7B9D), fontSize = 14.sp,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = noPad)
-                        .offset(y = -(pinDp + 1.dp)))
+                        .offset(y = -2.dp))
             }
             MacroBlockType.REPEAT -> {
                 val bw       = node.blockW()
@@ -786,17 +784,17 @@ fun BlockView(
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
                     .background(Color(0xFF0E0B1A))
                     .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else bodyColor, CircleShape))
-                Text("BODY", color = bodyColor, fontSize = 7.sp,
+                Text("BODY", color = bodyColor, fontSize = 14.sp,
                     modifier = Modifier.align(Alignment.BottomStart).padding(start = bodyPad)
-                        .offset(y = -(pinDp + 1.dp)))
+                        .offset(y = -2.dp))
                 // CONT pin (right)
                 Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = contPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
                     .background(Color(0xFF0E0B1A))
                     .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else contColor, CircleShape))
-                Text("OUT", color = contColor, fontSize = 7.sp,
+                Text("OUT", color = contColor, fontSize = 14.sp,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(end = contPad)
-                        .offset(y = -(pinDp + 1.dp)))
+                        .offset(y = -2.dp))
             }
             MacroBlockType.SWITCH -> {
                 val p       = node.params as? BlockParams.Switch ?: BlockParams.Switch()
@@ -805,16 +803,16 @@ fun BlockView(
                 allPins.forEachIndexed { i, pin ->
                     val isDefault  = (pin == PinId.DEFAULT)
                     val pinColor   = if (isDefault) Color(0xFFFFBB6D) else Color(0xFF9B6DFF)
-                    val pinLabel   = if (isDefault) "else" else p.options.getOrNull(i)?.take(5) ?: "opt${i+1}"
+                    val pinLabel   = if (isDefault) "D" else "${i + 1}"
                     val pinX       = bw / (allPins.size + 1).toFloat() * (i + 1)
                     val pinPadDp   = ((pinX - PIN_R) / density).dp
                     Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = pinPadDp)
                         .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
                         .background(Color(0xFF0E0B1A))
                         .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else pinColor, CircleShape))
-                    Text(pinLabel, color = pinColor, fontSize = 6.sp, maxLines = 1,
+                    Text(pinLabel, color = pinColor, fontSize = 12.sp, maxLines = 1,
                         modifier = Modifier.align(Alignment.BottomStart).padding(start = pinPadDp)
-                            .offset(y = -(pinDp + 1.dp)))
+                            .offset(y = -2.dp))
                 }
             }
             MacroBlockType.END -> { /* no output pin */ }
@@ -843,12 +841,8 @@ private fun blockSummary(node: MacroNode): String = when (val p = node.params) {
     is BlockParams.WaitConfirm -> p.message.ifEmpty { "Press OK to continue" }
     is BlockParams.IfElse      -> p.message.ifEmpty { "Continue?" }
     is BlockParams.Vibrate     -> "${p.durationMs} ms"
-    is BlockParams.Repeat      -> "× ${p.count} times  •  BODY → loop  •  OUT → continue"
-    is BlockParams.Switch      -> {
-        val opts = p.options.take(3).joinToString(", ")
-        val more = if (p.options.size > 3) " (+${p.options.size - 3})…" else ""
-        "${p.message.take(32)}\n$opts$more"
-    }
+    is BlockParams.Repeat      -> "× ${p.count} times"
+    is BlockParams.Switch      -> p.message.take(36)
     else                       -> ""
 }
 

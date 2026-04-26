@@ -154,7 +154,13 @@ fun MacroEditorScreen(
                     }
                     TextButton(onClick = {
                         missingRemoteWarn = emptyList()
-                        showSaveDialog    = true
+                        val r = graph.compile()
+                        onSave(SavedMacro(
+                            id         = initialMacro?.id ?: UUID.randomUUID().toString(),
+                            name       = macroName.trim(),
+                            steps      = r.steps,
+                            blocklyXml = graph.toJson()
+                        ))
                     }) {
                         Text("Save Anyway", color = Color(0xFFFF7B7B))
                     }
@@ -196,26 +202,6 @@ fun MacroEditorScreen(
         )
     }
 
-    if (showSaveDialog) {
-        SaveDialog(
-            initialName    = macroName,
-            orphanCount    = orphanWarning,
-            existingNames  = existingNames,
-            onDismiss      = { showSaveDialog = false },
-            onSave         = { name ->
-                macroName     = name
-                showSaveDialog = false
-                val result = graph.compile()
-                onSave(SavedMacro(
-                    id         = initialMacro?.id ?: UUID.randomUUID().toString(),
-                    name       = name.trim(),
-                    steps      = result.steps,
-                    blocklyXml = graph.toJson()
-                ))
-            }
-        )
-    }
-
     // ── Full-screen layout ────────────────────────────────────────────────
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -246,6 +232,7 @@ fun MacroEditorScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .height(40.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (nameError) Color(0xFF2A1010) else Color(0xFF0E0B1A))
                             .border(
@@ -253,7 +240,8 @@ fun MacroEditorScreen(
                                 if (nameError) Color(0xFFFF5555).copy(alpha = 0.70f) else violet.copy(alpha = 0.25f),
                                 RoundedCornerShape(8.dp)
                             )
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) {
                         if (macroName.isEmpty()) {
                             Text("Macro name", color = Color(0xFF8A8899), fontSize = 13.sp)
@@ -277,7 +265,12 @@ fun MacroEditorScreen(
                         if (missing.isNotEmpty()) {
                             missingRemoteWarn = missing
                         } else {
-                            showSaveDialog = true
+                            onSave(SavedMacro(
+                                id         = initialMacro?.id ?: UUID.randomUUID().toString(),
+                                name       = macroName.trim(),
+                                steps      = result.steps,
+                                blocklyXml = graph.toJson()
+                            ))
                         }
                     },
                 contentAlignment = Alignment.Center
