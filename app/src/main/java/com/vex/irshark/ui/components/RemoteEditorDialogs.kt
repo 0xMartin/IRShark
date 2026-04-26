@@ -139,13 +139,15 @@ fun RemoteEditorDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .heightIn(max = 620.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF121024))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 592.dp)) {
                 // --- Fixed header ---
                 Text("Remote Editor", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
@@ -406,17 +408,27 @@ private fun IrButtonEditorDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.86f)
+                .heightIn(max = 620.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF121024))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 592.dp)
             ) {
+                // --- Fixed header ---
                 Text("Button & IR Code", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                // --- Scrollable content ---
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
 
                 OutlinedTextField(
                     value = label,
@@ -460,7 +472,7 @@ private fun IrButtonEditorDialog(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(100.dp),
+                            .heightIn(min = 80.dp, max = 160.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(filteredProfiles) { profile ->
@@ -495,7 +507,7 @@ private fun IrButtonEditorDialog(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(120.dp),
+                                .heightIn(min = 80.dp, max = 160.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             items(dbCodes.indices.toList()) { idx ->
@@ -524,6 +536,10 @@ private fun IrButtonEditorDialog(
                     }
                 }
 
+                } // end scrollable content column
+
+                // --- Fixed footer ---
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
