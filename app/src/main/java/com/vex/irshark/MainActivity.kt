@@ -51,6 +51,8 @@ import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.countProfilesForCommand
+import com.vex.irshark.data.profilesForCommand
+import com.vex.irshark.data.getIrCodePayload
 import com.vex.irshark.data.categorySeedFromPath
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.exportRemotesToJson
@@ -598,8 +600,25 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
     LaunchedEffect(universalAutoSend, universalCommand, universalCoverage, universalIntervalMs) {
         if (!universalAutoSend || universalCommand == null || universalCoverage <= 0) return@LaunchedEffect
+        // Pre-build the ordered list of profiles that have this command so we don't
+        // recompute it on every loop iteration.
+        val cmd = universalCommand ?: return@LaunchedEffect
+        val matchingProfiles = withContext(Dispatchers.IO) {
+            profilesForCommand(dbIndex, universalPath, cmd.actualCommand)
+        }
         try {
             while (universalAutoSend) {
+                // Transmit the IR code for the current step (1-based index).
+                val idx = (universalCodeStep - 1).coerceIn(0, matchingProfiles.size - 1)
+                if (idx < matchingProfiles.size) {
+                    val profile = matchingProfiles[idx]
+                    val payload = withContext(Dispatchers.IO) {
+                        getIrCodePayload(context, profile.path, cmd.actualCommand)
+                    }
+                    if (payload != null) {
+                        withContext(Dispatchers.IO) { transmitIrCode(context, payload) }
+                    }
+                }
                 txPulseActive = true
                 delay((universalIntervalMs.roundToInt().toLong() / 2).coerceAtLeast(70L))
                 txPulseActive = false

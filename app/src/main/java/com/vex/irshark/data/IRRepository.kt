@@ -236,6 +236,29 @@ fun countProfilesForCommand(dbIndex: FlipperDbIndex, folderPath: String, command
     }
 }
 
+/**
+ * Returns the ordered list of profiles under [folderPath] that contain [command].
+ * The order matches the iteration order used by [countProfilesForCommand].
+ */
+fun profilesForCommand(dbIndex: FlipperDbIndex, folderPath: String, command: String): List<FlipperProfile> {
+    return profilesUnderPath(dbIndex, folderPath).filter { profile ->
+        profile.commands.any { it.equals(command, ignoreCase = true) }
+    }
+}
+
+/**
+ * Reads a specific profile asset and returns the raw key=value payload string
+ * for the given [commandName], ready to pass to [transmitIrCode].
+ */
+fun getIrCodePayload(context: android.content.Context, profilePath: String, commandName: String): String? {
+    val normalized = normalizeDisplayName(commandName)
+    val block = parseIrCodeBlocks(context, profilePath).firstOrNull {
+        it.displayName.equals(normalized, ignoreCase = true) ||
+        it.displayName.equals(commandName, ignoreCase = true)
+    } ?: return null
+    return block.fields.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+}
+
 fun parentPath(path: String): String? {
     if (path == DB_ROOT) return null
     val slash = path.lastIndexOf('/')
