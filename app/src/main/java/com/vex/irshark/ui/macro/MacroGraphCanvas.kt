@@ -56,11 +56,14 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 
@@ -130,7 +133,7 @@ fun MacroNode.blockH(): Float = when (type) {
     MacroBlockType.IF_ELSE                   -> 260f
     MacroBlockType.VIBRATE                   -> 200f
     MacroBlockType.REPEAT                    -> 320f
-    MacroBlockType.JOIN                      -> 180f
+    MacroBlockType.JOIN                      -> 200f
     MacroBlockType.SWITCH                    -> {
         val msgLen = (params as? BlockParams.Switch)?.message?.length ?: 0
         val extraLines = (msgLen / 24).coerceIn(0, 4)
@@ -560,7 +563,7 @@ fun MacroGraphCanvas(
                         .size((node.blockW() / density).dp, (node.blockH() / density).dp)
                         .zIndex(if (node.selected || node.id == draggingId) 5f else 1f)
                 ) {
-                    BlockView(
+                    BlockViewHost(
                         node            = node,
                         highlightInput  = node.id == hoveredInputId,
                         highlightOutput = node.id == hoveredOutputId,
@@ -694,6 +697,33 @@ fun MacroGraphCanvas(
     }
 }
 
+@Composable
+private fun BlockViewHost(
+    node:            MacroNode,
+    highlightInput:  Boolean,
+    highlightOutput: Boolean,
+    density:         Float
+) {
+    AndroidView(
+        modifier = Modifier.fillMaxSize(),
+        factory = { context ->
+            ComposeView(context).apply {
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            }
+        },
+        update = { composeView ->
+            composeView.setContent {
+                BlockViewContent(
+                    node = node,
+                    highlightInput = highlightInput,
+                    highlightOutput = highlightOutput,
+                    density = density
+                )
+            }
+        }
+    )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BlockView  (pure rendering, no gesture handlers)
 //
@@ -706,7 +736,7 @@ fun MacroGraphCanvas(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun BlockView(
+private fun BlockViewContent(
     node:            MacroNode,
     highlightInput:  Boolean = false,
     highlightOutput: Boolean = false,
@@ -917,7 +947,6 @@ fun BlockView(
                     .graphicsLayer { shadowElevation = 4f; shape = CircleShape }
             )
         }
-            val btnPx = 130f
 
         // Output pin(s), sticking below block
         when (node.type) {
@@ -1002,7 +1031,7 @@ private fun blockSummary(node: MacroNode): String = when (val p = node.params) {
     is BlockParams.Vibrate     -> "${p.durationMs} ms"
     is BlockParams.Repeat      -> "× ${p.count} times"
     is BlockParams.Switch      -> p.message.take(36)
-    is BlockParams.Join        -> "${p.inputCount} inputs → 1 output"
+    is BlockParams.Join        -> ""
     else                       -> ""
 }
 
