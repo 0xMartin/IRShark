@@ -1,5 +1,6 @@
 package com.vex.irshark.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,6 +44,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,7 +66,10 @@ import com.vex.irshark.ui.macro.MacroGraph
 import com.vex.irshark.ui.macro.MacroGraphCanvas
 import com.vex.irshark.ui.macro.MacroNode
 import com.vex.irshark.ui.macro.blockLabel
+import com.vex.irshark.util.transmitIrCode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,10 +83,15 @@ fun MacroEditorScreen(
     initialMacro:  SavedMacro?,
     existingNames: Set<String>,
     onSave:        (SavedMacro) -> Unit,
-    onDismiss:     () -> Unit
+    onDismiss:     () -> Unit,
+    onTransmit:    () -> Unit = {}
 ) {
     var macroName by remember { mutableStateOf(initialMacro?.name ?: "") }
     var nameError by remember { mutableStateOf(false) }
+        var isDirty by remember { mutableStateOf(false) }
+        var showExitConfirm by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope   = rememberCoroutineScope()
 
     // Build / restore graph
     val graph = remember {
@@ -100,6 +110,15 @@ fun MacroEditorScreen(
 
     // Param-editor dialog
     var editingNode by remember { mutableStateOf<MacroNode?>(null) }
+
+    // Dirty tracking: watch graph for any changes after initial load
+    LaunchedEffect(Unit) {
+        var first = true
+        snapshotFlow { graph.nodes.toList() to graph.edges.toList() }.collect {
+            if (first) { first = false; return@collect }
+            isDirty = true
+        }
+    }
 
     // IR picker
     var showIrPicker   by remember { mutableStateOf(false) }
@@ -124,6 +143,28 @@ fun MacroEditorScreen(
                 }
             }
             .map { p -> "${p.displayLabel.ifEmpty { p.remoteName }} (${p.irSource.ifEmpty { "?" }})" }
+    }
+
+    BackHandler {
+        if (isDirty) showExitConfirm = true else onDismiss()
+    }
+
+    // Warning dialog: missing remotes detected before save
+    // Exit-without-saving confirmation
+    if (showExitConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirm = false },
+            title = { Text("Unsaved changes") },
+            text  = { Text("Leave without saving?") },
+            confirmButton = {
+                TextButton(onClick = { showExitConfirm = false; onDismiss() }) {
+                    Text("Leave", color = Color(0xFFFF7B9D))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitConfirm = false }) { Text("Stay") }
+            }
+        )
     }
 
     // Warning dialog: missing remotes detected before save
@@ -286,7 +327,7 @@ fun MacroEditorScreen(
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFF1A1726))
                     .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(10.dp))
-                    .clickable(onClick = onDismiss),
+                    .clickable { if (isDirty) showExitConfirm = true else onDismiss() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Filled.Close, null, tint = Color(0xFF8A8899), modifier = Modifier.size(20.dp))
@@ -319,6 +360,12 @@ fun MacroEditorScreen(
                 val ids = graph.nodes.filter { it.selected && it.type != MacroBlockType.START }
                     .map { it.id }.toSet()
                 graph.removeNodes(ids)
+            },
+            onSendIrPreview = { irParams ->
+                scope.launch {
+                    withContext(Dispatchers.IO) { transmitIrCode(context, irParams.irCode) }
+                }
+                onTransmit()
             }
         )
     }
@@ -333,6 +380,7 @@ private fun defaultParams(type: MacroBlockType): BlockParams = when (type) {
     MacroBlockType.VIBRATE      -> BlockParams.Vibrate()
     MacroBlockType.REPEAT       -> BlockParams.Repeat()
     MacroBlockType.SWITCH       -> BlockParams.Switch()
+    MacroBlockType.JOIN         -> BlockParams.Join()
     else                        -> BlockParams.None
 }
 
@@ -358,6 +406,7 @@ private fun NodeParamDialog(
     var ifMsg    by remember { mutableStateOf((node.params as? BlockParams.IfElse)?.message ?: "Continue?") }
     var vibrateMs by remember { mutableStateOf(((node.params as? BlockParams.Vibrate)?.durationMs ?: 500L).toString()) }
     var repeatCount by remember { mutableStateOf(((node.params as? BlockParams.Repeat)?.count ?: 3).toString()) }
+    var joinCount by remember { mutableStateOf(((node.params as? BlockParams.Join)?.inputCount ?: 2).toString()) }
     var switchMsg     by remember { mutableStateOf((node.params as? BlockParams.Switch)?.message ?: "Choose an option") }
     var switchOptions by remember { mutableStateOf((node.params as? BlockParams.Switch)?.options ?: listOf("Option 1", "Option 2")) }
     var switchAllowDefault by remember { mutableStateOf((node.params as? BlockParams.Switch)?.allowDefault ?: true) }
@@ -435,6 +484,12 @@ private fun NodeParamDialog(
                             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                         Text("Repeats the BODY branch N times, then continues via OUT pin.", color = Color(0xFF8A8899), fontSize = 11.sp)
                     }
+                    MacroBlockType.JOIN -> {
+                        OutlinedTextField(value = joinCount, onValueChange = { joinCount = it },
+                            label = { Text("Number of inputs") }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        Text("Merges 2–8 branches into one output.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                    }
                     MacroBlockType.SWITCH -> {
                         OutlinedTextField(value = switchMsg, onValueChange = { switchMsg = it },
                             label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
@@ -508,6 +563,7 @@ private fun NodeParamDialog(
                             options = switchOptions.filter { it.isNotBlank() }.take(10).ifEmpty { listOf("Option 1") },
                             allowDefault = switchAllowDefault
                         )
+                        MacroBlockType.JOIN -> BlockParams.Join(joinCount.toIntOrNull()?.coerceIn(2, 8) ?: 2)
                         MacroBlockType.IR_SEND, MacroBlockType.END, MacroBlockType.START -> node.params
                     }
                     onSave(params)

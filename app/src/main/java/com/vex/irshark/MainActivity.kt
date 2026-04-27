@@ -1323,7 +1323,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onDismiss     = {
                                 editingMacroId = null
                                 screen = Screen.MACROS
-                            }
+                            },
+                            onTransmit    = { emitTxPulse() }
                         )
                     }
 

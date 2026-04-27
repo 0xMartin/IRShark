@@ -14,7 +14,7 @@ import java.util.UUID
 enum class MacroBlockType {
     START, END,
     IR_SEND, DELAY, SHOW_TEXT, WAIT_CONFIRM, IF_ELSE,
-    VIBRATE, REPEAT, SWITCH
+    VIBRATE, REPEAT, SWITCH, JOIN
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,6 +50,8 @@ sealed class BlockParams {
         val options: List<String> = listOf("Option 1", "Option 2"),
         val allowDefault: Boolean = true
     ) : BlockParams()
+
+    data class Join(val inputCount: Int = 2) : BlockParams()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,6 +82,7 @@ data class MacroNode(
         MacroBlockType.START      -> listOf(PinId.OUT)
         MacroBlockType.END        -> emptyList()
         MacroBlockType.IF_ELSE    -> listOf(PinId.YES, PinId.NO)
+        MacroBlockType.JOIN       -> listOf(PinId.OUT)
         MacroBlockType.REPEAT     -> listOf(PinId.BODY, PinId.CONT)
         MacroBlockType.SWITCH     -> {
             val p = params as? BlockParams.Switch ?: BlockParams.Switch()
@@ -93,6 +96,9 @@ data class MacroNode(
 
     /** Whether this block has an input pin. */
     fun hasInput(): Boolean = type != MacroBlockType.START
+
+    /** Whether this block accepts more than one incoming edge (JOIN). */
+    fun allowMultipleInputs(): Boolean = type == MacroBlockType.JOIN
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,7 +178,11 @@ class MacroGraph {
         if (wouldCycle(from = toId, reaching = fromId)) return "Connection would create a cycle"
 
         // Remove any existing wire from this output pin, and any existing wire into the target input
-        edges.removeAll { (it.fromId == fromId && it.fromPin == fromPin) || it.toId == toId }
+        if (toNode.allowMultipleInputs()) {
+            edges.removeAll { it.fromId == fromId && it.fromPin == fromPin }
+        } else {
+            edges.removeAll { (it.fromId == fromId && it.fromPin == fromPin) || it.toId == toId }
+        }
 
         edges.add(MacroEdge(fromId = fromId, fromPin = fromPin, toId = toId))
         return null
@@ -287,8 +297,10 @@ class MacroGraph {
             }
             MacroBlockType.SWITCH -> {
                 val p = node.params as? BlockParams.Switch ?: BlockParams.Switch()
-                val allOptPins = listOf(PinId.OPT0, PinId.OPT1, PinId.OPT2, PinId.OPT3, PinId.OPT4,
-                                        PinId.OPT5, PinId.OPT6, PinId.OPT7, PinId.OPT8, PinId.OPT9)
+                val allOptPins = listOf(
+                    PinId.OPT0, PinId.OPT1, PinId.OPT2, PinId.OPT3, PinId.OPT4,
+                    PinId.OPT5, PinId.OPT6, PinId.OPT7, PinId.OPT8, PinId.OPT9
+                )
                 val branches = p.options.mapIndexed { i, _ ->
                     val pin = allOptPins.getOrElse(i) { PinId.OPT9 }
                     val edge = edges.firstOrNull { it.fromId == nodeId && it.fromPin == pin }
@@ -308,6 +320,7 @@ class MacroGraph {
                 out.add(MacroStep.Switch(p.message, p.options, branches, defaultSteps.toList()))
                 return null   // all execution goes through branches
             }
+            MacroBlockType.JOIN -> { /* convergence point — no step emitted, continue via OUT */ }
         }
 
         // Follow the single OUT edge
@@ -352,6 +365,7 @@ class MacroGraph {
             val opts = p.options.joinToString(",") { jsonStr(it) }
             "{\"kind\":\"switch\",\"msg\":${jsonStr(p.message)},\"options\":[$opts],\"allowDefault\":${p.allowDefault}}"
         }
+        is BlockParams.Join -> "{\"kind\":\"join\",\"inputCount\":${p.inputCount}}"
     }
 
     private fun jsonStr(s: String) = "\"${s.replace("\\","\\\\").replace("\"","\\\"")}\""
@@ -386,6 +400,7 @@ class MacroGraph {
                                 allowDefault = pObj.optBoolean("allowDefault", true)
                             )
                         }
+                        "join"  -> BlockParams.Join(pObj.optInt("inputCount", 2))
                         else    -> BlockParams.None
                     }
                     g.nodes.add(MacroNode(

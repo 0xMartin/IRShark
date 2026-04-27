@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -70,7 +72,12 @@ fun RemoteControlScreen(
 ) {
     val violet = MaterialTheme.colorScheme.primary
     var flashedCommand by remember { mutableStateOf<String?>(null) }
-    var columnCount by rememberSaveable { mutableIntStateOf(2) }
+    val context = LocalContext.current
+    var columnCount by rememberSaveable {
+        val saved = context.getSharedPreferences("irshark_prefs", android.content.Context.MODE_PRIVATE)
+            .getInt("remote_column_count", 2)
+        mutableIntStateOf(saved)
+    }
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val commands = buttons.map { it.label }.filter { it.isNotBlank() }
@@ -165,13 +172,17 @@ fun RemoteControlScreen(
                     modifier = Modifier.weight(1f)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    listOf(1 to Icons.Filled.ViewList, 2 to Icons.Filled.GridView).forEach { (cols, icon) ->
+                    listOf(1 to Icons.Filled.ViewList, 2 to Icons.Filled.GridView, 3 to Icons.Filled.ViewModule).forEach { (cols, icon) ->
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(if (columnCount == cols) violet.copy(alpha = 0.18f) else Color.Transparent)
-                                .clickable { columnCount = cols },
+                                .clickable {
+                                    columnCount = cols
+                                    context.getSharedPreferences("irshark_prefs", android.content.Context.MODE_PRIVATE)
+                                        .edit().putInt("remote_column_count", cols).apply()
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(

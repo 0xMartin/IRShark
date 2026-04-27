@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
@@ -100,19 +101,20 @@ fun snapToGrid(pos: Offset): Offset =
 // ─────────────────────────────────────────────────────────────────────────────
 
 fun MacroNode.blockW(): Float = when (type) {
-    MacroBlockType.START, MacroBlockType.END -> 200f
+    MacroBlockType.START, MacroBlockType.END -> 300f
     MacroBlockType.IR_SEND -> {
         val len = (params as? BlockParams.IrSend)?.displayLabel?.length ?: 0
-        (240f + len * 8f).coerceIn(240f, 480f)
+        (360f + len * 8f).coerceIn(360f, 720f)
     }
-    MacroBlockType.DELAY   -> 240f
-    MacroBlockType.VIBRATE -> 240f
-    MacroBlockType.REPEAT  -> 300f
+    MacroBlockType.DELAY   -> 360f
+    MacroBlockType.VIBRATE -> 360f
+    MacroBlockType.REPEAT  -> 450f
+    MacroBlockType.JOIN    -> 300f
     MacroBlockType.SWITCH  -> {
         val p = params as? BlockParams.Switch ?: BlockParams.Switch()
         ((p.options.size + 1) * 72f + 60f).coerceIn(300f, 700f)
     }
-    else                   -> 300f   // SHOW_TEXT, WAIT_CONFIRM, IF_ELSE
+    else                   -> 450f   // SHOW_TEXT, WAIT_CONFIRM, IF_ELSE
 }
 
 fun MacroNode.blockH(): Float = when (type) {
@@ -127,7 +129,8 @@ fun MacroNode.blockH(): Float = when (type) {
     }
     MacroBlockType.IF_ELSE                   -> 260f
     MacroBlockType.VIBRATE                   -> 200f
-    MacroBlockType.REPEAT                    -> 240f
+    MacroBlockType.REPEAT                    -> 320f
+    MacroBlockType.JOIN                      -> 180f
     MacroBlockType.SWITCH                    -> {
         val msgLen = (params as? BlockParams.Switch)?.message?.length ?: 0
         val extraLines = (msgLen / 24).coerceIn(0, 4)
@@ -197,6 +200,7 @@ fun blockColor(type: MacroBlockType): Color = when (type) {
     MacroBlockType.VIBRATE      -> Color(0xFF9B3DC2)
     MacroBlockType.REPEAT       -> Color(0xFFD47B1A)
     MacroBlockType.SWITCH       -> Color(0xFF3D8ADF)
+    MacroBlockType.JOIN         -> Color(0xFF3DA87A)
 }
 
 fun blockLabel(type: MacroBlockType): String = when (type) {
@@ -210,6 +214,7 @@ fun blockLabel(type: MacroBlockType): String = when (type) {
     MacroBlockType.VIBRATE      -> "Vibrate"
     MacroBlockType.REPEAT       -> "Repeat"
     MacroBlockType.SWITCH       -> "Switch"
+    MacroBlockType.JOIN         -> "Join"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -223,6 +228,7 @@ fun MacroGraphCanvas(
     onNodeLongPress:  (MacroNode) -> Unit,
     onAddBlock:       (MacroBlockType, Offset) -> Unit,
     onDeleteSelected: () -> Unit,
+    onSendIrPreview:  (BlockParams.IrSend) -> Unit = {},
     modifier:         Modifier = Modifier
 ) {
     val density = LocalDensity.current.density   // dp → px factor
@@ -275,7 +281,7 @@ fun MacroGraphCanvas(
     // Settings icon hit zone: top-right corner, sized to the actual icon area (~28dp)
     fun isSettingsIconHit(cPos: Offset, node: MacroNode): Boolean {
         if (node.type == MacroBlockType.START || node.type == MacroBlockType.END) return false
-        val hitSize = 28f * density
+        val hitSize = 38f * density
         return cPos.x >= node.pos.x + node.blockW() - hitSize &&
                cPos.y <= node.pos.y + hitSize
     }
@@ -564,6 +570,39 @@ fun MacroGraphCanvas(
             }
         }
 
+        // ── IR preview play buttons (rendered outside clipToBounds inner box) ─
+        for (node in graph.nodes) {
+            if (node.type != MacroBlockType.IR_SEND) continue
+            val irParams = node.params as? BlockParams.IrSend ?: continue
+            if (irParams.irCode.isBlank()) continue
+            val sp = canvasToScreen(node.pos, pan, zoom)
+            val btnPx = 44f
+            Box(
+                modifier = Modifier
+                    .graphicsLayer {
+                        translationX = sp.x + node.blockW() * zoom + 8f
+                        translationY = sp.y + zoom * (node.blockH() - btnPx) / 2f
+                        scaleX = zoom
+                        scaleY = zoom
+                        transformOrigin = TransformOrigin(0f, 0f)
+                    }
+                    .size((btnPx / density).dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF7B4DDF).copy(alpha = 0.90f))
+                    .border(1.5.dp, Color(0xFF9B6DFF), CircleShape)
+                    .clickable { onSendIrPreview(irParams) }
+                    .zIndex(30f),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = "Send IR preview",
+                    tint = Color.White,
+                    modifier = Modifier.size(((btnPx * 0.58f) / density).dp)
+                )
+            }
+        }
+
         // ── Overlay row (always visible) ──────────────────────────────────
         val selCount = graph.nodes.count { it.selected }
         val wireHint = connectFromId != null
@@ -725,13 +764,16 @@ fun BlockView(
                             color = color,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            lineHeight = 16.sp
+                            lineHeight = 16.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                         Icon(
                             imageVector = Icons.Filled.Settings,
                             contentDescription = "Settings",
                             tint = color.copy(alpha = if (selected) 0.85f else 0.70f),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(26.dp)
                         )
                     }
 
@@ -835,7 +877,31 @@ fun BlockView(
         }
 
         // Input pin (top-center, sticks above block)
-        if (node.hasInput()) {
+        if (node.type == MacroBlockType.JOIN) {
+            // Multiple input pins evenly spaced at the top
+            val joinParams = node.params as? BlockParams.Join ?: BlockParams.Join()
+            val bw = node.blockW()
+            val count = joinParams.inputCount.coerceIn(1, 8)
+            for (i in 0 until count) {
+                val pinX = bw / (count + 1).toFloat() * (i + 1)
+                val pinPadDp = ((pinX - PIN_R) / density).dp
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = pinPadDp)
+                        .offset(y = -pinOutDp)
+                        .size(pinDp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF0E0B1A))
+                        .border(
+                            width = if (highlightInput) 3.dp else 2.5.dp,
+                            color = if (highlightInput) Color.White else Color(0xFF9B6DFF).copy(alpha = 0.95f),
+                            shape = CircleShape
+                        )
+                        .graphicsLayer { shadowElevation = 4f; shape = CircleShape }
+                )
+            }
+        } else if (node.hasInput()) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -851,6 +917,7 @@ fun BlockView(
                     .graphicsLayer { shadowElevation = 4f; shape = CircleShape }
             )
         }
+            val btnPx = 130f
 
         // Output pin(s), sticking below block
         when (node.type) {
@@ -935,6 +1002,7 @@ private fun blockSummary(node: MacroNode): String = when (val p = node.params) {
     is BlockParams.Vibrate     -> "${p.durationMs} ms"
     is BlockParams.Repeat      -> "× ${p.count} times"
     is BlockParams.Switch      -> p.message.take(36)
+    is BlockParams.Join        -> "${p.inputCount} inputs → 1 output"
     else                       -> ""
 }
 
@@ -992,6 +1060,7 @@ private val addableBlockTypes = listOf(
     MacroBlockType.DELAY,
     MacroBlockType.VIBRATE,
     MacroBlockType.REPEAT,
+    MacroBlockType.JOIN,
     MacroBlockType.SWITCH,
     MacroBlockType.SHOW_TEXT,
     MacroBlockType.WAIT_CONFIRM,
