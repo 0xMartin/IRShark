@@ -26,6 +26,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
@@ -134,6 +136,7 @@ private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
 @Composable
 fun IRSharkApp(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val view = LocalView.current
 
     var dbIndex by remember { mutableStateOf(FlipperDbIndex()) }
     var savedRemotes by remember { mutableStateOf(listOf<SavedRemote>()) }
@@ -363,6 +366,14 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var irFinderBreadcrumb by remember { mutableStateOf<String?>(null) }
     var irFinderOnBack by remember { mutableStateOf<(() -> Unit)?>(null) }
     var irFinderOnUndo by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var irFinderCategory by rememberSaveable { mutableStateOf("") }  // Preserve category/brand across navigation
+    var irFinderBrand by rememberSaveable { mutableStateOf("") }
+    var irFinderInTestButtons by rememberSaveable { mutableStateOf(false) }  // Track if we're in final step
+    var irFinderSelectedButtonIdx by rememberSaveable { mutableIntStateOf(-1) }  // Persist selected button
+    // Serialize finder buttons state for persistence across app lifecycle
+    var irFinderButtonsSerialized by rememberSaveable { mutableStateOf("") }
+    var showConfirmNavDialog by remember { mutableStateOf(false) }
+    var confirmNavReason by remember { mutableStateOf("") }
     // Clear IR Finder nav state when navigating away
     LaunchedEffect(screen) {
         if (screen != Screen.IR_FINDER) {
@@ -638,6 +649,14 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
+    // Keep display awake while universal auto-send is running.
+    DisposableEffect(view, universalAutoSend) {
+        view.keepScreenOn = universalAutoSend
+        onDispose {
+            view.keepScreenOn = false
+        }
+    }
+
     // Control command labels
     val controlCommands = controlButtons.map { it.label }.filter { it.isNotBlank() }
     // Show splash while loading
@@ -756,6 +775,38 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             }
             if (screen !in listOf(Screen.UNIVERSAL, Screen.MACRO_EDITOR)) {
                 Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Confirmation dialog for navigating away from sensitive screens
+            if (showConfirmNavDialog) {
+                AlertDialog(
+                    onDismissRequest = { showConfirmNavDialog = false },
+                    title = { Text("Confirm") },
+                    text = { Text(confirmNavReason) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showConfirmNavDialog = false
+                            when {
+                                irFinderInTestButtons -> {
+                                    irFinderCategory = ""
+                                    irFinderBrand = ""
+                                    irFinderInTestButtons = false
+                                }
+                                screen == Screen.REMOTE_CONTROL -> {
+                                    controlRemoteIndex = -1
+                                }
+                            }
+                            screen = Screen.HOME
+                        }) {
+                            Text("Leave")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showConfirmNavDialog = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
             }
 
             Box(modifier = Modifier
@@ -1160,6 +1211,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     Screen.IR_FINDER -> {
                         IrFinderScreen(
                             dbIndex = dbIndex,
+                            initialCategory = irFinderCategory,
+                            initialBrand = irFinderBrand,
+                            initialFinderButtonsState = irFinderButtonsSerialized,
+                            initialSelectedButtonIdx = irFinderSelectedButtonIdx,
                             onTransmit = { emitTxPulse() },
                             addedProfilePaths = savedRemotes.mapNotNull { it.sourceProfilePath }.toSet(),
                             hapticEnabled = hapticFeedback,
@@ -1214,6 +1269,24 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 irFinderBreadcrumb = breadcrumb
                                 irFinderOnBack = onBack
                                 irFinderOnUndo = onUndo
+                            },
+                            onStateChange = { category, brand, inTestButtons ->
+                                irFinderCategory = category
+                                irFinderBrand = brand
+                                irFinderInTestButtons = inTestButtons
+                            },
+                            onFinderStateChange = { buttons, selectedIdx ->
+                                // Serialize button state for persistence
+                                irFinderButtonsSerialized = com.vex.irshark.ui.screens.serializeFinderButtons(buttons)
+                                irFinderSelectedButtonIdx = selectedIdx
+                            },
+                            onHome = {
+                                if (irFinderInTestButtons) {
+                                    showConfirmNavDialog = true
+                                    confirmNavReason = "You're still testing buttons. Your progress will be lost. Leave anyway?"
+                                } else {
+                                    screen = Screen.HOME
+                                }
                             }
                         )
                     }

@@ -96,6 +96,146 @@ private fun defaultButtonsForCategory(category: String): List<String> {
 private fun prettyButtonLabel(raw: String): String =
     raw.replace('_', ' ').split(' ').joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
 
+private fun normalizeFinderLabel(raw: String): String {
+    return raw.uppercase().replace(Regex("[^A-Z0-9]+"), " ").trim()
+}
+
+private fun compactFinderLabel(raw: String): String = normalizeFinderLabel(raw).replace(" ", "")
+
+// ── Common abbreviations / key parts for robust matching ──
+private val COMMON_ABBREVIATIONS = mapOf(
+    "VOL" to "VOLUME",
+    "DN" to "DOWN",
+    "UP" to "UP",
+    "CH" to "CHANNEL",
+    "PROG" to "PROGRAM",
+    "CUR" to "CURSOR",
+    "NAV" to "NAV",
+    "TEMP" to "TEMP",
+    "SPEED" to "SPEED"
+)
+
+private fun expandAbbreviations(compact: String): Set<String> {
+    val variations = mutableSetOf(compact)
+    for ((abbr, expanded) in COMMON_ABBREVIATIONS) {
+        if (compact.contains(abbr)) {
+            variations.add(compact.replace(abbr, expanded))
+        }
+    }
+    return variations
+}
+
+private fun levenshteinDistance(s1: String, s2: String): Int {
+    if (s1.length < s2.length) return levenshteinDistance(s2, s1)
+    if (s2.isEmpty()) return s1.length
+    
+    val previous = IntArray(s2.length + 1) { it }
+    val current = IntArray(s2.length + 1)
+    
+    for (i in 1..s1.length) {
+        current[0] = i
+        for (j in 1..s2.length) {
+            val insertions = current[j - 1] + 1
+            val deletions = previous[j] + 1
+            val substitutions = previous[j - 1] + if (s1[i - 1] != s2[j - 1]) 1 else 0
+            current[j] = minOf(insertions, deletions, substitutions)
+        }
+        previous.indices.forEach { previous[it] = current[it] }
+    }
+    return current[s2.length]
+}
+
+private fun similarityRatio(s1: String, s2: String): Double {
+    val distance = levenshteinDistance(s1, s2)
+    val maxLen = maxOf(s1.length, s2.length)
+    if (maxLen == 0) return 1.0
+    return 1.0 - (distance.toDouble() / maxLen)
+}
+
+private val FINDER_BUTTON_ALIASES = linkedMapOf(
+    "Power" to setOf("POWER", "ONOFF", "POWERTOGGLE", "STANDBY", "ON", "OFF", "PWRBUTTON", "PWR"),
+    "Volume_Up" to setOf("VOLUMEUP", "VOLUP", "VOLUMEPLUS", "VOLPLUS", "AUDIOUP", "SOUNDUP", "VOLMOREUP", "MOREVOL", "VOLUP", "VOLU"),
+    "Volume_Down" to setOf("VOLUMEDOWN", "VOLDOWN", "VOLUMEMINUS", "VOLMINUS", "AUDIODOWN", "SOUNDDOWN", "VOLMOREDOWN", "LESSVOL", "VOLDN", "VOLD", "VOLMINUS"),
+    "Mute" to setOf("MUTE", "VOLUMEMUTE", "AUDIOMUTE", "MUTEON", "MUTEOFF"),
+    "Channel_Up" to setOf("CHANNELUP", "CHUP", "PROGRAMUP", "PROGUP", "CHMORE", "CHUP", "CHU"),
+    "Channel_Down" to setOf("CHANNELDOWN", "CHDOWN", "PROGRAMDOWN", "PROGDOWN", "CHLESS", "CHDN", "CHD"),
+    "Input" to setOf("INPUT", "TVAV", "AV", "HDMI", "INP"),
+    "Source" to setOf("SOURCE", "SRC", "SCART"),
+    "Menu" to setOf("MENU", "SETUP", "SETTINGS", "OPTIONS", "HOME", "MAINMENU"),
+    "Ok" to setOf("OK", "ENTER", "SELECT", "CONFIRM"),
+    "Back" to setOf("BACK", "RETURN", "EXIT", "ESCAPE", "ESC", "BKSP"),
+    "Up" to setOf("UP", "CURSORUP", "NAVUP", "PAGEUP", "ARROWUP"),
+    "Down" to setOf("DOWN", "CURSORDOWN", "NAVDOWN", "PAGEDOWN", "ARROWDOWN"),
+    "Left" to setOf("LEFT", "CURSORLEFT", "NAVLEFT", "PAGELEFT", "ARROWLEFT"),
+    "Right" to setOf("RIGHT", "CURSORRIGHT", "NAVRIGHT", "PAGERIGHT", "ARROWRIGHT"),
+    "Play" to setOf("PLAY", "PLAYSTART"),
+    "Pause" to setOf("PAUSE", "PAUSED"),
+    "Stop" to setOf("STOP", "STOPSTOPPED"),
+    "Prev" to setOf("PREV", "PREVIOUS", "BACKWARD", "REWIND", "SKIPBACK"),
+    "Next" to setOf("NEXT", "FORWARD", "FASTFORWARD", "SKIPFORWARD", "FF"),
+    "Mode" to setOf("MODE"),
+    "Temp_Up" to setOf("TEMPUP", "TEMPERATUREUP", "TEMPU"),
+    "Temp_Down" to setOf("TEMPDOWN", "TEMPERATUREDOWN", "TEMPD"),
+    "Fan_Speed" to setOf("FANSPEED", "FAN", "SPEED", "FANSPEEDMORE", "FANMORE", "FSPEED"),
+    "Sleep" to setOf("SLEEP"),
+    "Timer" to setOf("TIMER"),
+    "Speed_Up" to setOf("SPEEDUP", "SPDUP"),
+    "Speed_Down" to setOf("SPEEDDOWN", "SPDDN"),
+    "Oscillation" to setOf("OSCILLATION", "SWING", "OSC"),
+    "Shutter" to setOf("SHUTTER"),
+    "Zoom_In" to setOf("ZOOMIN", "ZOOM"),
+    "Zoom_Out" to setOf("ZOOMOUT")
+)
+
+private fun canonicalFinderButtonLabel(rawLabel: String): String? {
+    val compact = compactFinderLabel(rawLabel)
+    if (compact.isBlank()) return null
+    
+    // Stage 1: Try exact match first
+    FINDER_BUTTON_ALIASES.entries.firstOrNull { compact in it.value }?.let { return it.key }
+    
+    // Stage 2: Try abbreviation expansion
+    val expanded = expandAbbreviations(compact)
+    for (variation in expanded) {
+        FINDER_BUTTON_ALIASES.entries.firstOrNull { variation in it.value }?.let { return it.key }
+    }
+    
+    // Stage 3: Try Levenshtein distance (fuzzy match) - highest similarity
+    val bestMatch = FINDER_BUTTON_ALIASES.entries
+        .mapNotNull { (canonical, aliases) ->
+            val bestAliasSimilarity = aliases.maxOfOrNull { alias ->
+                similarityRatio(compact, alias)
+            } ?: 0.0
+            if (bestAliasSimilarity > 0.0) canonical to bestAliasSimilarity else null
+        }
+        .maxByOrNull { it.second }
+    
+    // Return match only if similarity is >65% (allows "VOLDN" -> "VOLUMEDOWN", etc)
+    if (bestMatch != null && bestMatch.second > 0.65) {
+        return bestMatch.first
+    }
+    
+    return null
+}
+
+private fun chooseFinderButtonsForCategory(
+    category: String,
+    commandFrequency: Map<String, Int>
+): List<String> {
+    val defaults = defaultButtonsForCategory(category)
+    if (commandFrequency.isEmpty()) return defaults
+
+    val defaultsPresent = defaults.filter { (commandFrequency[it] ?: 0) > 0 }
+    val remaining = commandFrequency.entries
+        .filter { it.key !in defaultsPresent }
+        .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+        .map { it.key }
+
+    val targetSize = defaults.size.coerceAtLeast(8)
+    val selected = (defaultsPresent + remaining).distinct().take(targetSize)
+    return if (selected.isNotEmpty()) selected else defaults
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 /** A button slot in the finder: carries its loaded code options and which one is confirmed. */
@@ -120,16 +260,58 @@ private sealed class FinderStep {
     object TestButtons  : FinderStep()
 }
 
+// ── Helper functions for finder state persistence ──────────────────────────
+
+internal fun serializeFinderButtons(buttons: List<FinderButton>): String {
+    return buttons.joinToString("|") { btn ->
+        "${btn.label}:${btn.confirmedCode ?: "\u0000"}:${btn.codeIndex}"
+    }
+}
+
+private fun deserializeFinderButtons(serialized: String, buttonsList: List<FinderButton>): List<FinderButton> {
+    if (serialized.isBlank()) return buttonsList
+    
+    val stateMap = mutableMapOf<String, Pair<String?, Int>>()
+    try {
+        serialized.split("|").forEach { part ->
+            val segments = part.split(":")
+            if (segments.size >= 3) {
+                val label = segments[0]
+                val code = segments[1].takeIf { it != "\u0000" }
+                val idx = segments[2].toIntOrNull() ?: 0
+                if (label.isNotEmpty()) {
+                    stateMap[label] = code to idx
+                }
+            }
+        }
+    } catch (e: Exception) {
+        // Ignore parsing errors
+    }
+    
+    return buttonsList.map { btn ->
+        val (code, idx) = stateMap[btn.label] ?: (null to 0)
+        btn.copy(confirmedCode = code, codeIndex = idx)
+    }
+}
+
 // ── Main screen ──────────────────────────────────────────────────────────────
 
 @Composable
 fun IrFinderScreen(
     dbIndex: FlipperDbIndex,
+    initialCategory: String = "",
+    initialBrand: String = "",
+    initialFinderButtons: List<FinderButton> = emptyList(),
+    initialFinderButtonsState: String = "",
+    initialSelectedButtonIdx: Int = -1,
     onTransmit: () -> Unit = {},
     addedProfilePaths: Set<String> = emptySet(),
     onAddRemote: (profilePath: String, profileName: String, commands: List<String>) -> Unit = { _, _, _ -> },
     onOpenRemote: (com.vex.irshark.data.FlipperProfile) -> Unit = {},
     onNavStateChange: (breadcrumb: String?, onBack: (() -> Unit)?, onUndo: (() -> Unit)?) -> Unit = { _, _, _ -> },
+    onStateChange: (category: String, brand: String, inTestButtons: Boolean) -> Unit = { _, _, _ -> },
+    onFinderStateChange: (buttons: List<FinderButton>, selectedIdx: Int) -> Unit = { _, _ -> },
+    onHome: () -> Unit = {},
     lastTested: String? = null,
     onUpdateLastTested: (String) -> Unit = {},
     hapticEnabled: Boolean = true
@@ -143,6 +325,19 @@ fun IrFinderScreen(
     var selectedCategory by remember { mutableStateOf("") }
     var selectedBrand    by remember { mutableStateOf("") }
 
+    // Initialize from caller-provided state if available
+    LaunchedEffect(initialCategory, initialBrand) {
+        if (initialCategory.isNotEmpty()) {
+            selectedCategory = initialCategory
+            if (initialBrand.isNotEmpty()) {
+                selectedBrand = initialBrand
+                step = FinderStep.TestButtons
+            } else {
+                step = FinderStep.PickBrand
+            }
+        }
+    }
+
     // Notify parent when entering TestButtons so it can save lastTested
     LaunchedEffect(step, selectedBrand) {
         if (step == FinderStep.TestButtons && selectedBrand.isNotEmpty()) {
@@ -150,12 +345,29 @@ fun IrFinderScreen(
         }
     }
 
+    // Track state changes for parent (e.g., to know if we're in final testing step)
+    LaunchedEffect(step, selectedCategory, selectedBrand) {
+        onStateChange(selectedCategory, selectedBrand, step == FinderStep.TestButtons)
+    }
+
     // Finder button state — loaded for the chosen category+brand combination
-    val finderButtons = remember { mutableStateListOf<FinderButton>() }
-    var selectedButtonIdx by remember { mutableIntStateOf(-1) }
+    val finderButtons = remember { 
+        mutableStateListOf<FinderButton>().apply {
+            if (initialFinderButtons.isNotEmpty()) addAll(initialFinderButtons)
+        }
+    }
+    var selectedButtonIdx by remember { mutableIntStateOf(initialSelectedButtonIdx) }
     var isLoadingCodes   by remember { mutableStateOf(false) }
     // Cache: profilePath → set of all IR code strings in that profile (for accurate matching)
     var profileCodesCache by remember { mutableStateOf<Map<String, Set<String>>>(emptyMap()) }
+
+    // Notify parent when finder buttons state changes (for persistence)
+    // Use SideEffect to ensure state is saved on every recomposition, not just on step change
+    SideEffect {
+        if (step == FinderStep.TestButtons) {
+            onFinderStateChange(finderButtons.toList(), selectedButtonIdx)
+        }
+    }
 
     // Matching profiles (narrowed as confirmations come in)
     val confirmedCodes = finderButtons.filter { it.isConfirmed }.associate { it.label to it.confirmedCode!! }
@@ -224,9 +436,9 @@ fun IrFinderScreen(
     // ── Load codes when brand is selected ─────────────────────────────────────
     LaunchedEffect(selectedBrand, selectedCategory) {
         if (selectedBrand.isEmpty() && selectedCategory.isEmpty()) return@LaunchedEffect
-        val buttons = defaultButtonsForCategory(selectedCategory)
+        val fallbackButtons = defaultButtonsForCategory(selectedCategory)
         finderButtons.clear()
-        finderButtons.addAll(buttons.map { FinderButton(label = it) })
+        finderButtons.addAll(fallbackButtons.map { FinderButton(label = it) })
         selectedButtonIdx = -1
         isLoadingCodes = true
         profileCodesCache = emptyMap()
@@ -239,36 +451,39 @@ fun IrFinderScreen(
                 "flipper_irdb/$selectedCategory"
 
             val profiles = profilesUnderPath(dbIndex, basePath)
-            // For each button, gather all unique code options from all profiles
+            // For each canonical command button, gather all unique code options.
             val buttonMap = mutableMapOf<String, MutableList<DbIrCodeOption>>()
+            val commandFrequency = mutableMapOf<String, Int>()
             val cacheBuilder = mutableMapOf<String, MutableSet<String>>()
-            buttons.forEach { btn -> buttonMap[btn] = mutableListOf() }
 
             for (profile in profiles) {
                 val opts = loadDbIrCodeOptions(context, profile.path)
                 // Build the per-profile code cache (used for accurate matching)
                 cacheBuilder[profile.path] = opts.mapTo(mutableSetOf()) { it.code }
                 for (opt in opts) {
-                    // Match to one of our button slots by name similarity
-                    val matchKey = buttons.firstOrNull { btn ->
-                        opt.label.replace('_', ' ').equals(btn.replace('_', ' '), ignoreCase = true) ||
-                        opt.label.contains(btn.replace('_', ' '), ignoreCase = true) ||
-                        btn.replace('_', ' ').contains(opt.label.replace('_', ' '), ignoreCase = true)
-                    }
-                    if (matchKey != null) {
-                        if (buttonMap[matchKey]!!.none { it.code == opt.code }) {
-                            buttonMap[matchKey]!!.add(opt)
-                        }
+                    val canonical = canonicalFinderButtonLabel(opt.label) ?: continue
+                    commandFrequency[canonical] = (commandFrequency[canonical] ?: 0) + 1
+                    val bucket = buttonMap.getOrPut(canonical) { mutableListOf() }
+                    if (bucket.none { it.code == opt.code }) {
+                        bucket.add(opt)
                     }
                 }
             }
 
+            val selectedButtons = chooseFinderButtonsForCategory(selectedCategory, commandFrequency)
+
             withContext(Dispatchers.Main) {
-                val updated = finderButtons.mapIndexed { i, btn ->
-                    btn.copy(codeOptions = buttonMap[btn.label].orEmpty())
+                val updated = selectedButtons.map { label ->
+                    FinderButton(label = label, codeOptions = buttonMap[label].orEmpty())
                 }
                 finderButtons.clear()
-                finderButtons.addAll(updated)
+                // Apply persisted state if available (confirmed codes and index)
+                val restoredButtons = if (initialFinderButtonsState.isNotEmpty()) {
+                    deserializeFinderButtons(initialFinderButtonsState, updated)
+                } else {
+                    updated
+                }
+                finderButtons.addAll(restoredButtons)
                 profileCodesCache = cacheBuilder
                 isLoadingCodes = false
             }
@@ -286,7 +501,8 @@ fun IrFinderScreen(
                 onSelect = { raw ->
                     selectedCategory = raw
                     step = FinderStep.PickBrand
-                }
+                },
+                onHome = onHome
             )
         }
 
@@ -298,7 +514,8 @@ fun IrFinderScreen(
                 onSelect = { raw ->
                     selectedBrand = raw
                     step = FinderStep.TestButtons
-                }
+                },
+                onHome = onHome
             )
 
             FinderStep.TestButtons -> TestButtonsStep(
@@ -374,7 +591,8 @@ fun IrFinderScreen(
                 onOpenRemote = onOpenRemote,
                 onAddRemote = { profile ->
                     onAddRemote(profile.path, profile.name, profile.commands)
-                }
+                },
+                onHome = onHome
             )
         }
     }
@@ -389,7 +607,8 @@ private fun PickStep(
     options: List<Pair<String, String>>,
     showDeviceIcons: Boolean = false,
     iconNameOverride: String? = null,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    onHome: (() -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     var searchQuery by remember { mutableStateOf("") }
@@ -469,6 +688,22 @@ private fun PickStep(
                 }
             }
         }
+        
+        // Home button (visible only if provided)
+        if (onHome != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = onHome,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, violet.copy(alpha = 0.3f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF8A8899))
+            ) {
+                Text("Home", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 
@@ -491,7 +726,8 @@ private fun TestButtonsStep(
     onNextCode: (Int) -> Unit,
     onResetButton: (Int) -> Unit,
     onOpenRemote: (com.vex.irshark.data.FlipperProfile) -> Unit,
-    onAddRemote: (com.vex.irshark.data.FlipperProfile) -> Unit
+    onAddRemote: (com.vex.irshark.data.FlipperProfile) -> Unit,
+    onHome: (() -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     val green  = Color(0xFF3EB47C)
@@ -792,6 +1028,22 @@ private fun TestButtonsStep(
                         }
                     }
                 }
+            }
+        }
+        
+        // Home button at the bottom
+        if (onHome != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = onHome,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, violet.copy(alpha = 0.3f)),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF8A8899))
+            ) {
+                Text("Home", fontSize = 13.sp, fontWeight = FontWeight.Medium)
             }
         }
     }
