@@ -789,6 +789,14 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 )
             }
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER)) {
+                val remoteDbMatchCount = if (screen == Screen.REMOTE_DB) {
+                    dbIndex.profiles.count {
+                        remoteDbQuery.isBlank() ||
+                            it.name.contains(remoteDbQuery, ignoreCase = true) ||
+                            prettyPath(it.parentPath).contains(remoteDbQuery, ignoreCase = true)
+                    }
+                } else 0
+                val remoteDbShownCount = if (screen == Screen.REMOTE_DB) minOf(remoteDbMatchCount, 300) else 0
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
                     breadcrumb = if (screen == Screen.IR_FINDER) (irFinderBreadcrumb ?: "Root") else null,
@@ -813,6 +821,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         Screen.REMOTE_DB -> ({ remoteDbQuery = it })
                         else -> null
                     },
+                    searchResultCount = if (screen == Screen.REMOTE_DB) remoteDbShownCount else null,
+                    searchTotalCount = if (screen == Screen.REMOTE_DB) remoteDbMatchCount else null,
                     actions = when (screen) {
                         Screen.MY_REMOTES -> listOf(
                             Icons.Filled.Add to {

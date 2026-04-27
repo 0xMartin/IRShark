@@ -503,6 +503,8 @@ fun SectionNavBar(
     searchQuery: String? = null,
     searchPlaceholder: String = "Search",
     onSearchQuery: ((String) -> Unit)? = null,
+    searchResultCount: Int? = null,
+    searchTotalCount: Int? = null,
     // Optional breadcrumb/back for sub-screens (e.g. IR Finder steps)
     breadcrumb: String? = null,
     onBack: (() -> Unit)? = null,
@@ -631,6 +633,29 @@ fun SectionNavBar(
                             }
                         }
                     )
+                    if (searchResultCount != null) {
+                        val resultLabel = if (searchTotalCount != null && searchTotalCount >= searchResultCount) {
+                            "$searchResultCount/$searchTotalCount"
+                        } else {
+                            searchResultCount.toString()
+                        }
+                        Box(
+                            modifier = Modifier
+                                .height(30.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(violet.copy(alpha = 0.12f))
+                                .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = resultLabel,
+                                color = violet,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
                 } else {
                     Spacer(modifier = Modifier.weight(1f))
                 }
