@@ -107,22 +107,89 @@ private val COMMON_ABBREVIATIONS = mapOf(
     "VOL" to "VOLUME",
     "DN" to "DOWN",
     "UP" to "UP",
+    "DOWN" to "DOWN",
     "CH" to "CHANNEL",
     "PROG" to "PROGRAM",
+    "PRG" to "PROGRAM",
+    "PRV" to "PREV",
+    "PREVIOUS" to "PREV",
+    "NXT" to "NEXT",
     "CUR" to "CURSOR",
     "NAV" to "NAV",
+    "TMP" to "TEMP",
     "TEMP" to "TEMP",
-    "SPEED" to "SPEED"
+    "FAN" to "FAN",
+    "SPD" to "SPEED",
+    "INC" to "UP",
+    "DEC" to "DOWN",
+    "PLUS" to "UP",
+    "MINUS" to "DOWN",
+    "FFWD" to "FASTFORWARD",
+    "RWD" to "REWIND"
 )
 
 private fun expandAbbreviations(compact: String): Set<String> {
+    // Expand recursively so labels like CHPREV/VOLDN are normalized in more than one step.
     val variations = mutableSetOf(compact)
-    for ((abbr, expanded) in COMMON_ABBREVIATIONS) {
-        if (compact.contains(abbr)) {
-            variations.add(compact.replace(abbr, expanded))
+    var changed = true
+    var guard = 0
+    while (changed && guard < 6) {
+        changed = false
+        guard++
+        val snapshot = variations.toList()
+        for (candidate in snapshot) {
+            for ((abbr, expanded) in COMMON_ABBREVIATIONS) {
+                if (candidate.contains(abbr)) {
+                    val updated = candidate.replace(abbr, expanded)
+                    if (variations.add(updated)) {
+                        changed = true
+                    }
+                }
+            }
         }
     }
     return variations
+}
+
+private fun detectDirectionalIntent(compact: String): String? {
+    val upHints = listOf("UP", "NEXT", "MORE", "PLUS", "FORWARD", "HIGHER", "INC")
+    val downHints = listOf("DOWN", "PREV", "LESS", "MINUS", "BACK", "LOWER", "DEC")
+
+    val hasChannelContext = compact.contains("CHANNEL") || compact.contains("CH") ||
+        compact.contains("PROGRAM") || compact.contains("PROG")
+    if (hasChannelContext) {
+        if (upHints.any { compact.contains(it) }) return "Channel_Up"
+        if (downHints.any { compact.contains(it) }) return "Channel_Down"
+    }
+
+    val hasVolumeContext = compact.contains("VOLUME") || compact.contains("VOL") ||
+        compact.contains("AUDIO") || compact.contains("SOUND")
+    if (hasVolumeContext) {
+        if (upHints.any { compact.contains(it) }) return "Volume_Up"
+        if (downHints.any { compact.contains(it) }) return "Volume_Down"
+    }
+
+    val hasTempContext = compact.contains("TEMP") || compact.contains("TEMPERATURE") ||
+        compact.contains("HEAT") || compact.contains("COOL")
+    if (hasTempContext) {
+        if (upHints.any { compact.contains(it) } || compact.contains("HOT")) return "Temp_Up"
+        if (downHints.any { compact.contains(it) } || compact.contains("COLD")) return "Temp_Down"
+    }
+
+    val hasSpeedContext = compact.contains("SPEED") || compact.contains("FAN")
+    if (hasSpeedContext) {
+        if (upHints.any { compact.contains(it) }) return "Speed_Up"
+        if (downHints.any { compact.contains(it) }) return "Speed_Down"
+    }
+
+    val hasMediaContext = compact.contains("TRACK") || compact.contains("CHAPTER") ||
+        compact.contains("SONG") || compact.contains("SKIP")
+    if (hasMediaContext) {
+        if (compact.contains("NEXT") || compact.contains("FORWARD")) return "Next"
+        if (compact.contains("PREV") || compact.contains("BACK") || compact.contains("REWIND")) return "Prev"
+    }
+
+    return null
 }
 
 private fun levenshteinDistance(s1: String, s2: String): Int {
@@ -153,43 +220,46 @@ private fun similarityRatio(s1: String, s2: String): Double {
 }
 
 private val FINDER_BUTTON_ALIASES = linkedMapOf(
-    "Power" to setOf("POWER", "ONOFF", "POWERTOGGLE", "STANDBY", "ON", "OFF", "PWRBUTTON", "PWR"),
-    "Volume_Up" to setOf("VOLUMEUP", "VOLUP", "VOLUMEPLUS", "VOLPLUS", "AUDIOUP", "SOUNDUP", "VOLMOREUP", "MOREVOL", "VOLUP", "VOLU"),
-    "Volume_Down" to setOf("VOLUMEDOWN", "VOLDOWN", "VOLUMEMINUS", "VOLMINUS", "AUDIODOWN", "SOUNDDOWN", "VOLMOREDOWN", "LESSVOL", "VOLDN", "VOLD", "VOLMINUS"),
-    "Mute" to setOf("MUTE", "VOLUMEMUTE", "AUDIOMUTE", "MUTEON", "MUTEOFF"),
-    "Channel_Up" to setOf("CHANNELUP", "CHUP", "PROGRAMUP", "PROGUP", "CHMORE", "CHUP", "CHU"),
-    "Channel_Down" to setOf("CHANNELDOWN", "CHDOWN", "PROGRAMDOWN", "PROGDOWN", "CHLESS", "CHDN", "CHD"),
-    "Input" to setOf("INPUT", "TVAV", "AV", "HDMI", "INP"),
-    "Source" to setOf("SOURCE", "SRC", "SCART"),
-    "Menu" to setOf("MENU", "SETUP", "SETTINGS", "OPTIONS", "HOME", "MAINMENU"),
-    "Ok" to setOf("OK", "ENTER", "SELECT", "CONFIRM"),
-    "Back" to setOf("BACK", "RETURN", "EXIT", "ESCAPE", "ESC", "BKSP"),
+    "Power" to setOf("POWER", "ONOFF", "POWERTOGGLE", "STANDBY", "ON", "OFF", "PWRBUTTON", "PWR", "POWERKEY", "KEYPOWER", "MAINPOWER", "SYSTEMPOWER"),
+    "Volume_Up" to setOf("VOLUMEUP", "VOLUP", "VOLUMEPLUS", "VOLPLUS", "AUDIOUP", "SOUNDUP", "VOLMOREUP", "MOREVOL", "VOLU", "VOLINC", "VOLUMEINC", "VOLHIGHER", "VOLNEXT"),
+    "Volume_Down" to setOf("VOLUMEDOWN", "VOLDOWN", "VOLUMEMINUS", "VOLMINUS", "AUDIODOWN", "SOUNDDOWN", "VOLMOREDOWN", "LESSVOL", "VOLDN", "VOLD", "VOLDEC", "VOLUMEDEC", "VOLLOWER", "VOLPREV"),
+    "Mute" to setOf("MUTE", "VOLUMEMUTE", "AUDIOMUTE", "MUTEON", "MUTEOFF", "MUTEKEY", "SOUNDMUTE"),
+    "Channel_Up" to setOf("CHANNELUP", "CHUP", "PROGRAMUP", "PROGUP", "CHMORE", "CHU", "CHNEXT", "CHANNELNEXT", "PROGRAMNEXT", "CHPLUS", "CHANNELPLUS", "PRGNEXT"),
+    "Channel_Down" to setOf("CHANNELDOWN", "CHDOWN", "PROGRAMDOWN", "PROGDOWN", "CHLESS", "CHDN", "CHD", "CHPREV", "CHANNELPREV", "PROGRAMPREV", "CHMINUS", "CHANNELMINUS", "PRGPREV"),
+    "Input" to setOf("INPUT", "TVAV", "AV", "HDMI", "INP", "INPUTSELECT", "INPUTSEL", "TVVIDEO", "VIDEOINPUT"),
+    "Source" to setOf("SOURCE", "SRC", "SCART", "SOURCENEXT", "SOURCESELECT"),
+    "Menu" to setOf("MENU", "SETUP", "SETTINGS", "OPTIONS", "HOME", "MAINMENU", "SYSTEMMENU", "OSD"),
+    "Ok" to setOf("OK", "ENTER", "SELECT", "CONFIRM", "OKAY", "CENTRE", "CENTER"),
+    "Back" to setOf("BACK", "RETURN", "EXIT", "ESCAPE", "ESC", "BKSP", "GOBACK"),
     "Up" to setOf("UP", "CURSORUP", "NAVUP", "PAGEUP", "ARROWUP"),
     "Down" to setOf("DOWN", "CURSORDOWN", "NAVDOWN", "PAGEDOWN", "ARROWDOWN"),
     "Left" to setOf("LEFT", "CURSORLEFT", "NAVLEFT", "PAGELEFT", "ARROWLEFT"),
     "Right" to setOf("RIGHT", "CURSORRIGHT", "NAVRIGHT", "PAGERIGHT", "ARROWRIGHT"),
-    "Play" to setOf("PLAY", "PLAYSTART"),
-    "Pause" to setOf("PAUSE", "PAUSED"),
-    "Stop" to setOf("STOP", "STOPSTOPPED"),
-    "Prev" to setOf("PREV", "PREVIOUS", "BACKWARD", "REWIND", "SKIPBACK"),
-    "Next" to setOf("NEXT", "FORWARD", "FASTFORWARD", "SKIPFORWARD", "FF"),
-    "Mode" to setOf("MODE"),
-    "Temp_Up" to setOf("TEMPUP", "TEMPERATUREUP", "TEMPU"),
-    "Temp_Down" to setOf("TEMPDOWN", "TEMPERATUREDOWN", "TEMPD"),
-    "Fan_Speed" to setOf("FANSPEED", "FAN", "SPEED", "FANSPEEDMORE", "FANMORE", "FSPEED"),
-    "Sleep" to setOf("SLEEP"),
-    "Timer" to setOf("TIMER"),
-    "Speed_Up" to setOf("SPEEDUP", "SPDUP"),
-    "Speed_Down" to setOf("SPEEDDOWN", "SPDDN"),
-    "Oscillation" to setOf("OSCILLATION", "SWING", "OSC"),
-    "Shutter" to setOf("SHUTTER"),
-    "Zoom_In" to setOf("ZOOMIN", "ZOOM"),
-    "Zoom_Out" to setOf("ZOOMOUT")
+    "Play" to setOf("PLAY", "PLAYSTART", "PLAYPAUSEPLAY", "START"),
+    "Pause" to setOf("PAUSE", "PAUSED", "HOLD"),
+    "Stop" to setOf("STOP", "STOPSTOPPED", "STOPPLAY"),
+    "Prev" to setOf("PREV", "PREVIOUS", "BACKWARD", "REWIND", "SKIPBACK", "TRACKPREV", "SONGPREV", "CHAPTERPREV"),
+    "Next" to setOf("NEXT", "FORWARD", "FASTFORWARD", "SKIPFORWARD", "FF", "TRACKNEXT", "SONGNEXT", "CHAPTERNEXT"),
+    "Mode" to setOf("MODE", "FUNCTION", "FUNC"),
+    "Temp_Up" to setOf("TEMPUP", "TEMPERATUREUP", "TEMPU", "TEMPPLUS", "TEMPINC", "HEATUP"),
+    "Temp_Down" to setOf("TEMPDOWN", "TEMPERATUREDOWN", "TEMPD", "TEMPMINUS", "TEMPDEC", "COOLDOWN"),
+    "Fan_Speed" to setOf("FANSPEED", "FAN", "SPEED", "FANSPEEDMORE", "FANMORE", "FSPEED", "FANLEVEL", "BLOWER", "AIRFLOW"),
+    "Sleep" to setOf("SLEEP", "SLEEPTIMER", "NIGHT"),
+    "Timer" to setOf("TIMER", "CLOCKTIMER", "PROGRAMTIMER"),
+    "Speed_Up" to setOf("SPEEDUP", "SPDUP", "SPEEDINC", "SPEEDPLUS"),
+    "Speed_Down" to setOf("SPEEDDOWN", "SPDDN", "SPEEDDEC", "SPEEDMINUS"),
+    "Oscillation" to setOf("OSCILLATION", "SWING", "OSC", "SWINGMODE"),
+    "Shutter" to setOf("SHUTTER", "SNAP", "CAPTURE", "TAKEPICTURE"),
+    "Zoom_In" to setOf("ZOOMIN", "ZOOM", "TELE", "TELEPHOTO"),
+    "Zoom_Out" to setOf("ZOOMOUT", "WIDE", "WIDEANGLE")
 )
 
 private fun canonicalFinderButtonLabel(rawLabel: String): String? {
     val compact = compactFinderLabel(rawLabel)
     if (compact.isBlank()) return null
+
+    // Directional labels frequently encode intent in compact form (e.g. CHNEXT, VOLDN).
+    detectDirectionalIntent(compact)?.let { return it }
     
     // Stage 1: Try exact match first
     FINDER_BUTTON_ALIASES.entries.firstOrNull { compact in it.value }?.let { return it.key }
@@ -197,6 +267,7 @@ private fun canonicalFinderButtonLabel(rawLabel: String): String? {
     // Stage 2: Try abbreviation expansion
     val expanded = expandAbbreviations(compact)
     for (variation in expanded) {
+        detectDirectionalIntent(variation)?.let { return it }
         FINDER_BUTTON_ALIASES.entries.firstOrNull { variation in it.value }?.let { return it.key }
     }
     
@@ -204,7 +275,10 @@ private fun canonicalFinderButtonLabel(rawLabel: String): String? {
     val bestMatch = FINDER_BUTTON_ALIASES.entries
         .mapNotNull { (canonical, aliases) ->
             val bestAliasSimilarity = aliases.maxOfOrNull { alias ->
-                similarityRatio(compact, alias)
+                maxOf(
+                    similarityRatio(compact, alias),
+                    expanded.maxOfOrNull { variation -> similarityRatio(variation, alias) } ?: 0.0
+                )
             } ?: 0.0
             if (bestAliasSimilarity > 0.0) canonical to bestAliasSimilarity else null
         }
@@ -1031,20 +1105,5 @@ private fun TestButtonsStep(
             }
         }
         
-        // Home button at the bottom
-        if (onHome != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = onHome,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp),
-                shape = RoundedCornerShape(10.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, violet.copy(alpha = 0.3f)),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF8A8899))
-            ) {
-                Text("Home", fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            }
-        }
     }
 }
