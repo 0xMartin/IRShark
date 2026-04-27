@@ -121,6 +121,119 @@ Build debug APK:
 - real-world compatibility depends on the quality of your phone's IR emitter
 - for reliable validation, test both decode output (e.g. with Flipper) and real target-device response
 
+## 🗂️ Dataset — Flipper IR Database Format
+
+IRShark reads IR profiles in the **Flipper Zero `.ir` format**. Both the bundled database and any user-imported ZIP archive must follow this structure.
+
+### Directory structure
+
+```
+flipper_irdb/
+├── TVs/
+│   ├── Samsung/
+│   │   ├── Samsung_TV_Full.ir
+│   │   └── Samsung_UN60JU6500_Discrete.ir
+│   └── Sony/
+│       └── Sony_RM_ED045.ir
+├── ACs/
+│   └── LG/
+│       └── LG_AC.ir
+├── Projectors/
+│   └── Epson/
+│       └── Epson_EH_TW5650.ir
+└── ...
+```
+
+**Level 1 — device type folder** (e.g. `TVs`, `ACs`, `Projectors`, `Fans`, `Speakers`, …)  
+**Level 2 — brand folder** (e.g. `Samsung`, `Sony`, `LG`, …)  
+**Level 3 — `.ir` files**, one per remote model
+
+The app scans recursively, so deeper nesting (e.g. sub-brand folders) is also supported.
+
+---
+
+### `.ir` file format
+
+Every `.ir` file is a plain-text file. The first two lines are a mandatory header:
+
+```
+Filetype: IR signals file
+Version: 1
+```
+
+After the header, the file contains one or more **signal blocks** separated by `#` comment lines. Each block defines a single button/command.
+
+---
+
+#### Signal block — parsed type
+
+Used for known protocols where the remote code can be expressed as address + command bytes:
+
+```
+name: Power
+type: parsed
+protocol: NECext
+address: EE 87 00 00
+command: 5D AA 00 00
+```
+
+| Field | Description |
+|---|---|
+| `name` | Button label. Words separated by `_` (displayed as spaces in the app). |
+| `type` | Must be `parsed`. |
+| `protocol` | IR protocol name. Supported: `NEC`, `NECext`, `NEC42`, `Samsung`, `Samsung32`, `RC5`, `RC5X`, `RC6`, `SIRC`, `SIRC15`, `SIRC20`, `Kaseikyo`, `RCA`, `Pioneer`. |
+| `address` | Address bytes in hex, space-separated, LSB first (e.g. `EE 87 00 00`). |
+| `command` | Command bytes in hex, space-separated, LSB first (e.g. `5D AA 00 00`). |
+
+---
+
+#### Signal block — raw type
+
+Used when the exact protocol is unknown or non-standard. The signal is stored as a sequence of on/off pulse durations in microseconds:
+
+```
+name: Power
+type: raw
+frequency: 38000
+duty_cycle: 0.330000
+data: 1278 408 1276 410 437 1250 434 1253 ...
+```
+
+| Field | Description |
+|---|---|
+| `name` | Button label. |
+| `type` | Must be `raw`. |
+| `frequency` | Carrier frequency in Hz (typically `38000`). |
+| `duty_cycle` | Carrier duty cycle as a decimal (typically `0.330000`). |
+| `data` | Space-separated list of pulse/gap durations in microseconds. Values alternate: on, off, on, off, … |
+
+---
+
+#### Complete example — one file with two signals
+
+```
+Filetype: IR signals file
+Version: 1
+#
+name: Power
+type: parsed
+protocol: NEC
+address: 00 00 00 00
+command: 08 F7 00 00
+#
+name: Vol_up
+type: raw
+frequency: 38000
+duty_cycle: 0.330000
+data: 9042 4484 620 532 620 532 620 1658 620 532 620 532 620 532 620 532 620 532 620 1658 620 1658 620 532 620 1658 620 1658 620 1658 620 1658 620 1658 620 532 620 532 620 532 620 1658 620 532 620 532 620 532 620 532 620 1658 620 1658 620 1658 620 1658 620 532 620 1658 620 1658 620 1658 620 39784
+```
+
+---
+
+### Importing a custom database
+
+In **Settings → Database**, tap **Import database ZIP**. The ZIP must contain a `flipper_irdb/` root directory matching the structure above. The app validates that at least one `.ir` file is present before accepting the archive.
+
 ## 🗂️ Project Structure
 
 - app
@@ -130,6 +243,3 @@ Build debug APK:
 - gradle, build skripty
 : build configuration
 
-## 📌 Project Status
-
-Active development focused on protocol reliability, practical usability, and fast IR testing workflows.
