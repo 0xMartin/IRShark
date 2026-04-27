@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -41,6 +42,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import com.vex.irshark.data.FlipperDbIndex
 import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.dbRootPath
@@ -48,14 +51,17 @@ import com.vex.irshark.data.prettyName
 import com.vex.irshark.data.prettyPathWithChevron
 import com.vex.irshark.data.profilesUnderPath
 import com.vex.irshark.data.resolveUniversalCommandsForPath
+import com.vex.irshark.data.resolveUniversalCommandsWithDedup
 import com.vex.irshark.ui.components.AutoSendProgressModal
 import com.vex.irshark.ui.components.CategorySvgIcon
 import com.vex.irshark.ui.components.EmptyCard
 import com.vex.irshark.ui.components.FolderButton
 import com.vex.irshark.ui.components.RemoteCommandButton
 import com.vex.irshark.ui.components.UniversalRemoteHeader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 private enum class UniversalTab { Commands, Categories }
@@ -77,11 +83,21 @@ fun UniversalRemoteScreen(
     onToggleAutoSend: () -> Unit,
     onIntervalChange: (Float) -> Unit
 ) {
+    val context = LocalContext.current
     val root = dbRootPath()
     val folders = dbIndex.folders[currentPath].orEmpty().sortedBy { prettyName(it) }
+    // Initially show raw profile counts; replaced by deduplicated counts once IO is done.
     val resolvedCommands = resolveUniversalCommandsForPath(dbIndex, currentPath)
+    var dedupedCommands by remember(currentPath) { mutableStateOf<List<UniversalCommandItem>?>(null) }
+    LaunchedEffect(currentPath) {
+        dedupedCommands = withContext(Dispatchers.IO) {
+            resolveUniversalCommandsWithDedup(context, dbIndex, currentPath)
+        }
+    }
+    val displayCommands = dedupedCommands ?: resolvedCommands
+    val isDedupLoading = dedupedCommands == null && resolvedCommands.isNotEmpty()
     val violet = MaterialTheme.colorScheme.primary
-    
+
     var folderSearchQuery by remember { mutableStateOf("") }
     var flashedCommand by remember { mutableStateOf<String?>(null) }
     var selectedTab by rememberSaveable { mutableStateOf(UniversalTab.Categories) }
@@ -211,7 +227,28 @@ fun UniversalRemoteScreen(
                     }
 
                     UniversalTab.Commands -> {
-                        if (resolvedCommands.isEmpty()) {
+                        if (isDedupLoading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(
+                                        color = violet,
+                                        strokeWidth = 2.5.dp,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "Filtering unique IR codes...",
+                                        color = Color(0xFFB7B3CC),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        } else if (displayCommands.isEmpty()) {
                             EmptyCard("No commands found in this category.")
                         } else {
                             LazyVerticalGrid(
@@ -223,7 +260,7 @@ fun UniversalRemoteScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 contentPadding = PaddingValues(bottom = 16.dp)
                             ) {
-                                items(resolvedCommands) { item ->
+                                items(displayCommands) { item ->
                                     val isFlashed = flashedCommand == item.actualCommand
                                     RemoteCommandButton(
                                         label = item.displayLabel,

@@ -247,6 +247,75 @@ fun profilesForCommand(dbIndex: FlipperDbIndex, folderPath: String, command: Str
 }
 
 /**
+ * Returns a deduplicated list of IR payload strings for [command] across all matching
+ * profiles under [folderPath]. Profiles whose payload is byte-for-byte identical to a
+ * previously seen one are skipped, so toggling TVs ON then OFF is avoided.
+ */
+fun getUniquePayloadsForCommand(
+    context: android.content.Context,
+    dbIndex: FlipperDbIndex,
+    folderPath: String,
+    command: String
+): List<String> {
+    return profilesForCommand(dbIndex, folderPath, command)
+        .mapNotNull { getIrCodePayload(context, it.path, command) }
+        .distinctBy { it.trim() }
+}
+
+/**
+ * Like [resolveUniversalCommandsForPath] but replaces each item's [UniversalCommandItem.profileCoverage]
+ * with the number of *unique* IR payloads for that command (requires IO to read assets).
+ * Call this off the main thread.
+ */
+fun resolveUniversalCommandsWithDedup(
+    context: android.content.Context,
+    dbIndex: FlipperDbIndex,
+    folderPath: String,
+    limit: Int = 18
+): List<UniversalCommandItem> {
+    val base = resolveUniversalCommandsForPath(dbIndex, folderPath, limit)
+    if (base.isEmpty()) return emptyList()
+
+    val targetAliases = linkedMapOf<String, String>()
+    val targetNormalized = linkedMapOf<String, String>()
+    val uniquePayloads = linkedMapOf<String, LinkedHashSet<String>>()
+
+    base.forEach { item ->
+        val actual = item.actualCommand
+        val normalized = normalizeDisplayName(actual).lowercase()
+        targetAliases.putIfAbsent(actual.lowercase(), actual)
+        targetAliases.putIfAbsent(normalized, actual)
+        targetNormalized[actual] = normalized
+        uniquePayloads[actual] = linkedSetOf()
+    }
+
+    profilesUnderPath(dbIndex, folderPath).forEach { profile ->
+        val wantedTargets = profile.commands
+            .mapNotNull { cmd ->
+                val byRaw = targetAliases[cmd.lowercase()]
+                byRaw ?: targetAliases[normalizeDisplayName(cmd).lowercase()]
+            }
+            .distinct()
+        if (wantedTargets.isEmpty()) return@forEach
+
+        val payloadByName = parseIrCodeBlocks(context, profile.path)
+            .associate { block ->
+                normalizeDisplayName(block.displayName).lowercase() to serializeIrPayload(block.fields).trim()
+            }
+
+        wantedTargets.forEach { target ->
+            val key = targetNormalized[target] ?: return@forEach
+            val payload = payloadByName[key] ?: return@forEach
+            uniquePayloads[target]?.add(payload)
+        }
+    }
+
+    return base.map { item ->
+        item.copy(profileCoverage = uniquePayloads[item.actualCommand]?.size ?: 0)
+    }
+}
+
+/**
  * Reads a specific profile asset and returns the raw key=value payload string
  * for the given [commandName], ready to pass to [transmitIrCode].
  */
@@ -256,7 +325,11 @@ fun getIrCodePayload(context: android.content.Context, profilePath: String, comm
         it.displayName.equals(normalized, ignoreCase = true) ||
         it.displayName.equals(commandName, ignoreCase = true)
     } ?: return null
-    return block.fields.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+    return serializeIrPayload(block.fields)
+}
+
+private fun serializeIrPayload(fields: Map<String, String>): String {
+    return fields.entries.joinToString("; ") { (k, v) -> "$k=$v" }
 }
 
 fun parentPath(path: String): String? {

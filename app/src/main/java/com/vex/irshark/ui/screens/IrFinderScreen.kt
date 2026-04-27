@@ -318,7 +318,7 @@ fun IrFinderScreen(
                 onSelectButton = { idx -> selectedButtonIdx = idx },
                 onSend = { idx ->
                     val btn = finderButtons.getOrNull(idx) ?: return@TestButtonsStep
-                    val code = btn.currentCode ?: return@TestButtonsStep
+                    val code = btn.confirmedCode ?: btn.currentCode ?: return@TestButtonsStep
                     scope.launch(Dispatchers.IO) { transmitIrCode(context, code) }
                     onTransmit()
                 },
@@ -537,7 +537,14 @@ private fun TestButtonsStep(
                         .clip(RoundedCornerShape(10.dp))
                         .background(bgColor)
                         .border(1.dp, borderColor, RoundedCornerShape(10.dp))
-                        .clickable { if (!btn.isConfirmed) onSelectButton(idx) },
+                        .clickable {
+                            if (btn.isConfirmed) {
+                                if (hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                onSend(idx)
+                            } else {
+                                onSelectButton(idx)
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(

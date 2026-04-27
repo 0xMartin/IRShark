@@ -50,9 +50,7 @@ import com.vex.irshark.data.RemoteHistoryEntry
 import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
-import com.vex.irshark.data.countProfilesForCommand
-import com.vex.irshark.data.profilesForCommand
-import com.vex.irshark.data.getIrCodePayload
+import com.vex.irshark.data.getUniquePayloadsForCommand
 import com.vex.irshark.data.categorySeedFromPath
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.exportRemotesToJson
@@ -593,32 +591,32 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         toastController.show("Settings saved")
     }
 
-    // Universal auto-send loop
-    val universalCoverage = universalCommand?.let {
-        countProfilesForCommand(dbIndex, universalPath, it.actualCommand)
-    } ?: 0
+    // Deduplicated payloads for the currently selected universal command.
+    // Recomputed on IO whenever the selected command or path changes.
+    var universalUniquePayloads by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(universalCommand, universalPath) {
+        val cmd = universalCommand
+        if (cmd == null) {
+            universalUniquePayloads = emptyList()
+            return@LaunchedEffect
+        }
+        universalUniquePayloads = withContext(Dispatchers.IO) {
+            getUniquePayloadsForCommand(context, dbIndex, universalPath, cmd.actualCommand)
+        }
+    }
+    val universalCoverage = universalUniquePayloads.size
 
     LaunchedEffect(universalAutoSend, universalCommand, universalCoverage, universalIntervalMs) {
         if (!universalAutoSend || universalCommand == null || universalCoverage <= 0) return@LaunchedEffect
-        // Pre-build the ordered list of profiles that have this command so we don't
-        // recompute it on every loop iteration.
-        val cmd = universalCommand ?: return@LaunchedEffect
-        val matchingProfiles = withContext(Dispatchers.IO) {
-            profilesForCommand(dbIndex, universalPath, cmd.actualCommand)
-        }
+        // Snapshot the deduplicated payload list so the loop is stable.
+        val payloads = universalUniquePayloads
+        if (payloads.isEmpty()) return@LaunchedEffect
         try {
             while (universalAutoSend) {
-                // Transmit the IR code for the current step (1-based index).
-                val idx = (universalCodeStep - 1).coerceIn(0, matchingProfiles.size - 1)
-                if (idx < matchingProfiles.size) {
-                    val profile = matchingProfiles[idx]
-                    val payload = withContext(Dispatchers.IO) {
-                        getIrCodePayload(context, profile.path, cmd.actualCommand)
-                    }
-                    if (payload != null) {
-                        withContext(Dispatchers.IO) { transmitIrCode(context, payload) }
-                    }
-                }
+                // Transmit the unique IR payload for the current step (1-based index).
+                val idx = (universalCodeStep - 1).coerceIn(0, payloads.size - 1)
+                val payload = payloads[idx]
+                withContext(Dispatchers.IO) { transmitIrCode(context, payload) }
                 txPulseActive = true
                 delay((universalIntervalMs.roundToInt().toLong() / 2).coerceAtLeast(70L))
                 txPulseActive = false
@@ -804,8 +802,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 universalAutoSend = false
                             },
                             onCommandClick = { item ->
-                                val coverage = countProfilesForCommand(dbIndex, universalPath, item.actualCommand)
-                                if (coverage <= 1) {
+                                // item.profileCoverage reflects the deduplicated unique-code count
+                                // (set by the screen's async dedup LaunchedEffect).
+                                if (item.profileCoverage <= 1) {
                                     universalCommand = null
                                     universalCodeStep = 0
                                     universalAutoSend = false
