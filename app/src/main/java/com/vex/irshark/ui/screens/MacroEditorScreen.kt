@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -358,11 +360,14 @@ private fun NodeParamDialog(
     var repeatCount by remember { mutableStateOf(((node.params as? BlockParams.Repeat)?.count ?: 3).toString()) }
     var switchMsg     by remember { mutableStateOf((node.params as? BlockParams.Switch)?.message ?: "Choose an option") }
     var switchOptions by remember { mutableStateOf((node.params as? BlockParams.Switch)?.options ?: listOf("Option 1", "Option 2")) }
+    var switchAllowDefault by remember { mutableStateOf((node.params as? BlockParams.Switch)?.allowDefault ?: true) }
+    val dialogScrollState = rememberScrollState()
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.90f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF121024))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
@@ -371,97 +376,116 @@ private fun NodeParamDialog(
         ) {
             Text(blockLabel(node.type), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
-
-            when (node.type) {
-                MacroBlockType.DELAY -> {
-                    OutlinedTextField(value = delayMs, onValueChange = { delayMs = it },
-                        label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    Text("500 = 0.5 sec, 2000 = 2 sec", color = Color(0xFF8A8899), fontSize = 11.sp)
-                }
-                MacroBlockType.SHOW_TEXT -> {
-                    OutlinedTextField(value = showTxt, onValueChange = { showTxt = it },
-                        label = { Text("Message") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    OutlinedTextField(value = showDur, onValueChange = { showDur = it },
-                        label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    Text("3000 = 3 sec", color = Color(0xFF8A8899), fontSize = 11.sp)
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("Don't wait (async)", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
-                        Switch(checked = showAsync, onCheckedChange = { showAsync = it })
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(dialogScrollState),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                when (node.type) {
+                    MacroBlockType.DELAY -> {
+                        OutlinedTextField(value = delayMs, onValueChange = { delayMs = it },
+                            label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        Text("500 = 0.5 sec, 2000 = 2 sec", color = Color(0xFF8A8899), fontSize = 11.sp)
                     }
-                }
-                MacroBlockType.WAIT_CONFIRM -> {
-                    OutlinedTextField(value = waitMsg, onValueChange = { waitMsg = it },
-                        label = { Text("Prompt") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                }
-                MacroBlockType.IF_ELSE -> {
-                    OutlinedTextField(value = ifMsg, onValueChange = { ifMsg = it },
-                        label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Text("YES and NO branches connect from the bottom pins.", color = Color(0xFF8A8899), fontSize = 11.sp)
-                }
-                MacroBlockType.IR_SEND -> {
-                    val p = node.params as? BlockParams.IrSend
-                    Text(if (p?.displayLabel.isNullOrEmpty()) "No IR button selected" else p!!.displayLabel,
-                        color = if (p?.displayLabel.isNullOrEmpty()) Color(0xFF8A8899) else Color.White,
-                        fontSize = 12.sp)
-                    TextButton(onClick = onIrPick, modifier = Modifier.fillMaxWidth()) {
-                        Text("Pick IR button...")
-                    }
-                }
-                MacroBlockType.VIBRATE -> {
-                    OutlinedTextField(value = vibrateMs, onValueChange = { vibrateMs = it },
-                        label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    Text("Max 5000 ms. Vibrates the device.", color = Color(0xFF8A8899), fontSize = 11.sp)
-                }
-                MacroBlockType.REPEAT -> {
-                    OutlinedTextField(value = repeatCount, onValueChange = { repeatCount = it },
-                        label = { Text("Count") }, modifier = Modifier.fillMaxWidth(),
-                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                    Text("Repeats the BODY branch N times, then continues via OUT pin.", color = Color(0xFF8A8899), fontSize = 11.sp)
-                }
-                MacroBlockType.SWITCH -> {
-                    OutlinedTextField(value = switchMsg, onValueChange = { switchMsg = it },
-                        label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                    Spacer(Modifier.height(4.dp))
-                    Text("Options (max 10) — each becomes an output pin:", color = Color(0xFF8A8899), fontSize = 11.sp)
-                    switchOptions.forEachIndexed { i, opt ->
+                    MacroBlockType.SHOW_TEXT -> {
+                        OutlinedTextField(value = showTxt, onValueChange = { showTxt = it },
+                            label = { Text("Message") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        OutlinedTextField(value = showDur, onValueChange = { showDur = it },
+                            label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        Text("3000 = 3 sec", color = Color(0xFF8A8899), fontSize = 11.sp)
                         Row(
-                            modifier          = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            OutlinedTextField(
-                                value         = opt,
-                                onValueChange = { newVal ->
-                                    switchOptions = switchOptions.toMutableList().also { it[i] = newVal }
-                                },
-                                modifier      = Modifier.weight(1f),
-                                singleLine    = true,
-                                label         = { Text("Option ${i + 1}") }
-                            )
-                            TextButton(
-                                onClick  = { if (switchOptions.size > 1) switchOptions = switchOptions.toMutableList().also { it.removeAt(i) } },
-                                enabled  = switchOptions.size > 1
-                            ) { Text("−", color = Color(0xFFFF7B9D)) }
+                            Text("Don't wait (async)", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                            Switch(checked = showAsync, onCheckedChange = { showAsync = it })
                         }
                     }
-                    if (switchOptions.size < 10) {
-                        TextButton(onClick = { switchOptions = switchOptions + "Option ${switchOptions.size + 1}" }) {
-                            Text("+ Add option")
+                    MacroBlockType.WAIT_CONFIRM -> {
+                        OutlinedTextField(value = waitMsg, onValueChange = { waitMsg = it },
+                            label = { Text("Prompt") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                    }
+                    MacroBlockType.IF_ELSE -> {
+                        OutlinedTextField(value = ifMsg, onValueChange = { ifMsg = it },
+                            label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        Text("YES and NO branches connect from the bottom pins.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                    }
+                    MacroBlockType.IR_SEND -> {
+                        val p = node.params as? BlockParams.IrSend
+                        Text(if (p?.displayLabel.isNullOrEmpty()) "No IR button selected" else p!!.displayLabel,
+                            color = if (p?.displayLabel.isNullOrEmpty()) Color(0xFF8A8899) else Color.White,
+                            fontSize = 12.sp)
+                        TextButton(onClick = onIrPick, modifier = Modifier.fillMaxWidth()) {
+                            Text("Pick IR button...")
                         }
                     }
-                    Text("A \"default / else\" output pin is always added automatically.", color = Color(0xFF8A8899), fontSize = 10.sp)
+                    MacroBlockType.VIBRATE -> {
+                        OutlinedTextField(value = vibrateMs, onValueChange = { vibrateMs = it },
+                            label = { Text("Duration (ms)") }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        Text("Max 5000 ms. Vibrates the device.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                    }
+                    MacroBlockType.REPEAT -> {
+                        OutlinedTextField(value = repeatCount, onValueChange = { repeatCount = it },
+                            label = { Text("Count") }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        Text("Repeats the BODY branch N times, then continues via OUT pin.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                    }
+                    MacroBlockType.SWITCH -> {
+                        OutlinedTextField(value = switchMsg, onValueChange = { switchMsg = it },
+                            label = { Text("Question") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Default option", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                            Switch(checked = switchAllowDefault, onCheckedChange = { switchAllowDefault = it })
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text("Options (max 10) — each becomes an output pin:", color = Color(0xFF8A8899), fontSize = 11.sp)
+                        switchOptions.forEachIndexed { i, opt ->
+                            Row(
+                                modifier          = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value         = opt,
+                                    onValueChange = { newVal ->
+                                        switchOptions = switchOptions.toMutableList().also { it[i] = newVal }
+                                    },
+                                    modifier      = Modifier.weight(1f),
+                                    singleLine    = true,
+                                    label         = { Text("Option ${i + 1}") }
+                                )
+                                TextButton(
+                                    onClick  = { if (switchOptions.size > 1) switchOptions = switchOptions.toMutableList().also { it.removeAt(i) } },
+                                    enabled  = switchOptions.size > 1
+                                ) { Text("−", color = Color(0xFFFF7B9D)) }
+                            }
+                        }
+                        if (switchOptions.size < 10) {
+                            TextButton(onClick = { switchOptions = switchOptions + "Option ${switchOptions.size + 1}" }) {
+                                Text("+ Add option")
+                            }
+                        }
+                        Text(
+                            if (switchAllowDefault) "Default / else output pin is enabled."
+                            else "Default / else output pin is disabled.",
+                            color = Color(0xFF8A8899),
+                            fontSize = 10.sp
+                        )
+                    }
+                    MacroBlockType.END -> {
+                        Text("Stops the macro immediately.", color = Color(0xFF8A8899), fontSize = 12.sp)
+                    }
+                    else -> {}
                 }
-                MacroBlockType.END -> {
-                    Text("Stops the macro immediately.", color = Color(0xFF8A8899), fontSize = 12.sp)
-                }
-                else -> {}
             }
 
             HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
@@ -481,7 +505,8 @@ private fun NodeParamDialog(
                         MacroBlockType.REPEAT       -> BlockParams.Repeat(repeatCount.toIntOrNull()?.coerceIn(1, 999) ?: 3)
                         MacroBlockType.SWITCH       -> BlockParams.Switch(
                             message = switchMsg.ifBlank { "Choose an option" },
-                            options = switchOptions.filter { it.isNotBlank() }.take(10).ifEmpty { listOf("Option 1") }
+                            options = switchOptions.filter { it.isNotBlank() }.take(10).ifEmpty { listOf("Option 1") },
+                            allowDefault = switchAllowDefault
                         )
                         MacroBlockType.IR_SEND, MacroBlockType.END, MacroBlockType.START -> node.params
                     }

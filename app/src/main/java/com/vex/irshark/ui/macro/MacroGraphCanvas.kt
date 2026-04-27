@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -116,16 +117,21 @@ fun MacroNode.blockW(): Float = when (type) {
 
 fun MacroNode.blockH(): Float = when (type) {
     MacroBlockType.START, MacroBlockType.END -> 120f
-    MacroBlockType.DELAY                     -> 160f
+    MacroBlockType.DELAY                     -> 200f
     MacroBlockType.SHOW_TEXT                 -> 220f
     MacroBlockType.WAIT_CONFIRM              -> 200f
-    MacroBlockType.IR_SEND                   -> 240f
+    MacroBlockType.IR_SEND                   -> {
+        val textLen = (params as? BlockParams.IrSend)?.displayLabel?.length ?: 0
+        val extraLines = (textLen / 18).coerceIn(0, 8)
+        (280f + extraLines * 24f)
+    }
     MacroBlockType.IF_ELSE                   -> 260f
-    MacroBlockType.VIBRATE                   -> 160f
-    MacroBlockType.REPEAT                    -> 220f
+    MacroBlockType.VIBRATE                   -> 200f
+    MacroBlockType.REPEAT                    -> 240f
     MacroBlockType.SWITCH                    -> {
-        val p = params as? BlockParams.Switch ?: BlockParams.Switch()
-        (200f + p.options.size * 20f).coerceIn(220f, 420f)
+        val msgLen = (params as? BlockParams.Switch)?.message?.length ?: 0
+        val extraLines = (msgLen / 24).coerceIn(0, 4)
+        (260f + extraLines * 20f)
     }
     else                                     -> 200f
 }
@@ -670,73 +676,161 @@ fun BlockView(
     val color    = blockColor(node.type)
     val label    = blockLabel(node.type)
     val selected = node.selected
-    val pinDp    = (PIN_R * 2f / density).dp    // pin circle diameter
-    val pinOutDp = (PIN_R        / density).dp   // how far pin sticks out from edge
+    val isTerminal = node.type == MacroBlockType.START || node.type == MacroBlockType.END
+    val pinDp    = (PIN_R * 2f / density).dp
+    val pinOutDp = (PIN_R        / density).dp
 
     // Outer Box has no clip — pins overflow the block rect visually
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // Block body
+        // Block body: opaque panel; START/END use simpler solid style
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (selected) color.copy(alpha = 0.28f) else Color(0xFF100D1C))
+                .clip(RoundedCornerShape(12.dp))
+                .graphicsLayer {
+                    shadowElevation = 10f
+                    shape = RoundedCornerShape(12.dp)
+                }
+                .background(if (isTerminal) color.copy(alpha = 0.20f) else Color(0xFF14171D))
                 .border(
-                    width = if (selected) 2.dp else 1.dp,
-                    color = if (selected) color else color.copy(alpha = 0.55f),
-                    shape = RoundedCornerShape(10.dp)
+                    width = if (selected) 2.5.dp else 1.5.dp,
+                    color = if (selected) color.copy(alpha = 0.95f) else color.copy(alpha = 0.78f),
+                    shape = RoundedCornerShape(12.dp)
                 )
         ) {
-            Column(
-                modifier            = Modifier.fillMaxSize().padding(
-                    start  = 12.dp,
-                    end    = 12.dp,
-                    top    = 8.dp,
-                    bottom = if (node.type == MacroBlockType.IR_SEND) 30.dp else 8.dp
-                ),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(label, color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    lineHeight = 15.sp)
-                val summary = blockSummary(node)
-                if (summary.isNotEmpty()) {
+            if (isTerminal) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
-                        text     = summary,
-                        color    = Color.White.copy(alpha = 0.88f),
-                        fontSize = 13.sp,
-                        lineHeight = 16.sp,
-                        maxLines = 3,
-                        modifier = Modifier.padding(top = 4.dp)
+                        text = label,
+                        color = color,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold
                     )
                 }
-            }
-            // Source badge for IR Send blocks — absolute bottom-start, plain text only
-            val irSource = (node.params as? BlockParams.IrSend)?.irSource?.takeIf { it.isNotEmpty() }
-            if (irSource != null) {
-                val badgeColor = if (irSource == "DB") Color(0xFF2E7ADB) else Color(0xFF1E8A5E)
-                Text(
-                    text       = irSource,
-                    color      = badgeColor,
-                    fontSize   = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier   = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 10.dp, bottom = 7.dp)
-                )
-            }
-            // Settings gear — top-right, only for configurable blocks
-            val hasSettings = node.type !in listOf(MacroBlockType.START, MacroBlockType.END)
-            if (hasSettings) {
-                Icon(
-                    imageVector        = Icons.Filled.Settings,
-                    contentDescription = "Settings",
-                    tint               = color.copy(alpha = 0.65f),
-                    modifier           = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .size(16.dp)
-                )
+            } else {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // ── TOP SECTION: Label + Settings icon (fixed height)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .background(color.copy(alpha = if (selected) 0.28f else 0.20f))
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            label,
+                            color = color,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            lineHeight = 16.sp
+                        )
+                        Icon(
+                            imageVector = Icons.Filled.Settings,
+                            contentDescription = "Settings",
+                            tint = color.copy(alpha = if (selected) 0.85f else 0.70f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // ── MIDDLE SECTION: Summary content (flexible, grows)
+                    val irSource = (node.params as? BlockParams.IrSend)?.irSource?.takeIf { it.isNotEmpty() }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(Color(0xFF14171D))
+                            .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 8.dp)
+                    ) {
+                        val summary = blockSummary(node)
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            if (summary.isNotEmpty()) {
+                                Text(
+                                    text = summary,
+                                    color = Color.White.copy(alpha = 0.92f),
+                                    fontSize = 12.sp,
+                                    lineHeight = 15.sp,
+                                    maxLines = if (irSource != null) 8 else 10,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            // Source badge for IR Send blocks (always below content, no overlap)
+                            if (irSource != null) {
+                                val badgeColor = if (irSource == "DB") Color(0xFF2E7ADB) else Color(0xFF1E8A5E)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(badgeColor.copy(alpha = 0.12f))
+                                        .border(1.dp, badgeColor.copy(alpha = 0.50f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = irSource,
+                                        color = badgeColor,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ── BOTTOM SECTION: Pin labels (fixed height, only for nodes with multiple pins)
+                    when (node.type) {
+                        MacroBlockType.IF_ELSE -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(20.dp)
+                                    .background(Color(0xFF11141A))
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("YES", color = Color(0xFF5BFF9A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("NO", color = Color(0xFFFF7B9D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        MacroBlockType.REPEAT -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(20.dp)
+                                    .background(Color(0xFF11141A))
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("BODY", color = Color(0xFFFFAA3D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("OUT", color = Color(0xFF6DB4FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        MacroBlockType.SWITCH -> {
+                            val allPins = node.outputPins()
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(20.dp)
+                                    .background(Color(0xFF11141A))
+                                    .padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                allPins.forEachIndexed { i, pin ->
+                                    val isDefault  = (pin == PinId.DEFAULT)
+                                    val pinColor   = if (isDefault) Color(0xFFFFBB6D) else Color(0xFF9B6DFF)
+                                    val pinLabel   = if (isDefault) "D" else "${i + 1}"
+                                    Text(pinLabel, color = pinColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        else -> {}
+                    }
+                }
             }
         }
 
@@ -750,10 +844,11 @@ fun BlockView(
                     .clip(CircleShape)
                     .background(Color(0xFF0E0B1A))
                     .border(
-                        width = if (highlightInput) 3.dp else 2.dp,
-                        color = if (highlightInput) Color.White else Color(0xFF9B6DFF),
+                        width = if (highlightInput) 3.dp else 2.5.dp,
+                        color = if (highlightInput) Color.White else Color(0xFF9B6DFF).copy(alpha = 0.95f),
                         shape = CircleShape
                     )
+                    .graphicsLayer { shadowElevation = 4f; shape = CircleShape }
             )
         }
 
@@ -766,17 +861,15 @@ fun BlockView(
                 // YES
                 Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = yesPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
-                    .background(Color(0xFF0E0B1A)).border(2.dp, Color(0xFF5BFF9A), CircleShape))
-                Text("YES", color = Color(0xFF5BFF9A), fontSize = 14.sp,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(start = yesPad)
-                        .offset(y = -2.dp))
+                    .background(Color(0xFF0E0B1A))
+                    .border(2.5.dp, Color(0xFF5BFF9A).copy(alpha = 0.98f), CircleShape)
+                    .graphicsLayer { shadowElevation = 4f; shape = CircleShape })
                 // NO
                 Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = noPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
-                    .background(Color(0xFF0E0B1A)).border(2.dp, Color(0xFFFF7B9D), CircleShape))
-                Text("NO", color = Color(0xFFFF7B9D), fontSize = 14.sp,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = noPad)
-                        .offset(y = -2.dp))
+                    .background(Color(0xFF0E0B1A))
+                    .border(2.5.dp, Color(0xFFFF7B9D).copy(alpha = 0.98f), CircleShape)
+                    .graphicsLayer { shadowElevation = 4f; shape = CircleShape })
             }
             MacroBlockType.REPEAT -> {
                 val bw       = node.blockW()
@@ -788,18 +881,14 @@ fun BlockView(
                 Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = bodyPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
                     .background(Color(0xFF0E0B1A))
-                    .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else bodyColor, CircleShape))
-                Text("BODY", color = bodyColor, fontSize = 14.sp,
-                    modifier = Modifier.align(Alignment.BottomStart).padding(start = bodyPad)
-                        .offset(y = -2.dp))
+                    .border(if (highlightOutput) 3.dp else 2.5.dp, if (highlightOutput) Color.White else bodyColor.copy(alpha = 0.98f), CircleShape)
+                    .graphicsLayer { shadowElevation = 4f; shape = CircleShape })
                 // CONT pin (right)
                 Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = contPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
                     .background(Color(0xFF0E0B1A))
-                    .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else contColor, CircleShape))
-                Text("OUT", color = contColor, fontSize = 14.sp,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = contPad)
-                        .offset(y = -2.dp))
+                    .border(if (highlightOutput) 3.dp else 2.5.dp, if (highlightOutput) Color.White else contColor.copy(alpha = 0.98f), CircleShape)
+                    .graphicsLayer { shadowElevation = 4f; shape = CircleShape })
             }
             MacroBlockType.SWITCH -> {
                 val p       = node.params as? BlockParams.Switch ?: BlockParams.Switch()
@@ -808,16 +897,13 @@ fun BlockView(
                 allPins.forEachIndexed { i, pin ->
                     val isDefault  = (pin == PinId.DEFAULT)
                     val pinColor   = if (isDefault) Color(0xFFFFBB6D) else Color(0xFF9B6DFF)
-                    val pinLabel   = if (isDefault) "D" else "${i + 1}"
                     val pinX       = bw / (allPins.size + 1).toFloat() * (i + 1)
                     val pinPadDp   = ((pinX - PIN_R) / density).dp
                     Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = pinPadDp)
                         .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
                         .background(Color(0xFF0E0B1A))
-                        .border(if (highlightOutput) 3.dp else 2.dp, if (highlightOutput) Color.White else pinColor, CircleShape))
-                    Text(pinLabel, color = pinColor, fontSize = 12.sp, maxLines = 1,
-                        modifier = Modifier.align(Alignment.BottomStart).padding(start = pinPadDp)
-                            .offset(y = -2.dp))
+                        .border(if (highlightOutput) 3.dp else 2.5.dp, if (highlightOutput) Color.White else pinColor.copy(alpha = 0.98f), CircleShape)
+                        .graphicsLayer { shadowElevation = 4f; shape = CircleShape })
                 }
             }
             MacroBlockType.END -> { /* no output pin */ }
@@ -826,10 +912,11 @@ fun BlockView(
                     .size(pinDp).clip(CircleShape)
                     .background(Color(0xFF0E0B1A))
                     .border(
-                        width = if (highlightOutput) 3.dp else 2.dp,
-                        color = if (highlightOutput) Color.White else Color(0xFF9B6DFF),
+                        width = if (highlightOutput) 3.dp else 2.5.dp,
+                        color = if (highlightOutput) Color.White else Color(0xFF9B6DFF).copy(alpha = 0.95f),
                         shape = CircleShape
-                    ))
+                    )
+                    .graphicsLayer { shadowElevation = 4f; shape = CircleShape })
             }
         }
     }

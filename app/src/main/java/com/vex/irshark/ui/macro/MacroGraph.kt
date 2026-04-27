@@ -47,7 +47,8 @@ sealed class BlockParams {
 
     data class Switch(
         val message: String = "Choose an option",
-        val options: List<String> = listOf("Option 1", "Option 2")
+        val options: List<String> = listOf("Option 1", "Option 2"),
+        val allowDefault: Boolean = true
     ) : BlockParams()
 }
 
@@ -84,7 +85,8 @@ data class MacroNode(
             val p = params as? BlockParams.Switch ?: BlockParams.Switch()
             val optPins = listOf(PinId.OPT0, PinId.OPT1, PinId.OPT2, PinId.OPT3, PinId.OPT4,
                                  PinId.OPT5, PinId.OPT6, PinId.OPT7, PinId.OPT8, PinId.OPT9)
-            optPins.take(p.options.size) + listOf(PinId.DEFAULT)
+            if (p.allowDefault) optPins.take(p.options.size) + listOf(PinId.DEFAULT)
+            else optPins.take(p.options.size)
         }
         else                      -> listOf(PinId.OUT)
     }
@@ -140,7 +142,12 @@ class MacroGraph {
 
     fun updateParams(id: String, params: BlockParams) {
         val idx = nodes.indexOfFirst { it.id == id }
-        if (idx >= 0) nodes[idx] = nodes[idx].copy(params = params)
+        if (idx >= 0) {
+            nodes[idx] = nodes[idx].copy(params = params)
+            val validPins = nodes[idx].outputPins().toSet()
+            // Remove stale edges when pin set changes (e.g. disabling Switch default pin).
+            edges.removeAll { it.fromId == id && it.fromPin !in validPins }
+        }
     }
 
     fun setSelected(ids: Set<String>) {
@@ -159,6 +166,7 @@ class MacroGraph {
         val toNode   = nodes.firstOrNull { it.id == toId }   ?: return "Target not found"
         if (!toNode.hasInput()) return "This block has no input"
         if (fromNode.type == MacroBlockType.END) return "Stop has no outputs"
+        if (fromPin !in fromNode.outputPins()) return "This output pin is not available"
 
         // Basic cycle detection: would toId eventually reach fromId?
         if (wouldCycle(from = toId, reaching = fromId)) return "Connection would create a cycle"
@@ -290,11 +298,13 @@ class MacroGraph {
                     visited.addAll(vis)
                     steps.toList()
                 }
-                val defaultEdge  = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.DEFAULT }
                 val defaultSteps = mutableListOf<MacroStep>()
-                val defVis       = mutableSetOf<String>()
-                if (defaultEdge != null) compileFrom(defaultEdge.toId, defVis, defaultSteps)
-                visited.addAll(defVis)
+                if (p.allowDefault) {
+                    val defaultEdge  = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.DEFAULT }
+                    val defVis       = mutableSetOf<String>()
+                    if (defaultEdge != null) compileFrom(defaultEdge.toId, defVis, defaultSteps)
+                    visited.addAll(defVis)
+                }
                 out.add(MacroStep.Switch(p.message, p.options, branches, defaultSteps.toList()))
                 return null   // all execution goes through branches
             }
@@ -340,7 +350,7 @@ class MacroGraph {
         is BlockParams.Repeat      -> "{\"kind\":\"repeat\",\"count\":${p.count}}"
         is BlockParams.Switch      -> {
             val opts = p.options.joinToString(",") { jsonStr(it) }
-            "{\"kind\":\"switch\",\"msg\":${jsonStr(p.message)},\"options\":[$opts]}"
+            "{\"kind\":\"switch\",\"msg\":${jsonStr(p.message)},\"options\":[$opts],\"allowDefault\":${p.allowDefault}}"
         }
     }
 
@@ -370,7 +380,11 @@ class MacroGraph {
                         "switch"  -> {
                             val arr  = pObj.optJSONArray("options") ?: org.json.JSONArray()
                             val opts = (0 until arr.length()).map { arr.optString(it) }
-                            BlockParams.Switch(pObj.optString("msg", "Choose an option"), opts)
+                            BlockParams.Switch(
+                                message = pObj.optString("msg", "Choose an option"),
+                                options = opts,
+                                allowDefault = pObj.optBoolean("allowDefault", true)
+                            )
                         }
                         else    -> BlockParams.None
                     }
