@@ -20,6 +20,7 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -42,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -204,7 +206,7 @@ fun RemoteCommandButton(
     modifier: Modifier = Modifier
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    val stripeColor = if (isActive) Color(0xFF4CAF50) else violet.copy(alpha = 0.7f)
+    val stripeColor = if (isActive) Color(0xFFFF4D4D) else violet.copy(alpha = 0.7f)
     val secondaryLabelColor = Color(0xFF9AA0B5)
 
     Box(
@@ -430,9 +432,9 @@ fun AppHeader(txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean, screenT
 
 @Composable
 private fun TxLedIndicator(active: Boolean, fastBlink: Boolean) {
-    val pulse = rememberInfiniteTransition(label = "tx-led")
-    val alpha = if (fastBlink) {
-        // Sharp on/off blink: full on for half the period, full off for other half
+    val pulse = if (fastBlink) rememberInfiniteTransition(label = "tx-led") else null
+    val blinkAlpha = if (fastBlink && pulse != null) {
+        // Sharp on/off blink only while rapid TX mode is active
         pulse.animateFloat(
             initialValue = 1f,
             targetValue = 1f,
@@ -447,25 +449,23 @@ private fun TxLedIndicator(active: Boolean, fastBlink: Boolean) {
                 repeatMode = RepeatMode.Restart
             ),
             label = "tx-led-alpha"
-        )
+        ).value
     } else {
-        pulse.animateFloat(
-            initialValue = if (active) 0.45f else 0.18f,
-            targetValue = if (active) 1f else 0.25f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 900, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse
-            ),
-            label = "tx-led-alpha"
-        )
+        0f
     }
-    val base = if (active) Color(0xFF5BFF9A) else Color(0xFF4A5568)
+    val idleAlpha by animateFloatAsState(
+        targetValue = if (active) 1f else 0.22f,
+        animationSpec = tween(durationMillis = 180, easing = LinearEasing),
+        label = "tx-led-idle-alpha"
+    )
+    val alpha = if (fastBlink) blinkAlpha else idleAlpha
+    val base = if (active) Color(0xFFFF0000) else Color(0xFF5A2A2A)
     Box(
         modifier = Modifier
-            .size(12.dp)
+            .size(22.dp)
             .clip(RoundedCornerShape(999.dp))
-            .background(base.copy(alpha = alpha.value))
-            .border(1.dp, base.copy(alpha = 0.85f), RoundedCornerShape(999.dp))
+            .background(base.copy(alpha = alpha))
+            .border(1.5.dp, base.copy(alpha = 0.90f), RoundedCornerShape(999.dp))
     )
 }
 

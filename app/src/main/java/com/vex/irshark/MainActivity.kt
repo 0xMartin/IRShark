@@ -54,17 +54,20 @@ import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
 import com.vex.irshark.data.getUniquePayloadsForCommand
 import com.vex.irshark.data.categorySeedFromPath
+import com.vex.irshark.data.bundledDbVersionLabel
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.exportRemotesToJson
 import com.vex.irshark.data.exportMacrosToJson
 import com.vex.irshark.data.importRemotesFromJson
 import com.vex.irshark.data.importMacrosFromJson
+import com.vex.irshark.data.isDownloadedDbAvailable
 import com.vex.irshark.data.loadAppSettings
 import com.vex.irshark.data.loadRemoteHistory
 import com.vex.irshark.data.loadSavedMacros
 import com.vex.irshark.data.saveSavedMacros
 import com.vex.irshark.data.SavedMacro
 import com.vex.irshark.data.recordRemoteHistory
+import com.vex.irshark.data.resolveEffectiveDbSource
 import com.vex.irshark.util.transmitIrCode
 import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.data.loadFlipperDbIndex
@@ -74,6 +77,7 @@ import com.vex.irshark.data.prettyPath
 import com.vex.irshark.data.saveAppSettings
 import com.vex.irshark.data.saveRemoteHistory
 import com.vex.irshark.data.saveSavedRemotes
+import com.vex.irshark.data.importFlipperDatabaseFromZip
 import com.vex.irshark.ui.components.AppHeader
 import com.vex.irshark.ui.components.RemoteEditorDialog
 import com.vex.irshark.ui.components.AppToastController
@@ -152,6 +156,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
     var showTxLed by rememberSaveable { mutableStateOf(true) }
     var hapticFeedback by rememberSaveable { mutableStateOf(true) }
+    var preferDownloadedDb by rememberSaveable { mutableStateOf(false) }
+    var downloadedDbTag by rememberSaveable { mutableStateOf<String?>(null) }
+    var downloadedDbAvailable by remember { mutableStateOf(false) }
+    var effectiveDbSourceLabel by remember { mutableStateOf("Default") }
     var irFinderLastTested by rememberSaveable { mutableStateOf<String?>(null) }
     var txPulseActive by remember { mutableStateOf(false) }
     var settingsDirty by remember { mutableStateOf(false) }
@@ -337,6 +345,56 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             txPulseActive = true
             delay(durationMs)
             txPulseActive = false
+        }
+    }
+
+    fun reloadDbIndex() {
+        scope.launch {
+            dbLoaded = false
+            dbLoadProgress = DbLoadProgress()
+            dbIndex = loadFlipperDbIndex(context) { progress ->
+                dbLoadProgress = progress
+            }
+            downloadedDbAvailable = isDownloadedDbAvailable(context)
+            effectiveDbSourceLabel = if (resolveEffectiveDbSource(context).name == "DOWNLOADED") {
+                "Downloaded"
+            } else {
+                "Default"
+            }
+            dbLoaded = true
+        }
+    }
+
+    val zipPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                    ?: return@withContext com.vex.irshark.data.FlipperDbUpdateResult(
+                        success = false,
+                        updated = false,
+                        latestTag = null,
+                        message = "Cannot open selected file"
+                    )
+                inputStream.use { importFlipperDatabaseFromZip(context, it) }
+            }
+            if (result.success) {
+                downloadedDbTag = result.latestTag
+                downloadedDbAvailable = isDownloadedDbAvailable(context)
+                settingsDirty = true
+                if (preferDownloadedDb) {
+                    reloadDbIndex()
+                } else {
+                    effectiveDbSourceLabel = if (resolveEffectiveDbSource(context).name == "DOWNLOADED") {
+                        "Downloaded"
+                    } else {
+                        "Default"
+                    }
+                }
+            }
+            toastController.show(result.message)
         }
     }
 
@@ -545,8 +603,24 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
     // Load data
     LaunchedEffect(Unit) {
+        val settings = loadAppSettings(context)
+        universalIntervalMs = settings.globalIntervalMs
+        autoStopAtEnd = settings.autoStopAtEnd
+        showTxLed = settings.showTxLed
+        hapticFeedback = settings.hapticFeedback
+        irFinderLastTested = settings.irFinderLastTested
+        preferDownloadedDb = settings.preferDownloadedDb
+        downloadedDbTag = settings.downloadedDbTag
+        settingsLoaded = true
+
         dbIndex = loadFlipperDbIndex(context) { progress ->
             dbLoadProgress = progress
+        }
+        downloadedDbAvailable = isDownloadedDbAvailable(context)
+        effectiveDbSourceLabel = if (resolveEffectiveDbSource(context).name == "DOWNLOADED") {
+            "Downloaded"
+        } else {
+            "Default"
         }
         dbLoaded = true
         savedRemotes = loadSavedRemotes(context)
@@ -555,13 +629,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         historyLoaded = true
         savedMacros = loadSavedMacros(context)
         macrosLoaded = true
-        val settings = loadAppSettings(context)
-        universalIntervalMs = settings.globalIntervalMs
-        autoStopAtEnd = settings.autoStopAtEnd
-        showTxLed = settings.showTxLed
-        hapticFeedback = settings.hapticFeedback
-        irFinderLastTested = settings.irFinderLastTested
-        settingsLoaded = true
     }
 
     LaunchedEffect(savedRemotes) {
@@ -579,7 +646,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         saveSavedMacros(context, savedMacros)
     }
 
-    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed, hapticFeedback) {
+    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed, hapticFeedback, preferDownloadedDb, downloadedDbTag) {
         if (!settingsLoaded || !settingsDirty) return@LaunchedEffect
         saveAppSettings(
             context,
@@ -588,7 +655,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 autoStopAtEnd = autoStopAtEnd,
                 showTxLed = showTxLed,
                 hapticFeedback = hapticFeedback,
-                irFinderLastTested = irFinderLastTested
+                irFinderLastTested = irFinderLastTested,
+                preferDownloadedDb = preferDownloadedDb,
+                downloadedDbTag = downloadedDbTag
             )
         )
         settingsDirty = false
@@ -1126,6 +1195,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             autoStopAtEnd = autoStopAtEnd,
                             showTxLed = showTxLed,
                             hapticFeedback = hapticFeedback,
+                            useDownloadedDb = preferDownloadedDb,
+                            downloadedDbAvailable = downloadedDbAvailable,
+                            bundledDbVersion = bundledDbVersionLabel(),
+                            downloadedDbVersion = downloadedDbTag,
+                            effectiveDbSourceLabel = effectiveDbSourceLabel,
                             historyEntries = remoteHistory,
                             onOpenHistoryItem = { openHistoryRemote(it) },
                             onIntervalChange = {
@@ -1143,6 +1217,51 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onHapticFeedbackChange = {
                                 hapticFeedback = it
                                 settingsDirty = true
+                            },
+                            onUseDefaultDb = {
+                                preferDownloadedDb = false
+                                settingsDirty = true
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        saveAppSettings(
+                                            context,
+                                            com.vex.irshark.data.AppSettings(
+                                                globalIntervalMs = universalIntervalMs,
+                                                autoStopAtEnd = autoStopAtEnd,
+                                                showTxLed = showTxLed,
+                                                hapticFeedback = hapticFeedback,
+                                                irFinderLastTested = irFinderLastTested,
+                                                preferDownloadedDb = false,
+                                                downloadedDbTag = downloadedDbTag
+                                            )
+                                        )
+                                    }
+                                    reloadDbIndex()
+                                }
+                            },
+                            onUseDownloadedDb = {
+                                preferDownloadedDb = true
+                                settingsDirty = true
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        saveAppSettings(
+                                            context,
+                                            com.vex.irshark.data.AppSettings(
+                                                globalIntervalMs = universalIntervalMs,
+                                                autoStopAtEnd = autoStopAtEnd,
+                                                showTxLed = showTxLed,
+                                                hapticFeedback = hapticFeedback,
+                                                irFinderLastTested = irFinderLastTested,
+                                                preferDownloadedDb = true,
+                                                downloadedDbTag = downloadedDbTag
+                                            )
+                                        )
+                                    }
+                                    reloadDbIndex()
+                                }
+                            },
+                            onImportDatabaseZip = {
+                                zipPickerLauncher.launch(arrayOf("application/zip"))
                             },
                             onIntervalPresetSelect = {
                                 universalIntervalMs = it
@@ -1229,7 +1348,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                             autoStopAtEnd = autoStopAtEnd,
                                             showTxLed = showTxLed,
                                             hapticFeedback = hapticFeedback,
-                                            irFinderLastTested = tested
+                                            irFinderLastTested = tested,
+                                            preferDownloadedDb = preferDownloadedDb,
+                                            downloadedDbTag = downloadedDbTag
                                         )
                                     )
                                 }

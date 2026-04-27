@@ -6,14 +6,29 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.InputStream
+import java.util.zip.ZipInputStream
 
 private const val DB_ROOT = "flipper_irdb"
 private const val PREFS_NAME = "irshark_prefs"
 private const val KEY_SAVED_REMOTES = "saved_remotes"
 private const val KEY_REMOTE_HISTORY = "remote_history"
 private const val REMOTE_DELIMITER = "||"
-private const val DB_INDEX_CACHE_FILE = "db_index_cache_v1.json"
+private const val DB_INDEX_CACHE_FILE_PREFIX = "db_index_cache"
 private const val DB_INDEX_CACHE_VERSION = 1
+private const val DOWNLOADED_DB_BASE_DIR = "flipper_irdb_downloaded"
+
+enum class DbSourceType {
+    DEFAULT,
+    DOWNLOADED
+}
+
+data class FlipperDbUpdateResult(
+    val success: Boolean,
+    val updated: Boolean,
+    val latestTag: String?,
+    val message: String
+)
 
 data class FlipperDbIndex(
     val totalProfiles: Int = 0,
@@ -107,9 +122,11 @@ suspend fun loadFlipperDbIndex(
 ): FlipperDbIndex {
     return withContext(Dispatchers.IO) {
         runCatching {
+            val sourceInfo = resolveDbStorage(context)
+            val cacheKey = sourceInfo.cacheKey
             val lintConfig = parseLintConfig(context)
 
-            loadDbIndexCache(context)?.let { cached ->
+            loadDbIndexCache(context, cacheKey)?.let { cached ->
                 if (onProgress != null) {
                     withContext(Dispatchers.Main) {
                         onProgress(DbLoadProgress(loadedFiles = cached.totalProfiles, totalFiles = cached.totalProfiles))
@@ -134,7 +151,7 @@ suspend fun loadFlipperDbIndex(
             }
 
             suspend fun walk(path: String) {
-                val children = context.assets.list(path)?.sorted().orEmpty()
+                val children = listDbChildren(context, path)
                 folders.putIfAbsent(path, mutableListOf())
                 profilesByFolder.putIfAbsent(path, mutableListOf())
 
@@ -157,8 +174,7 @@ suspend fun loadFlipperDbIndex(
                             }
                         }
                     } else {
-                        val nested = context.assets.list(childPath).orEmpty()
-                        if (nested.isNotEmpty()) {
+                        if (isDbDirectory(context, childPath)) {
                             folders[path]?.add(childPath)
                             walk(childPath)
                         }
@@ -174,13 +190,92 @@ suspend fun loadFlipperDbIndex(
                 profilesByFolder = profilesByFolder,
                 profiles = allProfiles,
                 lintConfig = lintConfig,
-                status = "Loaded ${allProfiles.size} profiles"
+                status = "Loaded ${allProfiles.size} profiles (${sourceInfo.label})"
             )
 
-            saveDbIndexCache(context, freshIndex)
+            saveDbIndexCache(context, freshIndex, cacheKey)
             freshIndex
         }.getOrElse {
             FlipperDbIndex(status = "Flipper-IRDB unavailable")
+        }
+    }
+}
+
+fun isDownloadedDbAvailable(context: Context): Boolean {
+    val dbRootDir = File(downloadedDbBaseDir(context), DB_ROOT)
+    if (!dbRootDir.exists() || !dbRootDir.isDirectory) return false
+    return dbRootDir.walkTopDown().any { it.isFile && it.name.endsWith(".ir", ignoreCase = true) }
+}
+
+fun resolveEffectiveDbSource(context: Context): DbSourceType {
+    val settings = loadAppSettings(context)
+    return if (settings.preferDownloadedDb && isDownloadedDbAvailable(context)) {
+        DbSourceType.DOWNLOADED
+    } else {
+        DbSourceType.DEFAULT
+    }
+}
+
+fun bundledDbVersionLabel(): String = "Bundled (assets)"
+
+suspend fun importFlipperDatabaseFromZip(
+    context: Context,
+    inputStream: InputStream
+): FlipperDbUpdateResult {
+    return withContext(Dispatchers.IO) {
+        runCatching {
+            val tempExtractDir = File(context.cacheDir, "db_import_extract_${System.currentTimeMillis()}")
+            val stagingBaseDir = File(context.cacheDir, "db_import_stage_${System.currentTimeMillis()}")
+            tempExtractDir.deleteRecursively()
+            stagingBaseDir.deleteRecursively()
+            tempExtractDir.mkdirs()
+            stagingBaseDir.mkdirs()
+
+            extractZipFromStream(inputStream, tempExtractDir)
+
+            val extractedRoot = tempExtractDir.listFiles()?.firstOrNull { it.isDirectory } ?: tempExtractDir
+            val sourceDir = File(extractedRoot, DB_ROOT).takeIf { it.exists() && it.isDirectory } ?: extractedRoot
+
+            val stagedDbRoot = File(stagingBaseDir, DB_ROOT)
+            stagedDbRoot.mkdirs()
+            sourceDir.listFiles().orEmpty()
+                .filterNot { it.name.equals(".git", ignoreCase = true) }
+                .forEach { child ->
+                    copyRecursively(child, File(stagedDbRoot, child.name))
+                }
+
+            if (!stagedDbRoot.walkTopDown().any { it.isFile && it.name.endsWith(".ir", ignoreCase = true) }) {
+                tempExtractDir.deleteRecursively()
+                stagingBaseDir.deleteRecursively()
+                return@runCatching FlipperDbUpdateResult(
+                    success = false,
+                    updated = false,
+                    latestTag = null,
+                    message = "ZIP does not contain IR files – check that you selected a valid Flipper IRDB archive"
+                )
+            }
+
+            val targetBaseDir = downloadedDbBaseDir(context)
+            targetBaseDir.deleteRecursively()
+            stagingBaseDir.copyRecursively(targetBaseDir, overwrite = true)
+            stagingBaseDir.deleteRecursively()
+            tempExtractDir.deleteRecursively()
+            clearDbIndexCaches(context)
+
+            val importLabel = "imported-${System.currentTimeMillis() / 1000}"
+            FlipperDbUpdateResult(
+                success = true,
+                updated = true,
+                latestTag = importLabel,
+                message = "Database imported successfully"
+            )
+        }.getOrElse { err ->
+            FlipperDbUpdateResult(
+                success = false,
+                updated = false,
+                latestTag = null,
+                message = err.message ?: "Import failed"
+            )
         }
     }
 }
@@ -678,7 +773,7 @@ private fun parseIrCodeBlocks(context: Context, assetPath: String): List<ParsedI
             currentFields.clear()
         }
 
-        context.assets.open(assetPath).bufferedReader().useLines { lines ->
+        openDbInputStream(context, assetPath).bufferedReader().useLines { lines ->
             lines.forEach { rawLine ->
                 val line = rawLine.trim()
                 if (line.startsWith("name:", ignoreCase = true)) {
@@ -700,15 +795,14 @@ private fun parseIrCodeBlocks(context: Context, assetPath: String): List<ParsedI
 }
 
 private fun countIrFiles(context: Context, path: String): Int {
-    val children = context.assets.list(path).orEmpty()
+    val children = listDbChildren(context, path)
     var count = 0
     for (child in children) {
         val childPath = "$path/$child"
         if (child.endsWith(".ir", ignoreCase = true)) {
             count += 1
         } else {
-            val nested = context.assets.list(childPath).orEmpty()
-            if (nested.isNotEmpty()) {
+            if (isDbDirectory(context, childPath)) {
                 count += countIrFiles(context, childPath)
             }
         }
@@ -716,9 +810,9 @@ private fun countIrFiles(context: Context, path: String): Int {
     return count
 }
 
-private fun saveDbIndexCache(context: Context, index: FlipperDbIndex) {
+private fun saveDbIndexCache(context: Context, index: FlipperDbIndex, cacheKey: String) {
     runCatching {
-        val file = File(context.filesDir, DB_INDEX_CACHE_FILE)
+        val file = File(context.filesDir, dbIndexCacheFileName(cacheKey))
         val root = JSONObject().apply {
             put("version", DB_INDEX_CACHE_VERSION)
             put("totalProfiles", index.totalProfiles)
@@ -750,9 +844,9 @@ private fun saveDbIndexCache(context: Context, index: FlipperDbIndex) {
     }
 }
 
-private fun loadDbIndexCache(context: Context): FlipperDbIndex? {
+private fun loadDbIndexCache(context: Context, cacheKey: String): FlipperDbIndex? {
     return runCatching {
-        val file = File(context.filesDir, DB_INDEX_CACHE_FILE)
+        val file = File(context.filesDir, dbIndexCacheFileName(cacheKey))
         if (!file.exists()) return null
         val raw = file.readText(Charsets.UTF_8)
         val root = JSONObject(raw)
@@ -809,7 +903,7 @@ private fun loadDbIndexCache(context: Context): FlipperDbIndex? {
 
 private fun parseLintConfig(context: Context): FlipperLintConfig {
     return runCatching {
-        val raw = context.assets.open("$DB_ROOT/.fff-ir-lint.json").bufferedReader().use { it.readText() }
+        val raw = openDbInputStream(context, "$DB_ROOT/.fff-ir-lint.json").bufferedReader().use { it.readText() }
         val root = JSONObject(raw)
         val nameCheck = root.optJSONObject("name-check") ?: return@runCatching FlipperLintConfig()
 
@@ -956,6 +1050,115 @@ private fun normalizeDisplayName(raw: String): String {
         .replace('_', ' ')
         .replace('-', ' ')
         .uppercase()
+}
+
+private data class DbStorageInfo(
+    val type: DbSourceType,
+    val label: String,
+    val cacheKey: String
+)
+
+private fun resolveDbStorage(context: Context): DbStorageInfo {
+    val settings = loadAppSettings(context)
+    val hasDownloaded = isDownloadedDbAvailable(context)
+    return if (settings.preferDownloadedDb && hasDownloaded) {
+        val tagSuffix = settings.downloadedDbTag?.ifBlank { "unknown" } ?: "unknown"
+        DbStorageInfo(
+            type = DbSourceType.DOWNLOADED,
+            label = "downloaded",
+            cacheKey = "downloaded_$tagSuffix"
+        )
+    } else {
+        DbStorageInfo(
+            type = DbSourceType.DEFAULT,
+            label = "assets",
+            cacheKey = "assets"
+        )
+    }
+}
+
+private fun dbIndexCacheFileName(cacheKey: String): String {
+    val clean = cacheKey.replace(Regex("[^A-Za-z0-9._-]"), "_")
+    return "${DB_INDEX_CACHE_FILE_PREFIX}_${clean}_v${DB_INDEX_CACHE_VERSION}.json"
+}
+
+private fun clearDbIndexCaches(context: Context) {
+    context.filesDir.listFiles().orEmpty()
+        .filter { it.name.startsWith(DB_INDEX_CACHE_FILE_PREFIX) }
+        .forEach { it.delete() }
+}
+
+private fun downloadedDbBaseDir(context: Context): File {
+    return File(context.filesDir, DOWNLOADED_DB_BASE_DIR)
+}
+
+private fun logicalPathToDownloadedFile(context: Context, path: String): File {
+    val relative = path.removePrefix("$DB_ROOT/").removePrefix(DB_ROOT)
+    val base = File(downloadedDbBaseDir(context), DB_ROOT)
+    return if (relative.isBlank()) base else File(base, relative)
+}
+
+private fun listDbChildren(context: Context, path: String): List<String> {
+    return when (resolveDbStorage(context).type) {
+        DbSourceType.DEFAULT -> context.assets.list(path)?.sorted().orEmpty()
+        DbSourceType.DOWNLOADED -> {
+            val dir = logicalPathToDownloadedFile(context, path)
+            if (!dir.exists() || !dir.isDirectory) emptyList()
+            else dir.list()?.sorted().orEmpty()
+        }
+    }
+}
+
+private fun isDbDirectory(context: Context, path: String): Boolean {
+    return when (resolveDbStorage(context).type) {
+        DbSourceType.DEFAULT -> context.assets.list(path).orEmpty().isNotEmpty()
+        DbSourceType.DOWNLOADED -> {
+            val file = logicalPathToDownloadedFile(context, path)
+            file.exists() && file.isDirectory
+        }
+    }
+}
+
+private fun openDbInputStream(context: Context, path: String): InputStream {
+    return when (resolveDbStorage(context).type) {
+        DbSourceType.DEFAULT -> context.assets.open(path)
+        DbSourceType.DOWNLOADED -> logicalPathToDownloadedFile(context, path).inputStream()
+    }
+}
+
+private fun extractZipFromStream(inputStream: InputStream, outputDir: File) {
+    ZipInputStream(inputStream.buffered()).use { zipStream ->
+        while (true) {
+            val entry = zipStream.nextEntry ?: break
+            val relative = entry.name.substringAfter('/', entry.name).trim()
+            if (relative.isBlank()) {
+                zipStream.closeEntry()
+                continue
+            }
+            val outFile = File(outputDir, relative)
+            if (entry.isDirectory) {
+                outFile.mkdirs()
+            } else {
+                outFile.parentFile?.mkdirs()
+                outFile.outputStream().use { out ->
+                    zipStream.copyTo(out)
+                }
+            }
+            zipStream.closeEntry()
+        }
+    }
+}
+
+private fun copyRecursively(source: File, target: File) {
+    if (source.isDirectory) {
+        target.mkdirs()
+        source.listFiles().orEmpty().forEach { child ->
+            copyRecursively(child, File(target, child.name))
+        }
+    } else {
+        target.parentFile?.mkdirs()
+        source.copyTo(target, overwrite = true)
+    }
 }
 
 // ── Import / Export ───────────────────────────────────────────────────────────

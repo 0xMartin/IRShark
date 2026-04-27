@@ -18,6 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -50,12 +53,20 @@ fun SettingsScreen(
     autoStopAtEnd: Boolean,
     showTxLed: Boolean,
     hapticFeedback: Boolean,
+    useDownloadedDb: Boolean,
+    downloadedDbAvailable: Boolean,
+    bundledDbVersion: String,
+    downloadedDbVersion: String?,
+    effectiveDbSourceLabel: String,
     historyEntries: List<RemoteHistoryEntry>,
     onOpenHistoryItem: (RemoteHistoryEntry) -> Unit,
     onIntervalChange: (Float) -> Unit,
     onAutoStopAtEndChange: (Boolean) -> Unit,
     onShowTxLedChange: (Boolean) -> Unit,
     onHapticFeedbackChange: (Boolean) -> Unit,
+    onUseDefaultDb: () -> Unit,
+    onUseDownloadedDb: () -> Unit,
+    onImportDatabaseZip: () -> Unit,
     onIntervalPresetSelect: (Float) -> Unit,
     onResetDefaults: () -> Unit
 ) {
@@ -106,6 +117,68 @@ fun SettingsScreen(
                         .size(88.dp)
                         .clip(RoundedCornerShape(20.dp))
                 )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF0F0D1A))
+                .border(1.dp, violet.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                .padding(12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Database", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Active source: $effectiveDbSourceLabel",
+                    color = Color(0xFF8A8899),
+                    fontSize = 11.sp
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = onUseDefaultDb,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (!useDownloadedDb) violet else Color(0xFF8A8899)
+                        )
+                    ) {
+                        Text("Use default", fontSize = 11.sp)
+                    }
+                    OutlinedButton(
+                        onClick = onUseDownloadedDb,
+                        enabled = downloadedDbAvailable,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (useDownloadedDb) violet else Color(0xFF8A8899),
+                            disabledContentColor = Color(0xFF5F5B74)
+                        )
+                    ) {
+                        Text("Use downloaded", fontSize = 11.sp)
+                    }
+                }
+
+                Text(
+                    text = "Downloaded: ${downloadedDbVersion ?: "Not imported"}",
+                    color = Color(0xFF8A8899),
+                    fontSize = 11.sp
+                )
+
+                Text(
+                    text = "Supports Flipper Zero .ir format only. Import a ZIP archive containing .ir files (e.g. flipper-irdb).",
+                    color = Color(0xFF6A6880),
+                    fontSize = 10.sp
+                )
+
+                Button(
+                    onClick = onImportDatabaseZip,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Import database ZIP", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
 
