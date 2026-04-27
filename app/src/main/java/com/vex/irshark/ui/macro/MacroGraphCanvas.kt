@@ -361,10 +361,12 @@ fun MacroGraphCanvas(
                                                 graph.moveNode(draggingId!!, newPos)
                                             }
                                         }
-                                    } else if (moved) {
+                                    } else {
+                                        // Pan or selection rect: pan immediately on any movement
+                                        if (delta.getDistance() > viewConfiguration.touchSlop) moved = true
                                         when {
-                                            selStart != null -> {
-                                                // Expanding selection rectangle
+                                            selStart != null && moved -> {
+                                                // Expanding selection rectangle (only after touchSlop exceeded)
                                                 selEnd = cPos
                                                 val s = selStart!!
                                                 val e = selEnd!!
@@ -378,7 +380,10 @@ fun MacroGraphCanvas(
                                                 }.map { it.id }.toSet()
                                                 graph.setSelected(ids)
                                             }
-                                            else -> pan += delta
+                                            selStart == null -> {
+                                                // No selection active: pan workspace immediately
+                                                pan += delta
+                                            }
                                         }
                                     }
                                     lastPos = ch.position
