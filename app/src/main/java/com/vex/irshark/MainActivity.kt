@@ -198,6 +198,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var universalCodeStep by rememberSaveable { mutableIntStateOf(0) }
     var universalProcessedCount by rememberSaveable { mutableIntStateOf(0) }
     var universalStartedAtMs by remember { mutableLongStateOf(0L) }
+    var universalIncludeUnsorted by rememberSaveable { mutableStateOf(false) }
     var universalAutoSend by rememberSaveable { mutableStateOf(false) }
     var universalIntervalMs by rememberSaveable { mutableStateOf(250f) }
     var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
@@ -218,6 +219,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var txPulseJob by remember { mutableStateOf<Job?>(null) }
     val toastController = remember { AppToastController() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(universalIncludeUnsorted, universalPath) {
+        if (!universalIncludeUnsorted && universalPath.startsWith("${dbRootPath()}/Other")) {
+            universalPath = dbRootPath()
+        }
+    }
 
     // Macros
     var savedMacros by remember { mutableStateOf(listOf<SavedMacro>()) }
@@ -721,14 +728,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     // Deduplicated payloads for the currently selected universal command.
     // Recomputed on IO whenever the selected command or path changes.
     var universalUniquePayloads by remember { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(universalCommand, universalPath) {
+    LaunchedEffect(universalCommand, universalPath, universalIncludeUnsorted) {
         val cmd = universalCommand
         if (cmd == null) {
             universalUniquePayloads = emptyList()
             return@LaunchedEffect
         }
         universalUniquePayloads = withContext(Dispatchers.IO) {
-            getUniquePayloadsForCommand(context, dbIndex, universalPath, cmd.actualCommand)
+            getUniquePayloadsForCommand(
+                context = context,
+                dbIndex = dbIndex,
+                folderPath = universalPath,
+                command = cmd.actualCommand,
+                includeConverted = universalIncludeUnsorted
+            )
         }
     }
     val universalCoverage = universalUniquePayloads.size
@@ -978,6 +991,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     }
 
                     Screen.UNIVERSAL -> {
+                        val universalOtherPath = "${dbRootPath()}/Other"
                         UniversalRemoteScreen(
                             dbIndex = dbIndex,
                             currentPath = universalPath,
@@ -986,6 +1000,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             activeCoverage = universalCoverage,
                             autoSend = universalAutoSend,
                             estimatedTimeRemainingMs = universalEstimatedRemainingMs,
+                            includeUnsortedRemotes = universalIncludeUnsorted,
                             hapticEnabled = hapticFeedback,
                             onHome = {
                                 universalAutoSend = false
@@ -1010,6 +1025,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 universalProcessedCount = 0
                                 universalStartedAtMs = 0L
                                 universalAutoSend = false
+                            },
+                            onIncludeUnsortedRemotesChange = { enabled ->
+                                universalIncludeUnsorted = enabled
+                                universalCommand = null
+                                universalCodeStep = 0
+                                universalProcessedCount = 0
+                                universalStartedAtMs = 0L
+                                universalAutoSend = false
+                                if (!enabled && universalPath.startsWith("$universalOtherPath/")) {
+                                    universalPath = dbRootPath()
+                                }
+                                if (!enabled && universalPath == universalOtherPath) {
+                                    universalPath = dbRootPath()
+                                }
                             },
                             onCommandClick = { item ->
                                 // item.profileCoverage reflects the deduplicated unique-code count

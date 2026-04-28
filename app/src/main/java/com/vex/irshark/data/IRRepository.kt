@@ -147,6 +147,37 @@ data class DbLoadProgress(
     val totalFiles: Int = 0
 )
 
+private const val UNIVERSAL_OTHER_PATH = "$DB_ROOT/Other"
+
+private data class OtherCanonicalRule(
+    val displayLabel: String,
+    val matchers: List<Regex>
+)
+
+private val OTHER_CANONICAL_RULES = listOf(
+    OtherCanonicalRule("POWER", listOf(Regex("^(power|pwr|on_off|power_toggle)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("POWER ON", listOf(Regex("^(power_on|on|turn_on|poweron)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("POWER OFF", listOf(Regex("^(power_off|off|turn_off|poweroff)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("MUTE", listOf(Regex("^mute(_toggle|_on|_off)?$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("VOL+", listOf(Regex("""^(vol(ume)?(\+|_up|_\^)|volume_\^|vol_\+|volume_up)$""", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("VOL-", listOf(Regex("^(vol(ume)?(-|_down|_v)|volume_v|vol_-|volume_down)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("CH+", listOf(Regex("""^(ch(annel)?(\+|_up|up|_next)|channelup)$""", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("CH-", listOf(Regex("^(ch(annel)?(-|_down|down|_prev)|ch_prev|channeldown)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("MENU", listOf(Regex("^(menu|setup|set_up|menu_setup)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("ENTER", listOf(Regex("^(enter|ok|select|cursor_enter|select_enter)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("UP", listOf(Regex("^(up|up_arrow|arrow_up|cursor_up)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("DOWN", listOf(Regex("^(down|dn_arrow|down_arrow|arrow_down|cursor_down)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("LEFT", listOf(Regex("^(left|left_arrow|arrow_left|cursor_left)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("RIGHT", listOf(Regex("^(right|right_arrow|arrow_right|cursor_right)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("INFO", listOf(Regex("^(info|display|status|osd)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("BACK", listOf(Regex("^(back|return|recall|last|prev_ch)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("INPUT", listOf(Regex("^(input|source|tv_video|tv_av|input_select)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("GUIDE", listOf(Regex("^(guide|epg|tv_guide)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("PLAY", listOf(Regex("^(play|play_pause|play/pause)$", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("STOP", listOf(Regex("""^(stop|stop_\[\]|stop1|stop2)$""", RegexOption.IGNORE_CASE))),
+    OtherCanonicalRule("PAUSE", listOf(Regex("^(pause|pause_|pause/still)$", RegexOption.IGNORE_CASE)))
+)
+
 suspend fun loadFlipperDbIndex(
     context: Context,
     onProgress: ((DbLoadProgress) -> Unit)? = null
@@ -356,9 +387,57 @@ fun profilesUnderPath(dbIndex: FlipperDbIndex, folderPath: String): List<Flipper
     return dbIndex.profiles.filter { it.parentPath == folderPath || it.path.startsWith(prefix) }
 }
 
+fun convertedManufacturersForUniversal(dbIndex: FlipperDbIndex): List<String> {
+    return dbIndex.profiles
+        .asSequence()
+        .filter { isConvertedProfilePath(it.path) }
+        .mapNotNull { universalManufacturerFromProfileName(it.name) }
+        .distinct()
+        .sortedBy { it.lowercase() }
+        .toList()
+}
+
+private fun profilesForUniversalPath(
+    dbIndex: FlipperDbIndex,
+    folderPath: String,
+    includeConverted: Boolean
+): List<FlipperProfile> {
+    if (folderPath == UNIVERSAL_OTHER_PATH) {
+        if (!includeConverted) return emptyList()
+        return dbIndex.profiles.filter { isConvertedProfilePath(it.path) }
+    }
+
+    if (folderPath.startsWith("$UNIVERSAL_OTHER_PATH/")) {
+        if (!includeConverted) return emptyList()
+        val manufacturer = folderPath.substringAfter("$UNIVERSAL_OTHER_PATH/").trim()
+        if (manufacturer.isBlank()) return emptyList()
+        return dbIndex.profiles.filter { profile ->
+            isConvertedProfilePath(profile.path) &&
+                universalManufacturerFromProfileName(profile.name)?.equals(manufacturer, ignoreCase = true) == true
+        }
+    }
+
+    val scoped = profilesUnderPath(dbIndex, folderPath)
+    return if (includeConverted) scoped else scoped.filterNot { isConvertedProfilePath(it.path) }
+}
+
+private fun isConvertedProfilePath(path: String): Boolean {
+    return path.startsWith("$DB_ROOT/_Converted_/")
+}
+
+private fun universalManufacturerFromProfileName(profileName: String): String? {
+    val normalized = profileName.trim().replace(Regex("\\s+"), " ")
+    if (normalized.isBlank()) return null
+    return normalized.substringBefore(' ').ifBlank { null }
+}
+
 fun commandStatsForPath(dbIndex: FlipperDbIndex, folderPath: String): Map<String, Int> {
+    return commandStatsForPath(dbIndex, folderPath, includeConverted = true)
+}
+
+fun commandStatsForPath(dbIndex: FlipperDbIndex, folderPath: String, includeConverted: Boolean): Map<String, Int> {
     val stats = linkedMapOf<String, Int>()
-    profilesUnderPath(dbIndex, folderPath).forEach { profile ->
+    profilesForUniversalPath(dbIndex, folderPath, includeConverted).forEach { profile ->
         profile.commands.forEach { command ->
             stats[command] = (stats[command] ?: 0) + 1
         }
@@ -369,9 +448,10 @@ fun commandStatsForPath(dbIndex: FlipperDbIndex, folderPath: String): Map<String
 fun resolveUniversalCommandsForPath(
     dbIndex: FlipperDbIndex,
     folderPath: String,
+    includeConverted: Boolean = true,
     limit: Int = 18
 ): List<UniversalCommandItem> {
-    val stats = commandStatsForPath(dbIndex, folderPath)
+    val stats = commandStatsForPath(dbIndex, folderPath, includeConverted)
     if (stats.isEmpty()) return emptyList()
 
     val lintResolved = resolveUsingLint(
@@ -382,6 +462,11 @@ fun resolveUniversalCommandsForPath(
 
     if (lintResolved.isNotEmpty()) {
         return lintResolved.take(limit)
+    }
+
+    val otherDefaults = resolveOtherDefaults(folderPath, stats, limit)
+    if (otherDefaults.isNotEmpty()) {
+        return otherDefaults
     }
 
     return stats.entries
@@ -396,8 +481,56 @@ fun resolveUniversalCommandsForPath(
         }
 }
 
+private fun resolveOtherDefaults(
+    folderPath: String,
+    commandStats: Map<String, Int>,
+    limit: Int
+): List<UniversalCommandItem> {
+    if (!(folderPath == UNIVERSAL_OTHER_PATH || folderPath.startsWith("$UNIVERSAL_OTHER_PATH/"))) {
+        return emptyList()
+    }
+
+    val normalizedStats = commandStats.entries.map { entry ->
+        entry.key to normalizeCommandToken(entry.key)
+    }
+
+    val resolved = mutableListOf<UniversalCommandItem>()
+    OTHER_CANONICAL_RULES.forEach { rule ->
+        val matched = normalizedStats
+            .filter { (_, normalized) -> rule.matchers.any { it.matches(normalized) } }
+            .mapNotNull { (rawKey, _) -> commandStats[rawKey]?.let { rawKey to it } }
+
+        if (matched.isNotEmpty()) {
+            val best = matched.maxByOrNull { it.second } ?: return@forEach
+            resolved += UniversalCommandItem(
+                displayLabel = rule.displayLabel,
+                actualCommand = best.first,
+                profileCoverage = matched.sumOf { it.second }
+            )
+        }
+    }
+
+    return resolved
+        .sortedByDescending { it.profileCoverage }
+        .take(limit)
+}
+
+private fun normalizeCommandToken(raw: String): String {
+    return raw.trim()
+        .lowercase()
+        .replace(' ', '_')
+        .replace('-', '_')
+        .replace('/', '_')
+        .replace(Regex("_+"), "_")
+        .trim('_')
+}
+
 fun countProfilesForCommand(dbIndex: FlipperDbIndex, folderPath: String, command: String): Int {
-    return profilesUnderPath(dbIndex, folderPath).count { profile ->
+    return countProfilesForCommand(dbIndex, folderPath, command, includeConverted = true)
+}
+
+fun countProfilesForCommand(dbIndex: FlipperDbIndex, folderPath: String, command: String, includeConverted: Boolean): Int {
+    return profilesForUniversalPath(dbIndex, folderPath, includeConverted).count { profile ->
         profile.commands.any { it.equals(command, ignoreCase = true) }
     }
 }
@@ -407,7 +540,16 @@ fun countProfilesForCommand(dbIndex: FlipperDbIndex, folderPath: String, command
  * The order matches the iteration order used by [countProfilesForCommand].
  */
 fun profilesForCommand(dbIndex: FlipperDbIndex, folderPath: String, command: String): List<FlipperProfile> {
-    return profilesUnderPath(dbIndex, folderPath).filter { profile ->
+    return profilesForCommand(dbIndex, folderPath, command, includeConverted = true)
+}
+
+fun profilesForCommand(
+    dbIndex: FlipperDbIndex,
+    folderPath: String,
+    command: String,
+    includeConverted: Boolean
+): List<FlipperProfile> {
+    return profilesForUniversalPath(dbIndex, folderPath, includeConverted).filter { profile ->
         profile.commands.any { it.equals(command, ignoreCase = true) }
     }
 }
@@ -421,9 +563,10 @@ fun getUniquePayloadsForCommand(
     context: android.content.Context,
     dbIndex: FlipperDbIndex,
     folderPath: String,
-    command: String
+    command: String,
+    includeConverted: Boolean = true
 ): List<String> {
-    return profilesForCommand(dbIndex, folderPath, command)
+    return profilesForCommand(dbIndex, folderPath, command, includeConverted)
         .mapNotNull { getIrCodePayload(context, it.path, command) }
         .distinctBy { it.trim() }
 }
@@ -437,9 +580,10 @@ fun resolveUniversalCommandsWithDedup(
     context: android.content.Context,
     dbIndex: FlipperDbIndex,
     folderPath: String,
+    includeConverted: Boolean = true,
     limit: Int = 18
 ): List<UniversalCommandItem> {
-    val base = resolveUniversalCommandsForPath(dbIndex, folderPath, limit)
+    val base = resolveUniversalCommandsForPath(dbIndex, folderPath, includeConverted, limit)
     if (base.isEmpty()) return emptyList()
 
     val targetAliases = linkedMapOf<String, String>()
@@ -455,7 +599,7 @@ fun resolveUniversalCommandsWithDedup(
         uniquePayloads[actual] = linkedSetOf()
     }
 
-    profilesUnderPath(dbIndex, folderPath).forEach { profile ->
+    profilesForUniversalPath(dbIndex, folderPath, includeConverted).forEach { profile ->
         val wantedTargets = profile.commands
             .mapNotNull { cmd ->
                 val byRaw = targetAliases[cmd.lowercase()]

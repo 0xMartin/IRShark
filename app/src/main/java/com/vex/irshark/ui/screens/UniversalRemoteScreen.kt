@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,10 +47,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import com.vex.irshark.data.FlipperDbIndex
 import com.vex.irshark.data.UniversalCommandItem
+import com.vex.irshark.data.convertedManufacturersForUniversal
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.prettyName
 import com.vex.irshark.data.prettyPathWithChevron
-import com.vex.irshark.data.profilesUnderPath
 import com.vex.irshark.data.resolveUniversalCommandsForPath
 import com.vex.irshark.data.resolveUniversalCommandsWithDedup
 import com.vex.irshark.ui.components.AutoSendProgressModal
@@ -74,23 +75,50 @@ fun UniversalRemoteScreen(
     activeCoverage: Int,
     autoSend: Boolean,
     estimatedTimeRemainingMs: Long,
+    includeUnsortedRemotes: Boolean,
     hapticEnabled: Boolean = true,
     onHome: () -> Unit,
     onBackPath: () -> Unit,
     onOpenFolder: (String) -> Unit,
+    onIncludeUnsortedRemotesChange: (Boolean) -> Unit,
     onCommandClick: (UniversalCommandItem) -> Unit,
     onToggleAutoSend: () -> Unit,
     onIntervalChange: (Float) -> Unit
 ) {
     val context = LocalContext.current
     val root = dbRootPath()
-    val folders = dbIndex.folders[currentPath].orEmpty().sortedBy { prettyName(it) }
+    val otherPath = "$root/Other"
+    val isOtherRoot = currentPath == otherPath
+
+    val folders = remember(dbIndex, currentPath, includeUnsortedRemotes) {
+        when {
+            isOtherRoot -> convertedManufacturersForUniversal(dbIndex).map { "$otherPath/$it" }
+            currentPath == root -> {
+                val base = dbIndex.folders[root].orEmpty()
+                    .filter { !it.substringAfterLast('/').startsWith("_") }
+                    .filterNot { it == otherPath }
+                    .sortedBy { prettyName(it) }
+                if (includeUnsortedRemotes) base + otherPath else base
+            }
+            else -> dbIndex.folders[currentPath].orEmpty().sortedBy { prettyName(it) }
+        }
+    }
+
     // Initially show raw profile counts; replaced by deduplicated counts once IO is done.
-    val resolvedCommands = resolveUniversalCommandsForPath(dbIndex, currentPath)
+    val resolvedCommands = resolveUniversalCommandsForPath(
+        dbIndex = dbIndex,
+        folderPath = currentPath,
+        includeConverted = includeUnsortedRemotes
+    )
     var dedupedCommands by remember(currentPath) { mutableStateOf<List<UniversalCommandItem>?>(null) }
-    LaunchedEffect(currentPath) {
+    LaunchedEffect(currentPath, includeUnsortedRemotes, dbIndex.totalProfiles) {
         dedupedCommands = withContext(Dispatchers.IO) {
-            resolveUniversalCommandsWithDedup(context, dbIndex, currentPath)
+            resolveUniversalCommandsWithDedup(
+                context = context,
+                dbIndex = dbIndex,
+                folderPath = currentPath,
+                includeConverted = includeUnsortedRemotes
+            )
         }
     }
     val displayCommands = dedupedCommands ?: resolvedCommands
@@ -180,6 +208,24 @@ fun UniversalRemoteScreen(
 
                 when (selectedTab) {
                     UniversalTab.Categories -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Include unsorted remotes",
+                                color = Color(0xFFB7B3CC),
+                                fontSize = 12.sp
+                            )
+                            Switch(
+                                checked = includeUnsortedRemotes,
+                                onCheckedChange = onIncludeUnsortedRemotesChange
+                            )
+                        }
+
                         OutlinedTextField(
                             value = folderSearchQuery,
                             onValueChange = { folderSearchQuery = it },
@@ -212,8 +258,12 @@ fun UniversalRemoteScreen(
                             contentPadding = PaddingValues(10.dp)
                         ) {
                             items(filteredFolders) { path ->
-                                val name = prettyName(path)
-                                val iconSourceName = if (currentPath == root) name else prettyName(currentPath)
+                                val name = if (path == otherPath) "Other" else prettyName(path)
+                                val iconSourceName = when {
+                                    path == otherPath -> "Other"
+                                    currentPath == root -> name
+                                    else -> prettyName(currentPath)
+                                }
                                 FolderButton(
                                     title = name,
                                     onClick = {
