@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,10 +63,22 @@ import com.vex.irshark.ui.components.RemoteCommandButton
 import com.vex.irshark.ui.components.UniversalRemoteHeader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private enum class UniversalTab { Commands, Categories }
+
+private data class CategoryFolderEntry(
+    val path: String,
+    val displayName: String,
+    val searchKey: String,
+    val iconSourceName: String
+)
+
+private const val CATEGORY_LARGE_LIST_THRESHOLD = 800
+private const val CATEGORY_PAGE_SIZE = 200
+private const val CATEGORY_COMPACT_TILE_THRESHOLD = 1200
 
 @Composable
 fun UniversalRemoteScreen(
@@ -131,6 +145,7 @@ fun UniversalRemoteScreen(
     var folderSearchQuery by remember { mutableStateOf("") }
     var flashedCommand by remember { mutableStateOf<String?>(null) }
     var selectedTab by rememberSaveable { mutableStateOf(UniversalTab.Categories) }
+    val categoryGridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val view = LocalView.current
 
@@ -140,12 +155,67 @@ fun UniversalRemoteScreen(
         else -> 0
     }
     
-    val filteredFolders = remember(folders, folderSearchQuery) {
-        if (folderSearchQuery.isBlank()) {
-            folders
-        } else {
-            folders.filter { prettyName(it).contains(folderSearchQuery, ignoreCase = true) }
+    val folderEntries = remember(folders, currentPath) {
+        folders.map { path ->
+            val displayName = if (path == otherPath) unsortedLabel else prettyName(path)
+            val iconSourceName = when {
+                path == otherPath -> unsortedLabel
+                currentPath == root -> displayName
+                else -> prettyName(currentPath)
+            }
+            CategoryFolderEntry(
+                path = path,
+                displayName = displayName,
+                searchKey = displayName.lowercase(),
+                iconSourceName = iconSourceName
+            )
         }
+    }
+    val normalizedFolderQuery = remember(folderSearchQuery) {
+        folderSearchQuery.trim().lowercase()
+    }
+    val matchingFolderEntries = remember(folderEntries, normalizedFolderQuery) {
+        if (normalizedFolderQuery.isEmpty()) {
+            folderEntries
+        } else {
+            folderEntries.filter { it.searchKey.contains(normalizedFolderQuery) }
+        }
+    }
+    var visibleCategoryLimit by remember(currentPath, normalizedFolderQuery, includeUnsortedRemotes) {
+        mutableStateOf(CATEGORY_PAGE_SIZE)
+    }
+    val filteredFolderEntries = remember(matchingFolderEntries, visibleCategoryLimit, normalizedFolderQuery) {
+        if (normalizedFolderQuery.isEmpty()) {
+            matchingFolderEntries.take(visibleCategoryLimit)
+        } else {
+            matchingFolderEntries
+        }
+    }
+    val hasLargeUnfilteredList = normalizedFolderQuery.isEmpty() && folderEntries.size > CATEGORY_LARGE_LIST_THRESHOLD
+    val showingLimitedCategories = hasLargeUnfilteredList && filteredFolderEntries.size < matchingFolderEntries.size
+    val useCompactFolderTiles = folderEntries.size > CATEGORY_COMPACT_TILE_THRESHOLD
+
+    LaunchedEffect(currentPath, normalizedFolderQuery, includeUnsortedRemotes, matchingFolderEntries.size) {
+        visibleCategoryLimit = CATEGORY_PAGE_SIZE
+    }
+
+    LaunchedEffect(categoryGridState, normalizedFolderQuery, matchingFolderEntries.size) {
+        if (normalizedFolderQuery.isNotEmpty()) return@LaunchedEffect
+        snapshotFlow {
+            val info = categoryGridState.layoutInfo
+            val total = info.totalItemsCount
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            total to lastVisible
+        }
+            .distinctUntilChanged()
+            .collect { (total, lastVisible) ->
+                if (total <= 0 || lastVisible < 0) return@collect
+                val shouldLoadMore = lastVisible >= total - 6
+                if (shouldLoadMore && visibleCategoryLimit < matchingFolderEntries.size) {
+                    visibleCategoryLimit = (visibleCategoryLimit + CATEGORY_PAGE_SIZE)
+                        .coerceAtMost(matchingFolderEntries.size)
+                }
+            }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -247,8 +317,10 @@ fun UniversalRemoteScreen(
                                 Text(
                                     text = "No more categories are available for this selection. Continue in the Commands tab.",
                                     color = Color(0xFFB7B3CC),
-                                    fontSize = 12.sp,
-                                    lineHeight = 17.sp
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         } else {
@@ -268,8 +340,20 @@ fun UniversalRemoteScreen(
                                 )
                             )
 
+                            if (showingLimitedCategories) {
+                                Text(
+                                    text = "Large list detected (${matchingFolderEntries.size} items). Loaded ${filteredFolderEntries.size}. Scroll down to load more or type to narrow results.",
+                                    color = Color(0xFF8A8899),
+                                    fontSize = 11.sp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 6.dp, bottom = 6.dp)
+                                )
+                            }
+
                             LazyVerticalGrid(
                                 columns = GridCells.Fixed(2),
+                                state = categoryGridState,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f)
@@ -283,21 +367,22 @@ fun UniversalRemoteScreen(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 contentPadding = PaddingValues(10.dp)
                             ) {
-                                items(filteredFolders) { path ->
-                                    val name = if (path == otherPath) unsortedLabel else prettyName(path)
-                                    val iconSourceName = when {
-                                        path == otherPath -> unsortedLabel
-                                        currentPath == root -> name
-                                        else -> prettyName(currentPath)
-                                    }
+                                items(
+                                    items = filteredFolderEntries,
+                                    key = { it.path }
+                                ) { entry ->
                                     FolderButton(
-                                        title = name,
+                                        title = entry.displayName,
                                         onClick = {
                                             folderSearchQuery = ""
-                                            onOpenFolder(path)
+                                            onOpenFolder(entry.path)
                                         },
                                         modifier = Modifier.fillMaxWidth(),
-                                        icon = { CategorySvgIcon(name = iconSourceName, tint = violet, size = 24.dp) }
+                                        icon = if (useCompactFolderTiles) {
+                                            null
+                                        } else {
+                                            { CategorySvgIcon(name = entry.iconSourceName, tint = violet, size = 24.dp) }
+                                        }
                                     )
                                 }
                             }
