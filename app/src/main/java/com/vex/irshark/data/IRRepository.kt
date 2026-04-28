@@ -10,12 +10,14 @@ import java.io.InputStream
 import java.util.zip.ZipInputStream
 
 private const val DB_ROOT = "flipper_irdb"
+private const val IR_PLUS_ROOT = "$DB_ROOT/_Converted_/IR_Plus"
+private const val IR_PLUS_PARENT_PATH = "$DB_ROOT/Other/IR Plus"
 private const val PREFS_NAME = "irshark_prefs"
 private const val KEY_SAVED_REMOTES = "saved_remotes"
 private const val KEY_REMOTE_HISTORY = "remote_history"
 private const val REMOTE_DELIMITER = "||"
 private const val DB_INDEX_CACHE_FILE_PREFIX = "db_index_cache"
-private const val DB_INDEX_CACHE_VERSION = 1
+private const val DB_INDEX_CACHE_VERSION = 3
 private const val DOWNLOADED_DB_BASE_DIR = "flipper_irdb_downloaded"
 
 enum class DbSourceType {
@@ -127,21 +129,27 @@ suspend fun loadFlipperDbIndex(
             val lintConfig = parseLintConfig(context)
 
             loadDbIndexCache(context, cacheKey)?.let { cached ->
-                if (onProgress != null) {
-                    withContext(Dispatchers.Main) {
-                        onProgress(DbLoadProgress(loadedFiles = cached.totalProfiles, totalFiles = cached.totalProfiles))
+                val hasIrPlusInSource = isDbDirectory(context, IR_PLUS_ROOT)
+                val cachedHasIrPlusProfiles = cached.profiles.any { it.path.startsWith("$IR_PLUS_ROOT/") }
+                if (!hasIrPlusInSource || cachedHasIrPlusProfiles) {
+                    if (onProgress != null) {
+                        withContext(Dispatchers.Main) {
+                            onProgress(DbLoadProgress(loadedFiles = cached.totalProfiles, totalFiles = cached.totalProfiles))
+                        }
                     }
+                    return@runCatching cached.copy(
+                        lintConfig = lintConfig,
+                        status = "Loaded ${cached.totalProfiles} profiles (cached)"
+                    )
                 }
-                return@runCatching cached.copy(
-                    lintConfig = lintConfig,
-                    status = "Loaded ${cached.totalProfiles} profiles (cached)"
-                )
             }
 
             val folders = mutableMapOf<String, MutableList<String>>()
             val profilesByFolder = mutableMapOf<String, MutableList<FlipperProfile>>()
             val allProfiles = mutableListOf<FlipperProfile>()
-            val totalFiles = countIrFiles(context, DB_ROOT)
+            val regularFiles = countIrFiles(context, DB_ROOT)
+            val irPlusFiles = countIrFiles(context, IR_PLUS_ROOT)
+            val totalFiles = regularFiles + irPlusFiles
             var loadedFiles = 0
 
             if (onProgress != null) {
@@ -157,6 +165,9 @@ suspend fun loadFlipperDbIndex(
 
                 for (child in children) {
                     val childPath = "$path/$child"
+                    if (childPath == "$DB_ROOT/_Converted_") {
+                        continue
+                    }
                     if (child.endsWith(".ir", ignoreCase = true)) {
                         val commands = parseIrCommands(context, childPath)
                         val profile = FlipperProfile(
@@ -182,7 +193,35 @@ suspend fun loadFlipperDbIndex(
                 }
             }
 
+            suspend fun walkIrPlus(path: String) {
+                val children = listDbChildren(context, path)
+                for (child in children) {
+                    val childPath = "$path/$child"
+                    if (child.endsWith(".ir", ignoreCase = true)) {
+                        val commands = parseIrCommands(context, childPath)
+                        val profile = FlipperProfile(
+                            path = childPath,
+                            parentPath = IR_PLUS_PARENT_PATH,
+                            name = irPlusDisplayName(childPath),
+                            commands = commands
+                        )
+                        allProfiles += profile
+                        loadedFiles += 1
+                        if (onProgress != null && (loadedFiles == totalFiles || loadedFiles % 20 == 0)) {
+                            withContext(Dispatchers.Main) {
+                                onProgress(DbLoadProgress(loadedFiles = loadedFiles, totalFiles = totalFiles))
+                            }
+                        }
+                    } else if (isDbDirectory(context, childPath)) {
+                        walkIrPlus(childPath)
+                    }
+                }
+            }
+
             walk(DB_ROOT)
+            if (isDbDirectory(context, IR_PLUS_ROOT)) {
+                walkIrPlus(IR_PLUS_ROOT)
+            }
 
             val freshIndex = FlipperDbIndex(
                 totalProfiles = allProfiles.size,
@@ -794,11 +833,30 @@ private fun parseIrCodeBlocks(context: Context, assetPath: String): List<ParsedI
     }.getOrElse { emptyList() }
 }
 
+private fun irPlusDisplayName(assetPath: String): String {
+    val fileName = assetPath.substringAfterLast('/').removeSuffix(".ir").replace('_', ' ').trim()
+    val folderName = assetPath.substringBeforeLast('/', "")
+        .substringAfterLast('/')
+        .replace('_', ' ')
+        .trim()
+
+    val base = when {
+        folderName.isBlank() -> fileName
+        folderName.equals("IR Plus", ignoreCase = true) -> fileName
+        else -> "$folderName $fileName"
+    }
+    return base.replace(Regex("\\s+"), " ").trim()
+}
+
 private fun countIrFiles(context: Context, path: String): Int {
+    if (!isDbDirectory(context, path)) return 0
     val children = listDbChildren(context, path)
     var count = 0
     for (child in children) {
         val childPath = "$path/$child"
+        if (childPath == "$DB_ROOT/_Converted_") {
+            continue
+        }
         if (child.endsWith(".ir", ignoreCase = true)) {
             count += 1
         } else {
@@ -1103,8 +1161,14 @@ private fun listDbChildren(context: Context, path: String): List<String> {
         DbSourceType.DEFAULT -> context.assets.list(path)?.sorted().orEmpty()
         DbSourceType.DOWNLOADED -> {
             val dir = logicalPathToDownloadedFile(context, path)
-            if (!dir.exists() || !dir.isDirectory) emptyList()
-            else dir.list()?.sorted().orEmpty()
+            if (dir.exists() && dir.isDirectory) {
+                dir.list()?.sorted().orEmpty()
+            } else if (path == IR_PLUS_ROOT || path.startsWith("$IR_PLUS_ROOT/")) {
+                // Keep bundled IR Plus profiles discoverable even when downloaded DB omits _Converted_.
+                context.assets.list(path)?.sorted().orEmpty()
+            } else {
+                emptyList()
+            }
         }
     }
 }
@@ -1114,7 +1178,11 @@ private fun isDbDirectory(context: Context, path: String): Boolean {
         DbSourceType.DEFAULT -> context.assets.list(path).orEmpty().isNotEmpty()
         DbSourceType.DOWNLOADED -> {
             val file = logicalPathToDownloadedFile(context, path)
-            file.exists() && file.isDirectory
+            if (file.exists() && file.isDirectory) {
+                true
+            } else {
+                (path == IR_PLUS_ROOT || path.startsWith("$IR_PLUS_ROOT/")) && context.assets.list(path).orEmpty().isNotEmpty()
+            }
         }
     }
 }
@@ -1122,7 +1190,16 @@ private fun isDbDirectory(context: Context, path: String): Boolean {
 private fun openDbInputStream(context: Context, path: String): InputStream {
     return when (resolveDbStorage(context).type) {
         DbSourceType.DEFAULT -> context.assets.open(path)
-        DbSourceType.DOWNLOADED -> logicalPathToDownloadedFile(context, path).inputStream()
+        DbSourceType.DOWNLOADED -> {
+            val file = logicalPathToDownloadedFile(context, path)
+            if (file.exists() && file.isFile) {
+                file.inputStream()
+            } else if (path == IR_PLUS_ROOT || path.startsWith("$IR_PLUS_ROOT/")) {
+                context.assets.open(path)
+            } else {
+                file.inputStream()
+            }
+        }
     }
 }
 
