@@ -2,6 +2,7 @@ package com.vex.irshark.util
 
 import android.content.Context
 import android.hardware.ConsumerIrManager
+import android.util.Log
 
 private const val RC5_CARRIER_HZ = 36000
 private const val RC5_HALF_BIT_US = 889
@@ -12,6 +13,8 @@ private const val RC6_T_US = 444
 private const val SIRC_CARRIER_HZ = 40000
 private const val KASEIKYO_CARRIER_HZ = 38000
 private const val PIONEER_CARRIER_HZ = 40000
+private const val MAX_TRANSMIT_PATTERN_US = 2_000_000L
+private const val TAG = "IrTransmitter"
 
 private val rc6Lock = Any()
 private var rc6ToggleBit = false
@@ -58,9 +61,8 @@ fun transmitIrCode(context: Context, codePayload: String): Boolean {
         if (explicitType == "raw" || rawData.isNotBlank()) {
             val frequency = fields["frequency"]?.toIntOrNull()?.coerceIn(30000, 60000) ?: 38000
             val parts = parseIntPattern(rawData)
-            if (parts.size >= 4) {
-                irManager.transmit(frequency, parts)
-                return true
+            if (isTransmitPatternSupported(parts)) {
+                return tryTransmit(irManager, frequency, parts)
             }
             return false
         }
@@ -98,8 +100,8 @@ fun transmitIrCode(context: Context, codePayload: String): Boolean {
                     "RC6" -> RC6_CARRIER_HZ
                     else -> 38000
                 }
-                irManager.transmit(carrier, pattern)
-                return true
+                if (!isTransmitPatternSupported(pattern)) return false
+                return tryTransmit(irManager, carrier, pattern)
             }
             return false
         }
@@ -107,12 +109,37 @@ fun transmitIrCode(context: Context, codePayload: String): Boolean {
 
     // Backward compatibility for old saved payloads containing only raw timing numbers.
     val parts = parseIntPattern(payload)
-    if (parts.size >= 4) {
-        irManager.transmit(38000, parts)
-        return true
+    if (isTransmitPatternSupported(parts)) {
+        return tryTransmit(irManager, 38000, parts)
     }
 
     return false
+}
+
+private fun isTransmitPatternSupported(pattern: IntArray): Boolean {
+    if (pattern.size < 4) return false
+    if (pattern.any { it <= 0 }) return false
+
+    val totalDurationUs = pattern.fold(0L) { acc, part -> acc + part.toLong() }
+    if (totalDurationUs > MAX_TRANSMIT_PATTERN_US) {
+        Log.w(TAG, "Skipping IR transmit: pattern duration $totalDurationUs us exceeds device limit $MAX_TRANSMIT_PATTERN_US us")
+        return false
+    }
+
+    return true
+}
+
+private fun tryTransmit(irManager: ConsumerIrManager, carrierHz: Int, pattern: IntArray): Boolean {
+    return try {
+        irManager.transmit(carrierHz, pattern)
+        true
+    } catch (error: IllegalArgumentException) {
+        Log.w(TAG, "IR transmit rejected by platform: ${error.message}")
+        false
+    } catch (error: RuntimeException) {
+        Log.w(TAG, "IR transmit failed: ${error.message}")
+        false
+    }
 }
 
 private fun parsePayloadFields(payload: String): Map<String, String> {

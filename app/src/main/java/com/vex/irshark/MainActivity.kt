@@ -135,6 +135,8 @@ private enum class Screen {
 
 private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
 
+private const val REMOTE_DB_RESULT_LIMIT = 150
+
 private fun normalizeSearchText(value: String): String {
     return value
         .lowercase()
@@ -719,7 +721,21 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 // Transmit the unique IR payload for the current step (1-based index).
                 val idx = (universalCodeStep - 1).coerceIn(0, payloads.size - 1)
                 val payload = payloads[idx]
-                withContext(Dispatchers.IO) { transmitIrCode(context, payload) }
+                val transmitOk = withContext(Dispatchers.IO) { transmitIrCode(context, payload) }
+                if (!transmitOk) {
+                    if (universalCodeStep >= universalCoverage) {
+                        if (autoStopAtEnd) {
+                            universalAutoSend = false
+                            universalCommand = null
+                            universalCodeStep = 0
+                            break
+                        }
+                        universalCodeStep = 1
+                    } else {
+                        universalCodeStep += 1
+                    }
+                    continue
+                }
                 txPulseActive = true
                 delay((universalIntervalMs.roundToInt().toLong() / 2).coerceAtLeast(70L))
                 txPulseActive = false
@@ -817,7 +833,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         matchesRemoteDbQuery(it, remoteDbQuery)
                     }
                 } else 0
-                val remoteDbShownCount = if (screen == Screen.REMOTE_DB) minOf(remoteDbMatchCount, 300) else 0
+                val remoteDbShownCount = if (screen == Screen.REMOTE_DB) minOf(remoteDbMatchCount, REMOTE_DB_RESULT_LIMIT) else 0
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
                     breadcrumb = if (screen == Screen.IR_FINDER) (irFinderBreadcrumb ?: "Root") else null,
@@ -1064,7 +1080,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     Screen.REMOTE_DB -> {
                         val filtered = dbIndex.profiles.filter {
                             matchesRemoteDbQuery(it, remoteDbQuery)
-                        }.take(300)
+                        }.take(REMOTE_DB_RESULT_LIMIT)
                         RemotesListScreen(
                             emptyText = "No matching remotes in database.",
                             items = filtered.map { it.name to prettyPath(it.parentPath) },

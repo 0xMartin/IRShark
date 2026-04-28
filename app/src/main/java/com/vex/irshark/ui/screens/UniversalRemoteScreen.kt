@@ -104,8 +104,14 @@ fun UniversalRemoteScreen(
     val scope = rememberCoroutineScope()
     val view = LocalView.current
 
-    val estimatedTimeMs = if (autoSend && activeItem != null && activeCoverage > 0) {
-        ((activeCoverage - codeStep) * intervalMs.roundToInt()).toLong()
+    val displayCoverage = when {
+        activeCoverage > 0 -> activeCoverage
+        activeItem != null -> activeItem.profileCoverage
+        else -> 0
+    }
+
+    val estimatedTimeMs = if (autoSend && activeItem != null && displayCoverage > 0) {
+        ((displayCoverage - codeStep.coerceAtLeast(1)) * intervalMs.roundToInt()).toLong()
     } else 0L
     
     val filteredFolders = if (folderSearchQuery.isBlank()) {
@@ -285,11 +291,11 @@ fun UniversalRemoteScreen(
         }
 
         // Auto-send modal
-        if (autoSend && activeItem != null && activeCoverage > 1) {
+        if (autoSend && activeItem != null && displayCoverage > 1) {
             AutoSendProgressModal(
                 commandName = activeItem.displayLabel,
                 currentIndex = codeStep,
-                totalCount = activeCoverage,
+                totalCount = displayCoverage,
                 estimatedTimeRemainingMs = estimatedTimeMs,
                 hapticEnabled = hapticEnabled,
                 onStop = onToggleAutoSend
