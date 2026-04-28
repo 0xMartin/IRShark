@@ -62,7 +62,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
 
 private enum class UniversalTab { Commands, Categories }
 
@@ -74,7 +73,7 @@ fun UniversalRemoteScreen(
     codeStep: Int,
     activeCoverage: Int,
     autoSend: Boolean,
-    intervalMs: Float,
+    estimatedTimeRemainingMs: Long,
     hapticEnabled: Boolean = true,
     onHome: () -> Unit,
     onBackPath: () -> Unit,
@@ -109,10 +108,6 @@ fun UniversalRemoteScreen(
         activeItem != null -> activeItem.profileCoverage
         else -> 0
     }
-
-    val estimatedTimeMs = if (autoSend && activeItem != null && displayCoverage > 0) {
-        ((displayCoverage - codeStep.coerceAtLeast(1)) * intervalMs.roundToInt()).toLong()
-    } else 0L
     
     val filteredFolders = if (folderSearchQuery.isBlank()) {
         folders
@@ -296,7 +291,7 @@ fun UniversalRemoteScreen(
                 commandName = activeItem.displayLabel,
                 currentIndex = codeStep,
                 totalCount = displayCoverage,
-                estimatedTimeRemainingMs = estimatedTimeMs,
+                estimatedTimeRemainingMs = estimatedTimeRemainingMs,
                 hapticEnabled = hapticEnabled,
                 onStop = onToggleAutoSend
             )

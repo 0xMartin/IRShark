@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -137,6 +138,25 @@ private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
 
 private const val REMOTE_DB_RESULT_LIMIT = 150
 
+private fun estimateUniversalRemainingMs(
+    processedCount: Int,
+    totalCount: Int,
+    startedAtMs: Long,
+    fallbackPerCodeMs: Long
+): Long {
+    if (totalCount <= 0) return 0L
+    val safeProcessed = processedCount.coerceAtLeast(0)
+    val remaining = (totalCount - safeProcessed).coerceAtLeast(0)
+    if (remaining == 0) return 0L
+    if (safeProcessed <= 0 || startedAtMs <= 0L) {
+        return remaining * fallbackPerCodeMs.coerceAtLeast(1L)
+    }
+
+    val elapsedMs = (System.currentTimeMillis() - startedAtMs).coerceAtLeast(1L)
+    val averagePerCodeMs = elapsedMs.toDouble() / safeProcessed.toDouble()
+    return (remaining * averagePerCodeMs).toLong().coerceAtLeast(0L)
+}
+
 private fun normalizeSearchText(value: String): String {
     return value
         .lowercase()
@@ -176,6 +196,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var universalPath by rememberSaveable { mutableStateOf(dbRootPath()) }
     var universalCommand by rememberSaveable { mutableStateOf<UniversalCommandItem?>(null) }
     var universalCodeStep by rememberSaveable { mutableIntStateOf(0) }
+    var universalProcessedCount by rememberSaveable { mutableIntStateOf(0) }
+    var universalStartedAtMs by remember { mutableLongStateOf(0L) }
     var universalAutoSend by rememberSaveable { mutableStateOf(false) }
     var universalIntervalMs by rememberSaveable { mutableStateOf(250f) }
     var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
@@ -710,6 +732,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
     val universalCoverage = universalUniquePayloads.size
+    val universalEstimatedRemainingMs = estimateUniversalRemainingMs(
+        processedCount = universalProcessedCount,
+        totalCount = universalCoverage.takeIf { it > 0 } ?: (universalCommand?.profileCoverage ?: 0),
+        startedAtMs = universalStartedAtMs,
+        fallbackPerCodeMs = universalIntervalMs.roundToInt().toLong()
+    )
 
     LaunchedEffect(universalAutoSend, universalCommand, universalCoverage, universalIntervalMs) {
         if (!universalAutoSend || universalCommand == null || universalCoverage <= 0) return@LaunchedEffect
@@ -722,15 +750,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 val idx = (universalCodeStep - 1).coerceIn(0, payloads.size - 1)
                 val payload = payloads[idx]
                 val transmitOk = withContext(Dispatchers.IO) { transmitIrCode(context, payload) }
+                universalProcessedCount = (universalProcessedCount + 1).coerceAtMost(universalCoverage)
                 if (!transmitOk) {
                     if (universalCodeStep >= universalCoverage) {
                         if (autoStopAtEnd) {
                             universalAutoSend = false
                             universalCommand = null
                             universalCodeStep = 0
+                            universalProcessedCount = 0
+                            universalStartedAtMs = 0L
                             break
                         }
                         universalCodeStep = 1
+                        universalProcessedCount = 0
+                        universalStartedAtMs = System.currentTimeMillis()
                     } else {
                         universalCodeStep += 1
                     }
@@ -745,9 +778,13 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         universalAutoSend = false
                         universalCommand = null
                         universalCodeStep = 0
+                        universalProcessedCount = 0
+                        universalStartedAtMs = 0L
                         break
                     }
                     universalCodeStep = 1
+                    universalProcessedCount = 0
+                    universalStartedAtMs = System.currentTimeMillis()
                 } else {
                     universalCodeStep += 1
                 }
@@ -945,13 +982,15 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             dbIndex = dbIndex,
                             currentPath = universalPath,
                             activeItem = universalCommand,
-                            codeStep = universalCodeStep,
+                            codeStep = universalProcessedCount,
                             activeCoverage = universalCoverage,
                             autoSend = universalAutoSend,
-                            intervalMs = universalIntervalMs,
+                            estimatedTimeRemainingMs = universalEstimatedRemainingMs,
                             hapticEnabled = hapticFeedback,
                             onHome = {
                                 universalAutoSend = false
+                                universalProcessedCount = 0
+                                universalStartedAtMs = 0L
                                 screen = Screen.HOME
                             },
                             onBackPath = {
@@ -959,6 +998,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     universalPath = it
                                     universalCommand = null
                                     universalCodeStep = 0
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = 0L
                                     universalAutoSend = false
                                 }
                             },
@@ -966,6 +1007,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 universalPath = next
                                 universalCommand = null
                                 universalCodeStep = 0
+                                universalProcessedCount = 0
+                                universalStartedAtMs = 0L
                                 universalAutoSend = false
                             },
                             onCommandClick = { item ->
@@ -974,10 +1017,14 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 if (item.profileCoverage <= 1) {
                                     universalCommand = null
                                     universalCodeStep = 0
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = 0L
                                     universalAutoSend = false
                                     emitTxPulse()
                                 } else {
                                     universalCommand = item
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = System.currentTimeMillis()
                                     universalAutoSend = true
                                     universalCodeStep = 1
                                 }
@@ -987,8 +1034,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     universalAutoSend = false
                                     universalCommand = null
                                     universalCodeStep = 0
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = 0L
                                     txPulseActive = false
                                 } else {
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = System.currentTimeMillis()
                                     universalAutoSend = true
                                 }
                             },
