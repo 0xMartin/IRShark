@@ -88,6 +88,7 @@ fun UniversalRemoteScreen(
     val context = LocalContext.current
     val root = dbRootPath()
     val otherPath = "$root/Other"
+    val unsortedLabel = "Unsorted"
     val isOtherRoot = currentPath == otherPath
 
     val folders = remember(dbIndex, currentPath, includeUnsortedRemotes) {
@@ -105,11 +106,13 @@ fun UniversalRemoteScreen(
     }
 
     // Initially show raw profile counts; replaced by deduplicated counts once IO is done.
-    val resolvedCommands = resolveUniversalCommandsForPath(
-        dbIndex = dbIndex,
-        folderPath = currentPath,
-        includeConverted = includeUnsortedRemotes
-    )
+    val resolvedCommands = remember(currentPath, includeUnsortedRemotes, dbIndex.totalProfiles) {
+        resolveUniversalCommandsForPath(
+            dbIndex = dbIndex,
+            folderPath = currentPath,
+            includeConverted = includeUnsortedRemotes
+        )
+    }
     var dedupedCommands by remember(currentPath) { mutableStateOf<List<UniversalCommandItem>?>(null) }
     LaunchedEffect(currentPath, includeUnsortedRemotes, dbIndex.totalProfiles) {
         dedupedCommands = withContext(Dispatchers.IO) {
@@ -137,10 +140,12 @@ fun UniversalRemoteScreen(
         else -> 0
     }
     
-    val filteredFolders = if (folderSearchQuery.isBlank()) {
-        folders
-    } else {
-        folders.filter { prettyName(it).contains(folderSearchQuery, ignoreCase = true) }
+    val filteredFolders = remember(folders, folderSearchQuery) {
+        if (folderSearchQuery.isBlank()) {
+            folders
+        } else {
+            folders.filter { prettyName(it).contains(folderSearchQuery, ignoreCase = true) }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -208,6 +213,8 @@ fun UniversalRemoteScreen(
 
                 when (selectedTab) {
                     UniversalTab.Categories -> {
+                        val hasDeeperCategories = folders.isNotEmpty()
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -226,53 +233,73 @@ fun UniversalRemoteScreen(
                             )
                         }
 
-                        OutlinedTextField(
-                            value = folderSearchQuery,
-                            onValueChange = { folderSearchQuery = it },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text("Search categories") },
-                            textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
-                            shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = violet.copy(alpha = 0.45f),
-                                unfocusedBorderColor = violet.copy(alpha = 0.2f),
-                                focusedContainerColor = Color(0xFF13101E),
-                                unfocusedContainerColor = Color(0xFF13101E)
-                            )
-                        )
-
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp))
-                                .border(
-                                    1.dp,
-                                    violet.copy(alpha = 0.15f),
-                                    RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp)
-                                ),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            contentPadding = PaddingValues(10.dp)
-                        ) {
-                            items(filteredFolders) { path ->
-                                val name = if (path == otherPath) "Other" else prettyName(path)
-                                val iconSourceName = when {
-                                    path == otherPath -> "Other"
-                                    currentPath == root -> name
-                                    else -> prettyName(currentPath)
-                                }
-                                FolderButton(
-                                    title = name,
-                                    onClick = {
-                                        folderSearchQuery = ""
-                                        onOpenFolder(path)
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    icon = { CategorySvgIcon(name = iconSourceName, tint = violet, size = 24.dp) }
+                        if (!hasDeeperCategories) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF13101E))
+                                    .border(1.dp, violet.copy(alpha = 0.16f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No more categories are available for this selection. Continue in the Commands tab.",
+                                    color = Color(0xFFB7B3CC),
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp
                                 )
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = folderSearchQuery,
+                                onValueChange = { folderSearchQuery = it },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Search categories") },
+                                textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
+                                shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = violet.copy(alpha = 0.45f),
+                                    unfocusedBorderColor = violet.copy(alpha = 0.2f),
+                                    focusedContainerColor = Color(0xFF13101E),
+                                    unfocusedContainerColor = Color(0xFF13101E)
+                                )
+                            )
+
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp))
+                                    .border(
+                                        1.dp,
+                                        violet.copy(alpha = 0.15f),
+                                        RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp)
+                                    ),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(10.dp)
+                            ) {
+                                items(filteredFolders) { path ->
+                                    val name = if (path == otherPath) unsortedLabel else prettyName(path)
+                                    val iconSourceName = when {
+                                        path == otherPath -> unsortedLabel
+                                        currentPath == root -> name
+                                        else -> prettyName(currentPath)
+                                    }
+                                    FolderButton(
+                                        title = name,
+                                        onClick = {
+                                            folderSearchQuery = ""
+                                            onOpenFolder(path)
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        icon = { CategorySvgIcon(name = iconSourceName, tint = violet, size = 24.dp) }
+                                    )
+                                }
                             }
                         }
                     }

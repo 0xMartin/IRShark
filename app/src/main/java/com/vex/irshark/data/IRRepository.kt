@@ -22,6 +22,8 @@ private const val DB_INDEX_CACHE_FILE_PREFIX = "db_index_cache"
 private const val DB_INDEX_CACHE_VERSION = 4
 private const val DOWNLOADED_DB_BASE_DIR = "flipper_irdb_downloaded"
 private const val IR_CODE_BLOCK_CACHE_LIMIT = 256
+private const val UNIQUE_PAYLOAD_CACHE_LIMIT = 256
+private const val UNSORTED_DISPLAY_NAME = "Unsorted"
 
 private data class ConvertedDbSource(
     val rootPath: String,
@@ -46,6 +48,13 @@ private val irCodeBlockCacheLock = Any()
 private val irCodeBlockCache = object : LinkedHashMap<String, List<ParsedIrCodeBlock>>(IR_CODE_BLOCK_CACHE_LIMIT, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<ParsedIrCodeBlock>>?): Boolean {
         return size > IR_CODE_BLOCK_CACHE_LIMIT
+    }
+}
+
+private val uniquePayloadCacheLock = Any()
+private val uniquePayloadCache = object : LinkedHashMap<String, List<String>>(UNIQUE_PAYLOAD_CACHE_LIMIT, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<String>>?): Boolean {
+        return size > UNIQUE_PAYLOAD_CACHE_LIMIT
     }
 }
 
@@ -566,9 +575,28 @@ fun getUniquePayloadsForCommand(
     command: String,
     includeConverted: Boolean = true
 ): List<String> {
-    return profilesForCommand(dbIndex, folderPath, command, includeConverted)
+    val cacheKey = buildString {
+        append(resolveDbStorage(context).cacheKey)
+        append('|')
+        append(folderPath)
+        append('|')
+        append(includeConverted)
+        append('|')
+        append(command.lowercase())
+    }
+
+    synchronized(uniquePayloadCacheLock) {
+        uniquePayloadCache[cacheKey]?.let { return it }
+    }
+
+    val payloads = profilesForCommand(dbIndex, folderPath, command, includeConverted)
         .mapNotNull { getIrCodePayload(context, it.path, command) }
         .distinctBy { it.trim() }
+
+    synchronized(uniquePayloadCacheLock) {
+        uniquePayloadCache[cacheKey] = payloads
+    }
+    return payloads
 }
 
 /**
@@ -651,7 +679,7 @@ fun parentPath(path: String): String? {
 
 fun prettyName(path: String): String {
     val name = path.substringAfterLast('/').ifBlank { path }
-    return name.replace('_', ' ')
+    return prettifyDisplaySegment(name)
 }
 
 fun prettyPath(path: String): String {
@@ -659,8 +687,8 @@ fun prettyPath(path: String): String {
         .removePrefix("$DB_ROOT/")
         .removePrefix(DB_ROOT)
         .ifBlank { "Root" }
-        .replace('/', ' ')
-        .replace('_', ' ')
+        .split('/')
+        .joinToString(" ") { segment -> prettifyDisplaySegment(segment) }
 }
 
 fun prettyPathWithChevron(path: String): String {
@@ -672,7 +700,12 @@ fun prettyPathWithChevron(path: String): String {
 
     return normalized
         .split('/')
-        .joinToString(" > ") { segment -> segment.replace('_', ' ') }
+        .joinToString(" > ") { segment -> prettifyDisplaySegment(segment) }
+}
+
+private fun prettifyDisplaySegment(segment: String): String {
+    val display = segment.replace('_', ' ')
+    return if (display.equals("Other", ignoreCase = true)) UNSORTED_DISPLAY_NAME else display
 }
 
 fun dbRootPath(): String = DB_ROOT
@@ -1333,6 +1366,10 @@ private fun clearDbIndexCaches(context: Context) {
 
     synchronized(irCodeBlockCacheLock) {
         irCodeBlockCache.clear()
+    }
+
+    synchronized(uniquePayloadCacheLock) {
+        uniquePayloadCache.clear()
     }
 }
 
