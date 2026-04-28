@@ -135,6 +135,29 @@ private enum class Screen {
 
 private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
 
+private fun normalizeSearchText(value: String): String {
+    return value
+        .lowercase()
+        .replace('_', ' ')
+        .replace('-', ' ')
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+private fun tokenizeSearchQuery(query: String): List<String> {
+    val normalized = normalizeSearchText(query)
+    if (normalized.isBlank()) return emptyList()
+    return normalized.split(' ').filter { it.isNotBlank() }
+}
+
+private fun matchesRemoteDbQuery(profile: FlipperProfile, query: String): Boolean {
+    val tokens = tokenizeSearchQuery(query)
+    if (tokens.isEmpty()) return true
+
+    val searchable = normalizeSearchText("${profile.name} ${prettyPath(profile.parentPath)}")
+    return tokens.all { token -> searchable.contains(token) }
+}
+
 // ── Root composable with navigation ──────────────────────────────────────────
 
 @Composable
@@ -791,9 +814,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER)) {
                 val remoteDbMatchCount = if (screen == Screen.REMOTE_DB) {
                     dbIndex.profiles.count {
-                        remoteDbQuery.isBlank() ||
-                            it.name.contains(remoteDbQuery, ignoreCase = true) ||
-                            prettyPath(it.parentPath).contains(remoteDbQuery, ignoreCase = true)
+                        matchesRemoteDbQuery(it, remoteDbQuery)
                     }
                 } else 0
                 val remoteDbShownCount = if (screen == Screen.REMOTE_DB) minOf(remoteDbMatchCount, 300) else 0
@@ -1042,9 +1063,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
                     Screen.REMOTE_DB -> {
                         val filtered = dbIndex.profiles.filter {
-                            remoteDbQuery.isBlank() ||
-                                it.name.contains(remoteDbQuery, ignoreCase = true) ||
-                                prettyPath(it.parentPath).contains(remoteDbQuery, ignoreCase = true)
+                            matchesRemoteDbQuery(it, remoteDbQuery)
                         }.take(300)
                         RemotesListScreen(
                             emptyText = "No matching remotes in database.",
