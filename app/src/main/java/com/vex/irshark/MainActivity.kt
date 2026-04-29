@@ -1,5 +1,7 @@
 package com.vex.irshark
 
+import android.content.ClipData
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,15 +19,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -35,43 +41,73 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.vex.irshark.data.FlipperDbIndex
+import com.vex.irshark.data.DbLoadProgress
+import com.vex.irshark.data.FlipperProfile
+import com.vex.irshark.data.RemoteHistoryEntry
 import com.vex.irshark.data.SavedRemote
 import com.vex.irshark.data.SavedRemoteButton
 import com.vex.irshark.data.UniversalCommandItem
-import com.vex.irshark.data.countProfilesForCommand
+import com.vex.irshark.data.getUniquePayloadsForCommand
+import com.vex.irshark.data.categorySeedFromPath
+import com.vex.irshark.data.bundledDbVersionLabel
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.exportRemotesToJson
+import com.vex.irshark.data.exportMacrosToJson
 import com.vex.irshark.data.importRemotesFromJson
+import com.vex.irshark.data.importMacrosFromJson
+import com.vex.irshark.data.isDownloadedDbAvailable
 import com.vex.irshark.data.loadAppSettings
-import com.vex.irshark.data.transmitIrCode
+import com.vex.irshark.data.loadRemoteHistory
+import com.vex.irshark.data.loadSavedMacros
+import com.vex.irshark.data.saveSavedMacros
+import com.vex.irshark.data.SavedMacro
+import com.vex.irshark.data.recordRemoteHistory
+import com.vex.irshark.data.resolveEffectiveDbSource
+import com.vex.irshark.util.transmitIrCode
 import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.data.loadFlipperDbIndex
 import com.vex.irshark.data.loadSavedRemotes
 import com.vex.irshark.data.parentPath
 import com.vex.irshark.data.prettyPath
 import com.vex.irshark.data.saveAppSettings
+import com.vex.irshark.data.saveRemoteHistory
 import com.vex.irshark.data.saveSavedRemotes
+import com.vex.irshark.data.importFlipperDatabaseFromZip
 import com.vex.irshark.ui.components.AppHeader
 import com.vex.irshark.ui.components.RemoteEditorDialog
 import com.vex.irshark.ui.components.AppToastController
 import com.vex.irshark.ui.components.AppToastHost
+import com.vex.irshark.ui.components.RemoteControlNavBar
 import com.vex.irshark.ui.components.SectionNavBar
 import com.vex.irshark.ui.screens.HomeScreen
+import com.vex.irshark.ui.screens.MacroEditorScreen
+import com.vex.irshark.ui.screens.MacroListScreen
+import com.vex.irshark.ui.screens.MacroDoneScreen
+import com.vex.irshark.ui.screens.MacroRunScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
 import com.vex.irshark.ui.screens.SettingsScreen
+import com.vex.irshark.ui.screens.IrFinderScreen
 import com.vex.irshark.ui.screens.SplashScreen
 import com.vex.irshark.ui.screens.UniversalRemoteScreen
 import com.vex.irshark.ui.theme.IRSharkTheme
+import com.vex.irshark.macro.MacroEngine
+import com.vex.irshark.macro.MacroRunState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.util.UUID
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -95,16 +131,61 @@ class MainActivity : ComponentActivity() {
 // ── Navigation state ──────────────────────────────────────────────────────────
 
 private enum class Screen {
-    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS
+    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS, MACROS, MACRO_EDITOR, MACRO_RUN, IR_FINDER
 }
 
-private enum class ControlSource { MY_REMOTES, REMOTE_DB }
+private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
+
+private const val REMOTE_DB_RESULT_LIMIT = 150
+
+private fun estimateUniversalRemainingMs(
+    processedCount: Int,
+    totalCount: Int,
+    startedAtMs: Long,
+    fallbackPerCodeMs: Long
+): Long {
+    if (totalCount <= 0) return 0L
+    val safeProcessed = processedCount.coerceAtLeast(0)
+    val remaining = (totalCount - safeProcessed).coerceAtLeast(0)
+    if (remaining == 0) return 0L
+    if (safeProcessed <= 0 || startedAtMs <= 0L) {
+        return remaining * fallbackPerCodeMs.coerceAtLeast(1L)
+    }
+
+    val elapsedMs = (System.currentTimeMillis() - startedAtMs).coerceAtLeast(1L)
+    val averagePerCodeMs = elapsedMs.toDouble() / safeProcessed.toDouble()
+    return (remaining * averagePerCodeMs).toLong().coerceAtLeast(0L)
+}
+
+private fun normalizeSearchText(value: String): String {
+    return value
+        .lowercase()
+        .replace('_', ' ')
+        .replace('-', ' ')
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}
+
+private fun tokenizeSearchQuery(query: String): List<String> {
+    val normalized = normalizeSearchText(query)
+    if (normalized.isBlank()) return emptyList()
+    return normalized.split(' ').filter { it.isNotBlank() }
+}
+
+private fun matchesRemoteDbQuery(profile: FlipperProfile, query: String): Boolean {
+    val tokens = tokenizeSearchQuery(query)
+    if (tokens.isEmpty()) return true
+
+    val searchable = normalizeSearchText("${profile.name} ${prettyPath(profile.parentPath)}")
+    return tokens.all { token -> searchable.contains(token) }
+}
 
 // ── Root composable with navigation ──────────────────────────────────────────
 
 @Composable
 fun IRSharkApp(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val view = LocalView.current
 
     var dbIndex by remember { mutableStateOf(FlipperDbIndex()) }
     var savedRemotes by remember { mutableStateOf(listOf<SavedRemote>()) }
@@ -115,18 +196,87 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var universalPath by rememberSaveable { mutableStateOf(dbRootPath()) }
     var universalCommand by rememberSaveable { mutableStateOf<UniversalCommandItem?>(null) }
     var universalCodeStep by rememberSaveable { mutableIntStateOf(0) }
+    var universalProcessedCount by rememberSaveable { mutableIntStateOf(0) }
+    var universalStartedAtMs by remember { mutableLongStateOf(0L) }
+    var universalIncludeUnsorted by rememberSaveable { mutableStateOf(false) }
     var universalAutoSend by rememberSaveable { mutableStateOf(false) }
     var universalIntervalMs by rememberSaveable { mutableStateOf(250f) }
     var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
     var showTxLed by rememberSaveable { mutableStateOf(true) }
+    var hapticFeedback by rememberSaveable { mutableStateOf(true) }
+    var preferDownloadedDb by rememberSaveable { mutableStateOf(false) }
+    var downloadedDbTag by rememberSaveable { mutableStateOf<String?>(null) }
+    var downloadedDbAvailable by remember { mutableStateOf(false) }
+    var effectiveDbSourceLabel by remember { mutableStateOf("Default") }
+    var irFinderLastTested by rememberSaveable { mutableStateOf<String?>(null) }
     var txPulseActive by remember { mutableStateOf(false) }
     var settingsDirty by remember { mutableStateOf(false) }
     var settingsToastPending by remember { mutableStateOf(false) }
     var settingsLoaded by remember { mutableStateOf(false) }
+    var dbLoaded by remember { mutableStateOf(false) }
+    var dbLoadProgress by remember { mutableStateOf(DbLoadProgress()) }
     var remotesLoaded by remember { mutableStateOf(false) }
     var txPulseJob by remember { mutableStateOf<Job?>(null) }
     val toastController = remember { AppToastController() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(universalIncludeUnsorted, universalPath) {
+        if (!universalIncludeUnsorted && universalPath.startsWith("${dbRootPath()}/Other")) {
+            universalPath = dbRootPath()
+        }
+    }
+
+    // Macros
+    var savedMacros by remember { mutableStateOf(listOf<SavedMacro>()) }
+    var macrosLoaded by remember { mutableStateOf(false) }
+    var editingMacroId by remember { mutableStateOf<String?>(null) }
+    var macrosQuery by remember { mutableStateOf("") }
+    var pendingDeleteMacroId by remember { mutableStateOf<String?>(null) }
+    val macroEngine = remember { MacroEngine(context) }
+    val macroState by macroEngine.state.collectAsState()
+    LaunchedEffect(hapticFeedback) { macroEngine.hapticEnabled = hapticFeedback }
+
+    fun shareJsonFile(fileStem: String, subject: String, chooserTitle: String, json: String) {
+        scope.launch {
+            runCatching {
+                val uri = withContext(Dispatchers.IO) {
+                    val safeStem = fileStem
+                        .trim()
+                        .ifBlank { "irshark_export" }
+                        .replace(Regex("[^A-Za-z0-9._-]"), "_")
+                    val file = File(context.cacheDir, "${safeStem}_${System.currentTimeMillis()}.json")
+                    file.writeText(json, Charsets.UTF_8)
+                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                }
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    clipData = ClipData.newRawUri("IRShark JSON", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                context.startActivity(Intent.createChooser(intent, chooserTitle))
+            }.onFailure {
+                toastController.show("Failed to prepare share file")
+            }
+        }
+    }
+
+    fun countImportEntries(json: String, wrapperKey: String): Int {
+        val trimmed = json.trim()
+        if (trimmed.isBlank()) return 0
+        return runCatching {
+            when {
+                trimmed.startsWith("[") -> JSONArray(trimmed).length()
+                trimmed.startsWith("{") -> {
+                    val root = JSONObject(trimmed)
+                    root.optJSONArray(wrapperKey)?.length() ?: 1
+                }
+                else -> 0
+            }
+        }.getOrDefault(0)
+    }
 
     // ── Import / Export launchers ─────────────────────────────────────────────
     val exportLauncher = rememberLauncherForActivityResult(
@@ -152,13 +302,91 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 }
                 if (json != null) {
                     val imported = importRemotesFromJson(json)
-                    if (imported.isEmpty()) {
-                        toastController.show("No valid remotes in file")
-                    } else {
-                        val existingNames = savedRemotes.map { it.name.lowercase() }.toSet()
-                        val newOnes = imported.filter { it.name.lowercase() !in existingNames }
+                    val totalEntries = countImportEntries(json, "remotes")
+                    val invalidEntries = (totalEntries - imported.size).coerceAtLeast(0)
+                    val existingNames = savedRemotes.map { it.name.lowercase() }.toSet()
+                    val newOnes = imported.filter { it.name.lowercase() !in existingNames }
+                    val duplicateEntries = imported.size - newOnes.size
+
+                    if (newOnes.isNotEmpty()) {
                         savedRemotes = savedRemotes + newOnes
-                        toastController.show("Imported ${newOnes.size} remotes (${imported.size - newOnes.size} skipped)")
+                    }
+
+                    val health = "Remote import: +${newOnes.size}, dup $duplicateEntries, invalid $invalidEntries"
+                    if (newOnes.isEmpty()) {
+                        toastController.show("No remotes imported. $health")
+                    } else {
+                        toastController.show(health)
+                    }
+                }
+            }
+        }
+    }
+    val macroExportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val json = exportMacrosToJson(savedMacros)
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { stream -> stream.write(json.toByteArray()) }
+                }
+                toastController.show("Exported ${savedMacros.size} macros")
+            }
+        }
+    }
+    val macroImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri: android.net.Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val json = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { stream -> stream.readBytes().toString(Charsets.UTF_8) }
+                }
+                if (json != null) {
+                    val imported = importMacrosFromJson(json)
+                    val totalEntries = countImportEntries(json, "macros")
+                    val invalidEntries = (totalEntries - imported.size).coerceAtLeast(0)
+                    if (imported.isEmpty()) {
+                        toastController.show("No valid macros in file (invalid $invalidEntries)")
+                    } else {
+                        val takenNames = savedMacros.map { it.name.lowercase() }.toMutableSet()
+                        val takenIds = savedMacros.map { it.id }.toMutableSet()
+                        var renamedCount = 0
+                        var regeneratedIdCount = 0
+
+                        fun uniqueMacroName(baseName: String): String {
+                            val base = baseName.trim().ifBlank { "Macro" }
+                            if (base.lowercase() !in takenNames) return base
+                            var suffix = 2
+                            while ("$base $suffix".lowercase() in takenNames) {
+                                suffix += 1
+                            }
+                            return "$base $suffix"
+                        }
+
+                        val normalized = imported.map { macro ->
+                            val resolvedName = uniqueMacroName(macro.name)
+                            if (!resolvedName.equals(macro.name, ignoreCase = false)) {
+                                renamedCount += 1
+                            }
+                            takenNames += resolvedName.lowercase()
+
+                            val resolvedId = if (macro.id.isBlank() || macro.id in takenIds) {
+                                regeneratedIdCount += 1
+                                UUID.randomUUID().toString()
+                            } else {
+                                macro.id
+                            }
+                            takenIds += resolvedId
+
+                            macro.copy(id = resolvedId, name = resolvedName)
+                        }
+
+                        savedMacros = savedMacros + normalized
+                        toastController.show(
+                            "Macro import: +${normalized.size}, renamed $renamedCount, invalid $invalidEntries, id-fix $regeneratedIdCount"
+                        )
                     }
                 }
             }
@@ -174,6 +402,56 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
+    fun reloadDbIndex() {
+        scope.launch {
+            dbLoaded = false
+            dbLoadProgress = DbLoadProgress()
+            dbIndex = loadFlipperDbIndex(context) { progress ->
+                dbLoadProgress = progress
+            }
+            downloadedDbAvailable = isDownloadedDbAvailable(context)
+            effectiveDbSourceLabel = if (resolveEffectiveDbSource(context).name == "DOWNLOADED") {
+                "Downloaded"
+            } else {
+                "Default"
+            }
+            dbLoaded = true
+        }
+    }
+
+    val zipPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                    ?: return@withContext com.vex.irshark.data.FlipperDbUpdateResult(
+                        success = false,
+                        updated = false,
+                        latestTag = null,
+                        message = "Cannot open selected file"
+                    )
+                inputStream.use { importFlipperDatabaseFromZip(context, it) }
+            }
+            if (result.success) {
+                downloadedDbTag = result.latestTag
+                downloadedDbAvailable = isDownloadedDbAvailable(context)
+                settingsDirty = true
+                if (preferDownloadedDb) {
+                    reloadDbIndex()
+                } else {
+                    effectiveDbSourceLabel = if (resolveEffectiveDbSource(context).name == "DOWNLOADED") {
+                        "Downloaded"
+                    } else {
+                        "Default"
+                    }
+                }
+            }
+            toastController.show(result.message)
+        }
+    }
+
     // List search queries
     var myRemotesQuery by rememberSaveable { mutableStateOf("") }
     var remoteDbQuery by rememberSaveable { mutableStateOf("") }
@@ -186,11 +464,41 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var controlSource by rememberSaveable { mutableStateOf(ControlSource.REMOTE_DB) }
     var controlSelectedCommand by rememberSaveable { mutableStateOf<String?>(null) }
     var controlTxCount by rememberSaveable { mutableIntStateOf(0) }
+    var controlReturnScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
+    var controlHistoryEntry by remember { mutableStateOf<RemoteHistoryEntry?>(null) }
+    var remoteHistory by remember { mutableStateOf(listOf<RemoteHistoryEntry>()) }
+    var historyLoaded by remember { mutableStateOf(false) }
 
     // Editor state for custom/editable remotes
     var showRemoteEditor by remember { mutableStateOf(false) }
     var editingRemoteIndex by remember { mutableStateOf<Int?>(null) }
     var pendingDeleteRemoteIndex by remember { mutableStateOf<Int?>(null) }
+
+    // IR Finder nav state (lifted from IrFinderScreen)
+    var irFinderBreadcrumb by remember { mutableStateOf<String?>(null) }
+    var irFinderOnBack by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var irFinderOnUndo by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var irFinderCategory by rememberSaveable { mutableStateOf("") }  // Preserve category/brand across navigation
+    var irFinderBrand by rememberSaveable { mutableStateOf("") }
+    var irFinderInTestButtons by rememberSaveable { mutableStateOf(false) }  // Track if we're in final step
+    var irFinderSelectedButtonIdx by rememberSaveable { mutableIntStateOf(-1) }  // Persist selected button
+    // Serialize finder buttons state for persistence across app lifecycle
+    var irFinderButtonsSerialized by rememberSaveable { mutableStateOf("") }
+    var showConfirmNavDialog by remember { mutableStateOf(false) }
+    var confirmNavReason by remember { mutableStateOf("") }
+    // Clear IR Finder nav state when navigating away
+    LaunchedEffect(screen) {
+        if (screen != Screen.IR_FINDER) {
+            irFinderBreadcrumb = null
+            irFinderOnBack = null
+            irFinderOnUndo = null
+        }
+    }
+
+    // Blink TX LED whenever the macro engine transmits an IR command
+    LaunchedEffect(macroEngine) {
+        macroEngine.irTransmitEvent.collect { emitTxPulse() }
+    }
 
     fun uniqueRemoteName(baseName: String, excludeIndex: Int? = null): String {
         val taken = savedRemotes
@@ -228,16 +536,153 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
+    fun rememberRemoteOpen(
+        name: String,
+        profilePath: String,
+        sourceProfilePath: String?,
+        iconName: String?,
+        snapshotButtons: List<SavedRemoteButton>
+    ) {
+        remoteHistory = recordRemoteHistory(
+            history = remoteHistory,
+            entry = RemoteHistoryEntry(
+                name = name,
+                profilePath = profilePath,
+                sourceProfilePath = sourceProfilePath,
+                iconName = iconName,
+                openedAtEpochMs = System.currentTimeMillis(),
+                buttons = snapshotButtons
+            )
+        )
+    }
+
+    fun openRemoteControl(
+        name: String,
+        profilePath: String,
+        buttons: List<SavedRemoteButton>,
+        source: ControlSource,
+        returnScreen: Screen,
+        remoteIndex: Int = -1,
+        iconName: String? = null,
+        sourceProfilePath: String? = null,
+        historySnapshotButtons: List<SavedRemoteButton> = emptyList()
+    ) {
+        controlProfilePath = profilePath
+        controlName = name
+        controlButtons = buttons
+        controlRemoteIndex = remoteIndex
+        controlSource = source
+        controlSelectedCommand = null
+        controlTxCount = 0
+        controlReturnScreen = returnScreen
+        controlHistoryEntry = if (source == ControlSource.HISTORY) {
+            RemoteHistoryEntry(
+                name = name,
+                profilePath = profilePath,
+                sourceProfilePath = sourceProfilePath,
+                iconName = iconName,
+                openedAtEpochMs = System.currentTimeMillis(),
+                buttons = historySnapshotButtons
+            )
+        } else {
+            null
+        }
+        rememberRemoteOpen(
+            name = name,
+            profilePath = profilePath,
+            sourceProfilePath = sourceProfilePath,
+            iconName = iconName,
+            snapshotButtons = historySnapshotButtons
+        )
+        screen = Screen.REMOTE_CONTROL
+    }
+
+    fun openDatabaseRemote(
+        profile: FlipperProfile,
+        source: ControlSource,
+        returnScreen: Screen,
+        historyName: String = profile.name,
+        iconNameOverride: String? = null
+    ) {
+        val seededButtons = profile.commands.map { cmd ->
+            SavedRemoteButton(label = cmd, code = "")
+        }
+        val iconName = iconNameOverride ?: categorySeedFromPath(profile.parentPath)
+        openRemoteControl(
+            name = historyName,
+            profilePath = profile.path,
+            buttons = seededButtons,
+            source = source,
+            returnScreen = returnScreen,
+            iconName = iconName,
+            sourceProfilePath = profile.path,
+            historySnapshotButtons = emptyList()
+        )
+
+        scope.launch {
+            val dbCodes = loadDbIrCodeOptions(context, profile.path)
+            val hydrated = hydrateMissingCodesFromDb(seededButtons, dbCodes)
+            if (controlProfilePath == profile.path && controlName == historyName) {
+                controlButtons = hydrated
+            }
+        }
+    }
+
+    fun openHistoryRemote(entry: RemoteHistoryEntry) {
+        val sourceProfilePath = entry.sourceProfilePath
+        if (!sourceProfilePath.isNullOrBlank()) {
+            val profile = dbIndex.profiles.firstOrNull { it.path == sourceProfilePath }
+            if (profile != null) {
+                openDatabaseRemote(
+                    profile = profile,
+                    source = ControlSource.HISTORY,
+                    returnScreen = Screen.SETTINGS,
+                    historyName = entry.name,
+                    iconNameOverride = entry.iconName
+                )
+            }
+        } else if (entry.buttons.isNotEmpty()) {
+            openRemoteControl(
+                name = entry.name,
+                profilePath = entry.profilePath,
+                buttons = entry.buttons,
+                source = ControlSource.HISTORY,
+                returnScreen = Screen.SETTINGS,
+                iconName = entry.iconName,
+                sourceProfilePath = null,
+                historySnapshotButtons = entry.buttons
+            )
+        }
+    }
+
     // Load data
     LaunchedEffect(Unit) {
-        dbIndex = loadFlipperDbIndex(context)
-        savedRemotes = loadSavedRemotes(context)
-        remotesLoaded = true
         val settings = loadAppSettings(context)
         universalIntervalMs = settings.globalIntervalMs
         autoStopAtEnd = settings.autoStopAtEnd
         showTxLed = settings.showTxLed
+        hapticFeedback = settings.hapticFeedback
+        irFinderLastTested = settings.irFinderLastTested
+        preferDownloadedDb = settings.preferDownloadedDb
+        downloadedDbTag = settings.downloadedDbTag
         settingsLoaded = true
+
+        dbIndex = loadFlipperDbIndex(context) { progress ->
+            dbLoadProgress = progress
+        }
+        downloadedDbAvailable = isDownloadedDbAvailable(context)
+        effectiveDbSourceLabel = if (resolveEffectiveDbSource(context).name == "DOWNLOADED") {
+            "Downloaded"
+        } else {
+            "Default"
+        }
+        dbLoaded = true
+        savedRemotes = loadSavedRemotes(context)
+        remotesLoaded = true
+        remoteHistory = loadRemoteHistory(context)
+        historyLoaded = true
+        savedMacros = loadSavedMacros(context)
+        macrosLoaded = true
     }
 
     LaunchedEffect(savedRemotes) {
@@ -245,14 +690,28 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         saveSavedRemotes(context, savedRemotes)
     }
 
-    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed) {
+    LaunchedEffect(remoteHistory) {
+        if (!historyLoaded) return@LaunchedEffect
+        saveRemoteHistory(context, remoteHistory)
+    }
+
+    LaunchedEffect(savedMacros) {
+        if (!macrosLoaded) return@LaunchedEffect
+        saveSavedMacros(context, savedMacros)
+    }
+
+    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed, hapticFeedback, preferDownloadedDb, downloadedDbTag) {
         if (!settingsLoaded || !settingsDirty) return@LaunchedEffect
         saveAppSettings(
             context,
             com.vex.irshark.data.AppSettings(
                 globalIntervalMs = universalIntervalMs,
                 autoStopAtEnd = autoStopAtEnd,
-                showTxLed = showTxLed
+                showTxLed = showTxLed,
+                hapticFeedback = hapticFeedback,
+                irFinderLastTested = irFinderLastTested,
+                preferDownloadedDb = preferDownloadedDb,
+                downloadedDbTag = downloadedDbTag
             )
         )
         settingsDirty = false
@@ -266,15 +725,63 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         toastController.show("Settings saved")
     }
 
-    // Universal auto-send loop
-    val universalCoverage = universalCommand?.let {
-        countProfilesForCommand(dbIndex, universalPath, it.actualCommand)
-    } ?: 0
+    // Deduplicated payloads for the currently selected universal command.
+    // Recomputed on IO whenever the selected command or path changes.
+    var universalUniquePayloads by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(universalCommand, universalPath, universalIncludeUnsorted) {
+        val cmd = universalCommand
+        if (cmd == null) {
+            universalUniquePayloads = emptyList()
+            return@LaunchedEffect
+        }
+        universalUniquePayloads = withContext(Dispatchers.IO) {
+            getUniquePayloadsForCommand(
+                context = context,
+                dbIndex = dbIndex,
+                folderPath = universalPath,
+                command = cmd.actualCommand,
+                includeConverted = universalIncludeUnsorted
+            )
+        }
+    }
+    val universalCoverage = universalUniquePayloads.size
+    val universalEstimatedRemainingMs = estimateUniversalRemainingMs(
+        processedCount = universalProcessedCount,
+        totalCount = universalCoverage.takeIf { it > 0 } ?: (universalCommand?.profileCoverage ?: 0),
+        startedAtMs = universalStartedAtMs,
+        fallbackPerCodeMs = universalIntervalMs.roundToInt().toLong()
+    )
 
     LaunchedEffect(universalAutoSend, universalCommand, universalCoverage, universalIntervalMs) {
         if (!universalAutoSend || universalCommand == null || universalCoverage <= 0) return@LaunchedEffect
+        // Snapshot the deduplicated payload list so the loop is stable.
+        val payloads = universalUniquePayloads
+        if (payloads.isEmpty()) return@LaunchedEffect
         try {
             while (universalAutoSend) {
+                // Transmit the unique IR payload for the current step (1-based index).
+                val idx = (universalCodeStep - 1).coerceIn(0, payloads.size - 1)
+                val payload = payloads[idx]
+                val transmitOk = withContext(Dispatchers.IO) { transmitIrCode(context, payload) }
+                universalProcessedCount = (universalProcessedCount + 1).coerceAtMost(universalCoverage)
+                if (!transmitOk) {
+                    if (universalCodeStep >= universalCoverage) {
+                        if (autoStopAtEnd) {
+                            universalAutoSend = false
+                            universalCommand = null
+                            universalCodeStep = 0
+                            universalProcessedCount = 0
+                            universalStartedAtMs = 0L
+                            break
+                        }
+                        universalCodeStep = 1
+                        universalProcessedCount = 0
+                        universalStartedAtMs = System.currentTimeMillis()
+                    } else {
+                        universalCodeStep += 1
+                    }
+                    continue
+                }
                 txPulseActive = true
                 delay((universalIntervalMs.roundToInt().toLong() / 2).coerceAtLeast(70L))
                 txPulseActive = false
@@ -284,9 +791,13 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         universalAutoSend = false
                         universalCommand = null
                         universalCodeStep = 0
+                        universalProcessedCount = 0
+                        universalStartedAtMs = 0L
                         break
                     }
                     universalCodeStep = 1
+                    universalProcessedCount = 0
+                    universalStartedAtMs = System.currentTimeMillis()
                 } else {
                     universalCodeStep += 1
                 }
@@ -296,11 +807,22 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
+    // Keep display awake while universal auto-send is running.
+    DisposableEffect(view, universalAutoSend) {
+        view.keepScreenOn = universalAutoSend
+        onDispose {
+            view.keepScreenOn = false
+        }
+    }
+
     // Control command labels
     val controlCommands = controlButtons.map { it.label }.filter { it.isNotBlank() }
     // Show splash while loading
-    if (!settingsLoaded) {
-        SplashScreen()
+    if (!settingsLoaded || !dbLoaded) {
+        SplashScreen(
+            loadedFiles = dbLoadProgress.loadedFiles,
+            totalFiles = dbLoadProgress.totalFiles
+        )
         return
     }
     Box(
@@ -320,6 +842,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 Screen.MY_REMOTES -> "My Remotes"
                 Screen.REMOTE_DB -> "Remote DB"
                 Screen.SETTINGS -> "Settings"
+                Screen.MACROS -> "Macros"
+                Screen.MACRO_EDITOR -> "Macro Editor"
+                Screen.MACRO_RUN -> "Running Macro"
+                Screen.IR_FINDER -> "IR Finder"
             }
             AppHeader(
                 txActive = txPulseActive || universalAutoSend,
@@ -327,49 +853,159 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 fastBlink = universalAutoSend,
                 screenTitle = screenTitle
             )
-            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS)) {
-                SectionNavBar(
+            if (screen == Screen.REMOTE_CONTROL) {
+                val profilePath = controlProfilePath.orEmpty()
+                val currentProfile = dbIndex.profiles.firstOrNull { it.path == profilePath }
+                val title = controlName ?: currentProfile?.name ?: "Remote"
+                val activeSavedRemote = if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
+                    savedRemotes[controlRemoteIndex]
+                } else {
+                    null
+                }
+                val iconName = (activeSavedRemote?.sourceProfilePath
+                    ?: currentProfile?.parentPath
+                    ?: profilePath).let { path ->
+                        activeSavedRemote?.iconName ?: categorySeedFromPath(path)
+                    }
+                RemoteControlNavBar(
+                    title = title,
+                    iconName = iconName,
                     onHome = { screen = Screen.HOME },
-                    actions = if (screen == Screen.MY_REMOTES) listOf(
-                        Icons.Filled.Add to {
-                            editingRemoteIndex = null
-                            showRemoteEditor = true
-                        },
-                        Icons.Filled.Download to {
-                            importLauncher.launch(arrayOf("application/json", "text/plain"))
-                        },
-                        Icons.Filled.Upload to {
-                            exportLauncher.launch("irshark_remotes.json")
-                        }
-                    ) else emptyList()
+                    onBack = {
+                        controlRemoteIndex = -1
+                        screen = controlReturnScreen
+                    }
                 )
             }
-            if (screen != Screen.UNIVERSAL) {
+            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER)) {
+                val remoteDbMatchCount = if (screen == Screen.REMOTE_DB) {
+                    dbIndex.profiles.count {
+                        matchesRemoteDbQuery(it, remoteDbQuery)
+                    }
+                } else 0
+                val remoteDbShownCount = if (screen == Screen.REMOTE_DB) minOf(remoteDbMatchCount, REMOTE_DB_RESULT_LIMIT) else 0
+                SectionNavBar(
+                    onHome = { screen = Screen.HOME },
+                    breadcrumb = if (screen == Screen.IR_FINDER) (irFinderBreadcrumb ?: "Root") else null,
+                    onBack = if (screen == Screen.IR_FINDER) irFinderOnBack else null,
+                    extraActions = if (screen == Screen.IR_FINDER && irFinderOnUndo != null)
+                        listOf(Icons.Filled.RestartAlt to irFinderOnUndo!!)
+                    else emptyList(),
+                    searchQuery = when (screen) {
+                        Screen.MACROS -> macrosQuery
+                        Screen.MY_REMOTES -> myRemotesQuery
+                        Screen.REMOTE_DB -> remoteDbQuery
+                        else -> null
+                    },
+                    searchPlaceholder = when (screen) {
+                        Screen.MY_REMOTES -> "Search saved remotes"
+                        Screen.REMOTE_DB -> "Search all database remotes"
+                        else -> "Search macros"
+                    },
+                    onSearchQuery = when (screen) {
+                        Screen.MACROS -> ({ macrosQuery = it })
+                        Screen.MY_REMOTES -> ({ myRemotesQuery = it })
+                        Screen.REMOTE_DB -> ({ remoteDbQuery = it })
+                        else -> null
+                    },
+                    searchResultCount = if (screen == Screen.REMOTE_DB) remoteDbShownCount else null,
+                    searchTotalCount = if (screen == Screen.REMOTE_DB) remoteDbMatchCount else null,
+                    actions = when (screen) {
+                        Screen.MY_REMOTES -> listOf(
+                            Icons.Filled.Add to {
+                                editingRemoteIndex = null
+                                showRemoteEditor = true
+                            },
+                            Icons.Filled.Download to {
+                                importLauncher.launch(arrayOf("application/json", "text/plain"))
+                            },
+                            Icons.Filled.Upload to {
+                                exportLauncher.launch("irshark_remotes.json")
+                            }
+                        )
+                        Screen.MACROS -> listOf(
+                            Icons.Filled.Download to {
+                                macroImportLauncher.launch(arrayOf("application/json", "text/plain"))
+                            },
+                            Icons.Filled.Upload to {
+                                macroExportLauncher.launch("irshark_macros.json")
+                            },
+                            Icons.Filled.Add to {
+                                editingMacroId = null
+                                screen = Screen.MACRO_EDITOR
+                            }
+                        )
+                        else -> emptyList()
+                    }
+                )
+            }
+            if (screen !in listOf(Screen.UNIVERSAL, Screen.MACRO_EDITOR)) {
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            Box(modifier = Modifier.padding(horizontal = if (screen == Screen.UNIVERSAL) 0.dp else 14.dp)) {
+            // Confirmation dialog for navigating away from sensitive screens
+            if (showConfirmNavDialog) {
+                AlertDialog(
+                    onDismissRequest = { showConfirmNavDialog = false },
+                    title = { Text("Confirm") },
+                    text = { Text(confirmNavReason) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showConfirmNavDialog = false
+                            when {
+                                irFinderInTestButtons -> {
+                                    irFinderCategory = ""
+                                    irFinderBrand = ""
+                                    irFinderInTestButtons = false
+                                }
+                                screen == Screen.REMOTE_CONTROL -> {
+                                    controlRemoteIndex = -1
+                                }
+                            }
+                            screen = Screen.HOME
+                        }) {
+                            Text("Leave")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showConfirmNavDialog = false }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            Box(modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = if (screen in listOf(Screen.UNIVERSAL, Screen.MACRO_EDITOR)) 0.dp else 14.dp)) {
                 when (screen) {
                     Screen.HOME -> {
                         HomeScreen(
                             onUniversal = { screen = Screen.UNIVERSAL },
                             onMyRemotes = { screen = Screen.MY_REMOTES },
-                            onRemoteDb = { screen = Screen.REMOTE_DB },
-                            onSettings = { screen = Screen.SETTINGS }
+                            onRemoteDb  = { screen = Screen.REMOTE_DB },
+                            onSettings  = { screen = Screen.SETTINGS },
+                            onMacros    = { screen = Screen.MACROS },
+                            onIrFinder  = { screen = Screen.IR_FINDER }
                         )
                     }
 
                     Screen.UNIVERSAL -> {
+                        val universalOtherPath = "${dbRootPath()}/Other"
                         UniversalRemoteScreen(
                             dbIndex = dbIndex,
                             currentPath = universalPath,
                             activeItem = universalCommand,
-                            codeStep = universalCodeStep,
+                            codeStep = universalProcessedCount,
                             activeCoverage = universalCoverage,
                             autoSend = universalAutoSend,
-                            intervalMs = universalIntervalMs,
+                            estimatedTimeRemainingMs = universalEstimatedRemainingMs,
+                            includeUnsortedRemotes = universalIncludeUnsorted,
+                            hapticEnabled = hapticFeedback,
                             onHome = {
                                 universalAutoSend = false
+                                universalProcessedCount = 0
+                                universalStartedAtMs = 0L
                                 screen = Screen.HOME
                             },
                             onBackPath = {
@@ -377,6 +1013,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     universalPath = it
                                     universalCommand = null
                                     universalCodeStep = 0
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = 0L
                                     universalAutoSend = false
                                 }
                             },
@@ -384,17 +1022,38 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 universalPath = next
                                 universalCommand = null
                                 universalCodeStep = 0
+                                universalProcessedCount = 0
+                                universalStartedAtMs = 0L
                                 universalAutoSend = false
                             },
+                            onIncludeUnsortedRemotesChange = { enabled ->
+                                universalIncludeUnsorted = enabled
+                                universalCommand = null
+                                universalCodeStep = 0
+                                universalProcessedCount = 0
+                                universalStartedAtMs = 0L
+                                universalAutoSend = false
+                                if (!enabled && universalPath.startsWith("$universalOtherPath/")) {
+                                    universalPath = dbRootPath()
+                                }
+                                if (!enabled && universalPath == universalOtherPath) {
+                                    universalPath = dbRootPath()
+                                }
+                            },
                             onCommandClick = { item ->
-                                val coverage = countProfilesForCommand(dbIndex, universalPath, item.actualCommand)
-                                if (coverage <= 1) {
+                                // item.profileCoverage reflects the deduplicated unique-code count
+                                // (set by the screen's async dedup LaunchedEffect).
+                                if (item.profileCoverage <= 1) {
                                     universalCommand = null
                                     universalCodeStep = 0
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = 0L
                                     universalAutoSend = false
                                     emitTxPulse()
                                 } else {
                                     universalCommand = item
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = System.currentTimeMillis()
                                     universalAutoSend = true
                                     universalCodeStep = 1
                                 }
@@ -404,8 +1063,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     universalAutoSend = false
                                     universalCommand = null
                                     universalCodeStep = 0
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = 0L
                                     txPulseActive = false
                                 } else {
+                                    universalProcessedCount = 0
+                                    universalStartedAtMs = System.currentTimeMillis()
                                     universalAutoSend = true
                                 }
                             },
@@ -420,9 +1083,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 prettyPath(it.value.profilePath).contains(myRemotesQuery, ignoreCase = true)
                         }.sortedByDescending { it.value.favorite }
                         RemotesListScreen(
-                            query = myRemotesQuery,
-                            queryLabel = "Search saved remotes",
-                            onQueryChange = { myRemotesQuery = it },
                             emptyText = "No saved remotes.",
                             items = indexedFiltered.map { (_, remote) ->
                                 val subtitle = when {
@@ -431,6 +1091,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     else -> "Custom remote"
                                 }
                                 remote.name to subtitle
+                            },
+                            iconNameForItem = { idx ->
+                                val remote = indexedFiltered[idx].value
+                                remote.iconName ?: categorySeedFromPath(remote.sourceProfilePath ?: remote.profilePath)
                             },
                             isFavoriteForItem = { idx -> indexedFiltered[idx].value.favorite },
                             onFavoriteToggleForItem = { idx ->
@@ -449,23 +1113,28 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onOpen = { index ->
                                 val originalIndex = indexedFiltered[index].index
                                 val remote = indexedFiltered[index].value
-                                controlProfilePath = remote.profilePath
-                                controlName = remote.name
-                                controlButtons = if (remote.buttons.isNotEmpty()) {
+                                val remoteButtons = if (remote.buttons.isNotEmpty()) {
                                     remote.buttons
                                 } else {
                                     remote.commands.map { SavedRemoteButton(label = it, code = "") }
                                 }
-                                controlRemoteIndex = originalIndex
-                                controlSource = ControlSource.MY_REMOTES
-                                controlSelectedCommand = null
-                                controlTxCount = 0
+                                openRemoteControl(
+                                    name = remote.name,
+                                    profilePath = remote.profilePath,
+                                    buttons = remoteButtons,
+                                    source = ControlSource.MY_REMOTES,
+                                    returnScreen = Screen.MY_REMOTES,
+                                    remoteIndex = originalIndex,
+                                    iconName = remote.iconName ?: categorySeedFromPath(remote.sourceProfilePath ?: remote.profilePath),
+                                    sourceProfilePath = remote.sourceProfilePath,
+                                    historySnapshotButtons = if (remote.sourceProfilePath == null) remoteButtons else emptyList()
+                                )
 
                                 // Backfill missing DB codes for previously imported remotes.
-                                if (remote.sourceProfilePath != null && controlButtons.any { it.code.isBlank() }) {
+                                if (remote.sourceProfilePath != null && remoteButtons.any { it.code.isBlank() }) {
                                     scope.launch {
                                         val dbCodes = loadDbIrCodeOptions(context, remote.sourceProfilePath)
-                                        val hydrated = hydrateMissingCodesFromDb(controlButtons, dbCodes)
+                                        val hydrated = hydrateMissingCodesFromDb(remoteButtons, dbCodes)
                                         controlButtons = hydrated
                                         savedRemotes = savedRemotes.toMutableList().also {
                                             val prev = it.getOrNull(originalIndex)
@@ -478,8 +1147,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                         }
                                     }
                                 }
-
-                                screen = Screen.REMOTE_CONTROL
                             },
                             onSecondaryAction = { index ->
                                 val originalIndex = indexedFiltered[index].index
@@ -492,34 +1159,21 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
                     Screen.REMOTE_DB -> {
                         val filtered = dbIndex.profiles.filter {
-                            remoteDbQuery.isBlank() ||
-                                it.name.contains(remoteDbQuery, ignoreCase = true) ||
-                                prettyPath(it.parentPath).contains(remoteDbQuery, ignoreCase = true)
-                        }.take(300)
+                            matchesRemoteDbQuery(it, remoteDbQuery)
+                        }.take(REMOTE_DB_RESULT_LIMIT)
                         RemotesListScreen(
-                            query = remoteDbQuery,
-                            queryLabel = "Search all database remotes",
-                            onQueryChange = { remoteDbQuery = it },
                             emptyText = "No matching remotes in database.",
                             items = filtered.map { it.name to prettyPath(it.parentPath) },
+                            iconNameForItem = { idx ->
+                                categorySeedFromPath(filtered[idx].parentPath)
+                            },
                             onOpen = { index ->
                                 val profile = filtered[index]
-                                controlProfilePath = profile.path
-                                controlName = profile.name
-                                controlButtons = profile.commands.map { cmd ->
-                                    SavedRemoteButton(label = cmd, code = "")
-                                }
-                                controlRemoteIndex = -1
-                                controlSource = ControlSource.REMOTE_DB
-                                controlSelectedCommand = null
-                                controlTxCount = 0
-
-                                scope.launch {
-                                    val dbCodes = loadDbIrCodeOptions(context, profile.path)
-                                    controlButtons = hydrateMissingCodesFromDb(controlButtons, dbCodes)
-                                }
-
-                                screen = Screen.REMOTE_CONTROL
+                                openDatabaseRemote(
+                                    profile = profile,
+                                    source = ControlSource.REMOTE_DB,
+                                    returnScreen = Screen.REMOTE_DB
+                                )
                             },
                             onSecondaryAction = { index ->
                                 val profile = filtered[index]
@@ -539,6 +1193,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                             profilePath = profile.path,
                                             commands = hydratedButtons.map { it.label },
                                             buttons = hydratedButtons,
+                                            iconName = categorySeedFromPath(profile.parentPath),
                                             sourceProfilePath = profile.path
                                         )
                                         toastController.show("Added to My Remotes")
@@ -567,6 +1222,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         } else {
                             null
                         }
+                        val historyEntry = if (controlSource == ControlSource.HISTORY) controlHistoryEntry else null
+                        val effectiveSourceProfilePath = activeSavedRemote?.sourceProfilePath ?: historyEntry?.sourceProfilePath ?: profilePath.takeIf { currentProfile != null }
 
                         val typeBadge = when {
                             activeSavedRemote?.sourceProfilePath == null && controlSource == ControlSource.MY_REMOTES -> "Custom"
@@ -576,22 +1233,35 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     ?.parentPath
                                 if (parent.isNullOrBlank()) "From DB" else prettyPath(parent)
                             }
+                            historyEntry?.sourceProfilePath != null -> {
+                                if (currentProfile != null) prettyPath(currentProfile.parentPath) else "From DB"
+                            }
+                            historyEntry?.buttons?.isNotEmpty() == true -> "Custom"
                             currentProfile != null -> prettyPath(currentProfile.parentPath)
                             profilePath.isNotBlank() -> prettyPath(profilePath)
                             else -> "Custom"
                         }
                         val countBadge = "${commands.size} buttons"
 
+                        val isRemoteAlreadyAdded = !effectiveSourceProfilePath.isNullOrBlank() && savedRemotes.any { it.sourceProfilePath == effectiveSourceProfilePath }
+                        
                         RemoteControlScreen(
                             title = title,
+                            deviceIconName = (activeSavedRemote?.sourceProfilePath
+                                ?: historyEntry?.iconName
+                                ?: currentProfile?.parentPath
+                                ?: profilePath).let { path ->
+                                    activeSavedRemote?.iconName ?: historyEntry?.iconName ?: categorySeedFromPath(path)
+                                },
                             typeBadge = typeBadge,
                             countBadge = countBadge,
-                            commands = commands,
+                            buttons = controlButtons,
                             selectedCommand = controlSelectedCommand,
                             txCount = controlTxCount,
+                            hapticEnabled = hapticFeedback,
                             onBack = {
                                 controlRemoteIndex = -1
-                                screen = if (controlSource == ControlSource.MY_REMOTES) Screen.MY_REMOTES else Screen.REMOTE_DB
+                                screen = controlReturnScreen
                             },
                             onCommandClick = { cmdLabel ->
                                 controlSelectedCommand = null
@@ -612,19 +1282,35 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 }
                             },
                             onSave = {
-                                if (profilePath.isNotBlank() && savedRemotes.none { it.sourceProfilePath == profilePath }) {
+                                val addProfilePath = effectiveSourceProfilePath
+                                if (!addProfilePath.isNullOrBlank() && savedRemotes.none { it.sourceProfilePath == addProfilePath }) {
                                     val resolvedName = uniqueRemoteName(title)
                                     savedRemotes = savedRemotes + SavedRemote(
                                         name = resolvedName,
-                                        profilePath = profilePath,
+                                        profilePath = addProfilePath,
                                         commands = commands,
                                         buttons = controlButtons,
-                                        sourceProfilePath = profilePath
+                                        iconName = activeSavedRemote?.iconName ?: historyEntry?.iconName ?: categorySeedFromPath(currentProfile?.parentPath ?: addProfilePath),
+                                        sourceProfilePath = addProfilePath
                                     )
                                 }
                             },
-                            showSaveButton = controlSource == ControlSource.REMOTE_DB,
-                            showEditButton = controlSource == ControlSource.MY_REMOTES
+                            showSaveButton = controlSource != ControlSource.MY_REMOTES && !effectiveSourceProfilePath.isNullOrBlank(),
+                            showEditButton = controlSource == ControlSource.MY_REMOTES,
+                            saveButtonLabel = if (isRemoteAlreadyAdded) "Added" else "Add",
+                            saveButtonEnabled = !isRemoteAlreadyAdded,
+                            onShare = if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
+                                {
+                                    val remote = savedRemotes[controlRemoteIndex]
+                                    val json = exportRemotesToJson(listOf(remote))
+                                    shareJsonFile(
+                                        fileStem = "remote_${remote.name}",
+                                        subject = "IRShark Remote: ${remote.name}",
+                                        chooserTitle = "Share \"${remote.name}\"",
+                                        json = json
+                                    )
+                                }
+                            } else null
                         )
                     }
 
@@ -633,6 +1319,14 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             intervalMs = universalIntervalMs,
                             autoStopAtEnd = autoStopAtEnd,
                             showTxLed = showTxLed,
+                            hapticFeedback = hapticFeedback,
+                            useDownloadedDb = preferDownloadedDb,
+                            downloadedDbAvailable = downloadedDbAvailable,
+                            bundledDbVersion = bundledDbVersionLabel(),
+                            downloadedDbVersion = downloadedDbTag,
+                            effectiveDbSourceLabel = effectiveDbSourceLabel,
+                            historyEntries = remoteHistory,
+                            onOpenHistoryItem = { openHistoryRemote(it) },
                             onIntervalChange = {
                                 universalIntervalMs = it
                                 settingsDirty = true
@@ -645,17 +1339,234 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 showTxLed = it
                                 settingsDirty = true
                             },
+                            onHapticFeedbackChange = {
+                                hapticFeedback = it
+                                settingsDirty = true
+                            },
+                            onUseDefaultDb = {
+                                preferDownloadedDb = false
+                                settingsDirty = true
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        saveAppSettings(
+                                            context,
+                                            com.vex.irshark.data.AppSettings(
+                                                globalIntervalMs = universalIntervalMs,
+                                                autoStopAtEnd = autoStopAtEnd,
+                                                showTxLed = showTxLed,
+                                                hapticFeedback = hapticFeedback,
+                                                irFinderLastTested = irFinderLastTested,
+                                                preferDownloadedDb = false,
+                                                downloadedDbTag = downloadedDbTag
+                                            )
+                                        )
+                                    }
+                                    reloadDbIndex()
+                                }
+                            },
+                            onUseDownloadedDb = {
+                                preferDownloadedDb = true
+                                settingsDirty = true
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        saveAppSettings(
+                                            context,
+                                            com.vex.irshark.data.AppSettings(
+                                                globalIntervalMs = universalIntervalMs,
+                                                autoStopAtEnd = autoStopAtEnd,
+                                                showTxLed = showTxLed,
+                                                hapticFeedback = hapticFeedback,
+                                                irFinderLastTested = irFinderLastTested,
+                                                preferDownloadedDb = true,
+                                                downloadedDbTag = downloadedDbTag
+                                            )
+                                        )
+                                    }
+                                    reloadDbIndex()
+                                }
+                            },
+                            onImportDatabaseZip = {
+                                zipPickerLauncher.launch(arrayOf("application/zip"))
+                            },
                             onIntervalPresetSelect = {
                                 universalIntervalMs = it
                                 settingsDirty = true
                             },
                             onResetDefaults = {
-                                universalIntervalMs = 250f
+                                universalIntervalMs = 150f
                                 autoStopAtEnd = true
                                 showTxLed = true
+                                hapticFeedback = true
                                 settingsDirty = true
                             }
                         )
+                    }
+
+                    Screen.MACROS -> {
+                        val macroFiltered = savedMacros.filter {
+                            macrosQuery.isBlank() || it.name.contains(macrosQuery, ignoreCase = true)
+                        }
+                        MacroListScreen(
+                            macros   = macroFiltered,
+                            onPlay   = { macro ->
+                                macroEngine.launch(macro, scope)
+                                screen = Screen.MACRO_RUN
+                            },
+                            onEdit   = { macro ->
+                                editingMacroId = macro.id
+                                screen = Screen.MACRO_EDITOR
+                            },
+                            onDelete = { macro -> pendingDeleteMacroId = macro.id },
+                            onShare = { macro ->
+                                val json = exportMacrosToJson(listOf(macro))
+                                shareJsonFile(
+                                    fileStem = "macro_${macro.name}",
+                                    subject = "IRShark Macro: ${macro.name}",
+                                    chooserTitle = "Share \"${macro.name}\"",
+                                    json = json
+                                )
+                            }
+                        )
+                    }
+
+                    Screen.MACRO_EDITOR -> {
+                        val initialMacro = editingMacroId?.let { id -> savedMacros.find { it.id == id } }
+                        MacroEditorScreen(
+                            dbProfiles    = dbIndex.profiles,
+                            savedRemotes  = savedRemotes,
+                            initialMacro  = initialMacro,
+                            existingNames = savedMacros.filter { it.id != initialMacro?.id }.map { it.name }.toSet(),
+                            onSave        = { macro ->
+                                savedMacros = if (savedMacros.any { it.id == macro.id }) {
+                                    savedMacros.map { if (it.id == macro.id) macro else it }
+                                } else {
+                                    savedMacros + macro
+                                }
+                                editingMacroId = null
+                                screen = Screen.MACROS
+                            },
+                            onDismiss     = {
+                                editingMacroId = null
+                                screen = Screen.MACROS
+                            },
+                            onTransmit    = { emitTxPulse() }
+                        )
+                    }
+
+                    Screen.IR_FINDER -> {
+                        IrFinderScreen(
+                            dbIndex = dbIndex,
+                            initialCategory = irFinderCategory,
+                            initialBrand = irFinderBrand,
+                            initialFinderButtonsState = irFinderButtonsSerialized,
+                            initialSelectedButtonIdx = irFinderSelectedButtonIdx,
+                            onTransmit = { emitTxPulse() },
+                            addedProfilePaths = savedRemotes.mapNotNull { it.sourceProfilePath }.toSet(),
+                            hapticEnabled = hapticFeedback,
+                            lastTested = irFinderLastTested,
+                            onUpdateLastTested = { tested ->
+                                irFinderLastTested = tested
+                                scope.launch(Dispatchers.IO) {
+                                    saveAppSettings(
+                                        context,
+                                        com.vex.irshark.data.AppSettings(
+                                            globalIntervalMs = universalIntervalMs,
+                                            autoStopAtEnd = autoStopAtEnd,
+                                            showTxLed = showTxLed,
+                                            hapticFeedback = hapticFeedback,
+                                            irFinderLastTested = tested,
+                                            preferDownloadedDb = preferDownloadedDb,
+                                            downloadedDbTag = downloadedDbTag
+                                        )
+                                    )
+                                }
+                            },
+                            onAddRemote = { profilePath, profileName, commands ->
+                                if (savedRemotes.none { it.sourceProfilePath == profilePath }) {
+                                    scope.launch {
+                                        val dbCodes = loadDbIrCodeOptions(context, profilePath)
+                                        val seededButtons = commands.map { cmd ->
+                                            SavedRemoteButton(
+                                                label = cmd,
+                                                code = ""
+                                            )
+                                        }
+                                        val hydratedButtons = hydrateMissingCodesFromDb(seededButtons, dbCodes)
+                                        val resolvedName = uniqueRemoteName(profileName)
+                                        savedRemotes = savedRemotes + SavedRemote(
+                                            name = resolvedName,
+                                            profilePath = profilePath,
+                                            commands = hydratedButtons.map { it.label },
+                                            buttons = hydratedButtons,
+                                            iconName = categorySeedFromPath(profilePath),
+                                            sourceProfilePath = profilePath
+                                        )
+                                        toastController.show("Added to My Remotes")
+                                    }
+                                }
+                            },
+                            onOpenRemote = { profile ->
+                                openDatabaseRemote(
+                                    profile = profile,
+                                    source = ControlSource.HISTORY,
+                                    returnScreen = Screen.IR_FINDER
+                                )
+                            },
+                            onNavStateChange = { breadcrumb, onBack, onUndo ->
+                                irFinderBreadcrumb = breadcrumb
+                                irFinderOnBack = onBack
+                                irFinderOnUndo = onUndo
+                            },
+                            onStateChange = { category, brand, inTestButtons ->
+                                irFinderCategory = category
+                                irFinderBrand = brand
+                                irFinderInTestButtons = inTestButtons
+                            },
+                            onFinderStateChange = { buttons, selectedIdx ->
+                                // Serialize button state for persistence
+                                irFinderButtonsSerialized = com.vex.irshark.ui.screens.serializeFinderButtons(buttons)
+                                irFinderSelectedButtonIdx = selectedIdx
+                            },
+                            onHome = {
+                                if (irFinderInTestButtons) {
+                                    showConfirmNavDialog = true
+                                    confirmNavReason = "You're still testing buttons. Your progress will be lost. Leave anyway?"
+                                } else {
+                                    screen = Screen.HOME
+                                }
+                            }
+                        )
+                    }
+
+                    Screen.MACRO_RUN -> {
+                        val running = macroState as? MacroRunState.Running
+                        if (running != null) {
+                            MacroRunScreen(
+                                state     = running,
+                                onStop    = { macroEngine.stop(); screen = Screen.MACROS },
+                                onYes     = { macroEngine.respondYes() },
+                                onNo      = { macroEngine.respondNo() },
+                                onSwitch  = { macroEngine.respondSwitch(it) }
+                            )
+                        } else {
+                            val snap      = macroState
+                            val finished  = snap is MacroRunState.Finished
+                            val irLog     = when (snap) {
+                                is MacroRunState.Finished  -> snap.irLog
+                                is MacroRunState.Cancelled -> snap.irLog
+                                else                       -> emptyList()
+                            }
+                            MacroDoneScreen(
+                                finished  = finished,
+                                macroName = when (snap) {
+                                    is MacroRunState.Finished  -> snap.macroName
+                                    is MacroRunState.Cancelled -> snap.macroName
+                                    else                       -> ""
+                                },
+                                irLog   = irLog,
+                                onDone  = { screen = Screen.MACROS }
+                            )
+                        }
                     }
                 }
             }
@@ -668,6 +1579,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             RemoteEditorDialog(
                 initialName = existing?.name.orEmpty(),
                 initialButtons = existing?.buttons.orEmpty(),
+                initialIconName = existing?.iconName,
                 existingNames = savedRemotes.map { it.name }.toSet(),
                 originalName = existing?.name,
                 dbProfiles = dbIndex.profiles,
@@ -675,7 +1587,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     showRemoteEditor = false
                     editingRemoteIndex = null
                 },
-                onSave = { rawName, buttons ->
+                onSave = { rawName, buttons, iconName ->
                     val normalizedButtons = buttons.map {
                         it.copy(
                             label = it.label.trim(),
@@ -695,6 +1607,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             profilePath = if (detachFromDb) "" else previous.profilePath,
                             commands = normalizedButtons.map { it.label },
                             buttons = normalizedButtons,
+                            iconName = iconName,
                             sourceProfilePath = if (detachFromDb) null else previous.sourceProfilePath
                         )
 
@@ -712,6 +1625,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             profilePath = "",
                             commands = normalizedButtons.map { it.label },
                             buttons = normalizedButtons,
+                            iconName = iconName,
                             sourceProfilePath = null
                         )
                         toastController.show("Remote created")
@@ -746,6 +1660,27 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                         TextButton(onClick = { pendingDeleteRemoteIndex = null }) {
                             Text("Cancel")
                         }
+                    }
+                )
+            }
+        }
+
+        if (pendingDeleteMacroId != null) {
+            val target = savedMacros.find { it.id == pendingDeleteMacroId }
+            if (target != null) {
+                AlertDialog(
+                    onDismissRequest = { pendingDeleteMacroId = null },
+                    title = { Text("Delete macro") },
+                    text = { Text("Delete '${target.name}'?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            savedMacros = savedMacros.filter { it.id != target.id }
+                            pendingDeleteMacroId = null
+                            toastController.show("Macro deleted")
+                        }) { Text("Delete") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingDeleteMacroId = null }) { Text("Cancel") }
                     }
                 )
             }

@@ -9,16 +9,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -58,19 +64,21 @@ import com.vex.irshark.data.loadDbIrCodeOptions
 fun RemoteEditorDialog(
     initialName: String,
     initialButtons: List<SavedRemoteButton>,
+    initialIconName: String?,
     existingNames: Set<String>,
     originalName: String?,
     dbProfiles: List<FlipperProfile>,
     onDismiss: () -> Unit,
-    onSave: (String, List<SavedRemoteButton>) -> Unit
+    onSave: (String, List<SavedRemoteButton>, String?) -> Unit
 ) {
     var remoteName by remember { mutableStateOf(initialName) }
     var buttons by remember { mutableStateOf(initialButtons) }
+    var iconName by remember { mutableStateOf(initialIconName) }
     var editingButtonIndex by remember { mutableIntStateOf(-1) }
     var showButtonDialog by remember { mutableStateOf(false) }
     var showDiscardConfirm by remember { mutableStateOf(false) }
 
-    val isDirty = remoteName != initialName || buttons != initialButtons
+    val isDirty = remoteName != initialName || buttons != initialButtons || iconName != initialIconName
 
     fun requestDismiss() {
         if (isDirty) showDiscardConfirm = true else onDismiss()
@@ -81,6 +89,20 @@ fun RemoteEditorDialog(
     val duplicateName = normalizedName.isNotBlank() &&
         existingNames.any { it.lowercase() == normalizedName.lowercase() && it.lowercase() != originalLower }
     val canSave = normalizedName.isNotBlank() && !duplicateName && buttons.isNotEmpty()
+    val iconOptions = listOf(
+        "TVs",
+        "ACs",
+        "Projectors",
+        "DVD_Players",
+        "Fans",
+        "Cameras",
+        "Consoles",
+        "Audio_and_Video_Receivers",
+        "Set_Top_Boxes",
+        "Lights",
+        "Microwaves",
+        "Other"
+    )
 
     if (showButtonDialog) {
         val existing = if (editingButtonIndex in buttons.indices) buttons[editingButtonIndex] else null
@@ -117,18 +139,26 @@ fun RemoteEditorDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight()
-                .heightIn(max = 640.dp)
+                .heightIn(max = 620.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF121024))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            Column(modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 592.dp)) {
+                // --- Fixed header ---
                 Text("Remote Editor", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // --- Scrollable content ---
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
 
                 OutlinedTextField(
                     value = remoteName,
@@ -145,6 +175,54 @@ fun RemoteEditorDialog(
                         color = Color(0xFFFF8A80),
                         fontSize = 11.sp
                     )
+                }
+
+                Text(
+                    text = "Icon",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 150.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(iconOptions) { option ->
+                        val selected = iconName == option
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(42.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
+                                .border(
+                                    1.dp,
+                                    if (selected) Color(0xFF9B6DFF) else Color.White.copy(alpha = 0.10f),
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { iconName = option }
+                                .padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CategorySvgIcon(name = option, tint = Color(0xFF9B6DFF), size = 18.dp)
+                                Text(
+                                    text = option.replace('_', ' '),
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Text(
@@ -248,7 +326,10 @@ fun RemoteEditorDialog(
                     Spacer(modifier = Modifier.size(6.dp))
                     Text("Add button", color = Color(0xFFE4D7FF))
                 }
+                } // end scrollable content column
 
+                // --- Fixed footer — always visible ---
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End
@@ -257,11 +338,11 @@ fun RemoteEditorDialog(
                     TextButton(
                         enabled = canSave,
                         onClick = {
-                            onSave(normalizedName, buttons)
+                            onSave(normalizedName, buttons, iconName)
                         }
                     ) { Text("Save") }
                 }
-            }
+            } // end outer column
         }
     }
 }
@@ -327,17 +408,27 @@ private fun IrButtonEditorDialog(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.86f)
+                .heightIn(max = 620.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF121024))
                 .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(16.dp))
                 .padding(14.dp)
         ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 592.dp)
             ) {
+                // --- Fixed header ---
                 Text("Button & IR Code", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                // --- Scrollable content ---
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
 
                 OutlinedTextField(
                     value = label,
@@ -381,7 +472,7 @@ private fun IrButtonEditorDialog(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(100.dp),
+                            .heightIn(min = 80.dp, max = 160.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         items(filteredProfiles) { profile ->
@@ -416,7 +507,7 @@ private fun IrButtonEditorDialog(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(120.dp),
+                                .heightIn(min = 80.dp, max = 160.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             items(dbCodes.indices.toList()) { idx ->
@@ -445,6 +536,10 @@ private fun IrButtonEditorDialog(
                     }
                 }
 
+                } // end scrollable content column
+
+                // --- Fixed footer ---
+                Spacer(modifier = Modifier.height(4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End

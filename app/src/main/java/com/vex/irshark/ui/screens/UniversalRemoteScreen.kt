@@ -1,62 +1,84 @@
 package com.vex.irshark.ui.screens
 
-import androidx.compose.foundation.Canvas
+import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import com.vex.irshark.data.FlipperDbIndex
 import com.vex.irshark.data.UniversalCommandItem
+import com.vex.irshark.data.convertedManufacturersForUniversal
 import com.vex.irshark.data.dbRootPath
 import com.vex.irshark.data.prettyName
-import com.vex.irshark.data.prettyPath
-import com.vex.irshark.data.profilesUnderPath
+import com.vex.irshark.data.prettyPathWithChevron
 import com.vex.irshark.data.resolveUniversalCommandsForPath
+import com.vex.irshark.data.resolveUniversalCommandsWithDedup
 import com.vex.irshark.ui.components.AutoSendProgressModal
+import com.vex.irshark.ui.components.CategorySvgIcon
 import com.vex.irshark.ui.components.EmptyCard
 import com.vex.irshark.ui.components.FolderButton
+import com.vex.irshark.ui.components.RemoteCommandButton
 import com.vex.irshark.ui.components.UniversalRemoteHeader
-import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+private enum class UniversalTab { Commands, Categories }
+
+private data class CategoryFolderEntry(
+    val path: String,
+    val displayName: String,
+    val searchKey: String,
+    val iconSourceName: String
+)
+
+private const val CATEGORY_LARGE_LIST_THRESHOLD = 800
+private const val CATEGORY_PAGE_SIZE = 200
+private const val CATEGORY_COMPACT_TILE_THRESHOLD = 1200
 
 @Composable
 fun UniversalRemoteScreen(
@@ -66,43 +88,141 @@ fun UniversalRemoteScreen(
     codeStep: Int,
     activeCoverage: Int,
     autoSend: Boolean,
-    intervalMs: Float,
+    estimatedTimeRemainingMs: Long,
+    includeUnsortedRemotes: Boolean,
+    hapticEnabled: Boolean = true,
     onHome: () -> Unit,
     onBackPath: () -> Unit,
     onOpenFolder: (String) -> Unit,
+    onIncludeUnsortedRemotesChange: (Boolean) -> Unit,
     onCommandClick: (UniversalCommandItem) -> Unit,
     onToggleAutoSend: () -> Unit,
     onIntervalChange: (Float) -> Unit
 ) {
+    val context = LocalContext.current
     val root = dbRootPath()
-    val folders = dbIndex.folders[currentPath].orEmpty().sortedBy { prettyName(it) }
-    val resolvedCommands = resolveUniversalCommandsForPath(dbIndex, currentPath)
-    val violet = MaterialTheme.colorScheme.primary
-    
-    var folderSearchQuery by remember { mutableStateOf("") }
-    var flashedCommand by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
+    val otherPath = "$root/Other"
+    val unsortedLabel = "Unsorted"
+    val isOtherRoot = currentPath == otherPath
 
-    val estimatedTimeMs = if (autoSend && activeItem != null && activeCoverage > 0) {
-        ((activeCoverage - codeStep) * intervalMs.roundToInt()).toLong()
-    } else 0L
-    
-    val filteredFolders = if (folderSearchQuery.isBlank()) {
-        folders
-    } else {
-        folders.filter { prettyName(it).contains(folderSearchQuery, ignoreCase = true) }
+    val folders = remember(dbIndex, currentPath, includeUnsortedRemotes) {
+        when {
+            isOtherRoot -> convertedManufacturersForUniversal(dbIndex).map { "$otherPath/$it" }
+            currentPath == root -> {
+                val base = dbIndex.folders[root].orEmpty()
+                    .filter { !it.substringAfterLast('/').startsWith("_") }
+                    .filterNot { it == otherPath }
+                    .sortedBy { prettyName(it) }
+                if (includeUnsortedRemotes) base + otherPath else base
+            }
+            else -> dbIndex.folders[currentPath].orEmpty().sortedBy { prettyName(it) }
+        }
     }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-        ) {
+    // Initially show raw profile counts; replaced by deduplicated counts once IO is done.
+    val resolvedCommands = remember(currentPath, includeUnsortedRemotes, dbIndex.totalProfiles) {
+        resolveUniversalCommandsForPath(
+            dbIndex = dbIndex,
+            folderPath = currentPath,
+            includeConverted = includeUnsortedRemotes
+        )
+    }
+    var dedupedCommands by remember(currentPath) { mutableStateOf<List<UniversalCommandItem>?>(null) }
+    LaunchedEffect(currentPath, includeUnsortedRemotes, dbIndex.totalProfiles) {
+        dedupedCommands = withContext(Dispatchers.IO) {
+            resolveUniversalCommandsWithDedup(
+                context = context,
+                dbIndex = dbIndex,
+                folderPath = currentPath,
+                includeConverted = includeUnsortedRemotes
+            )
+        }
+    }
+    val displayCommands = dedupedCommands ?: resolvedCommands
+    val isDedupLoading = dedupedCommands == null && resolvedCommands.isNotEmpty()
+    val violet = MaterialTheme.colorScheme.primary
+
+    var folderSearchQuery by remember { mutableStateOf("") }
+    var flashedCommand by remember { mutableStateOf<String?>(null) }
+    var selectedTab by rememberSaveable { mutableStateOf(UniversalTab.Categories) }
+    val categoryGridState = rememberLazyGridState()
+    val scope = rememberCoroutineScope()
+    val view = LocalView.current
+
+    val displayCoverage = when {
+        activeCoverage > 0 -> activeCoverage
+        activeItem != null -> activeItem.profileCoverage
+        else -> 0
+    }
+    
+    val folderEntries = remember(folders, currentPath) {
+        folders.map { path ->
+            val displayName = if (path == otherPath) unsortedLabel else prettyName(path)
+            val iconSourceName = when {
+                path == otherPath -> unsortedLabel
+                currentPath == root -> displayName
+                else -> prettyName(currentPath)
+            }
+            CategoryFolderEntry(
+                path = path,
+                displayName = displayName,
+                searchKey = displayName.lowercase(),
+                iconSourceName = iconSourceName
+            )
+        }
+    }
+    val normalizedFolderQuery = remember(folderSearchQuery) {
+        folderSearchQuery.trim().lowercase()
+    }
+    val matchingFolderEntries = remember(folderEntries, normalizedFolderQuery) {
+        if (normalizedFolderQuery.isEmpty()) {
+            folderEntries
+        } else {
+            folderEntries.filter { it.searchKey.contains(normalizedFolderQuery) }
+        }
+    }
+    var visibleCategoryLimit by remember(currentPath, normalizedFolderQuery, includeUnsortedRemotes) {
+        mutableStateOf(CATEGORY_PAGE_SIZE)
+    }
+    val filteredFolderEntries = remember(matchingFolderEntries, visibleCategoryLimit, normalizedFolderQuery) {
+        if (normalizedFolderQuery.isEmpty()) {
+            matchingFolderEntries.take(visibleCategoryLimit)
+        } else {
+            matchingFolderEntries
+        }
+    }
+    val hasLargeUnfilteredList = normalizedFolderQuery.isEmpty() && folderEntries.size > CATEGORY_LARGE_LIST_THRESHOLD
+    val showingLimitedCategories = hasLargeUnfilteredList && filteredFolderEntries.size < matchingFolderEntries.size
+    val useCompactFolderTiles = folderEntries.size > CATEGORY_COMPACT_TILE_THRESHOLD
+
+    LaunchedEffect(currentPath, normalizedFolderQuery, includeUnsortedRemotes, matchingFolderEntries.size) {
+        visibleCategoryLimit = CATEGORY_PAGE_SIZE
+    }
+
+    LaunchedEffect(categoryGridState, normalizedFolderQuery, matchingFolderEntries.size) {
+        if (normalizedFolderQuery.isNotEmpty()) return@LaunchedEffect
+        snapshotFlow {
+            val info = categoryGridState.layoutInfo
+            val total = info.totalItemsCount
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+            total to lastVisible
+        }
+            .distinctUntilChanged()
+            .collect { (total, lastVisible) ->
+                if (total <= 0 || lastVisible < 0) return@collect
+                val shouldLoadMore = lastVisible >= total - 6
+                if (shouldLoadMore && visibleCategoryLimit < matchingFolderEntries.size) {
+                    visibleCategoryLimit = (visibleCategoryLimit + CATEGORY_PAGE_SIZE)
+                        .coerceAtMost(matchingFolderEntries.size)
+                }
+            }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             // Top header bar
             UniversalRemoteHeader(
-                currentPath = prettyPath(currentPath),
-                count = profilesUnderPath(dbIndex, currentPath).size,
+                currentPath = prettyPathWithChevron(currentPath),
                 onHome = {
                     if (autoSend) onToggleAutoSend()
                     onHome()
@@ -113,261 +233,230 @@ fun UniversalRemoteScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Column(modifier = Modifier.padding(horizontal = 14.dp)) {
-                // Device folder section
-                if (folders.isNotEmpty()) {
-                    Text("Categories", color = violet, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Search field
-                    OutlinedTextField(
-                        value = folderSearchQuery,
-                        onValueChange = { folderSearchQuery = it },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Search categories") },
-                        textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
-                        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = violet.copy(alpha = 0.45f),
-                            unfocusedBorderColor = violet.copy(alpha = 0.2f),
-                            focusedContainerColor = Color(0xFF13101E),
-                            unfocusedContainerColor = Color(0xFF13101E)
-                        )
-                    )
-
-                    // Scrollable list (max 6 items = 2x3 grid)
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(260.dp)
-                            .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp))
-                            .border(
-                                1.dp,
-                                violet.copy(alpha = 0.15f),
-                                RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp)
-                            ),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)
-                    ) {
-                        items(filteredFolders.chunked(2)) { row ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(UniversalTab.Commands to "Commands", UniversalTab.Categories to "Categories").forEach { (tab, label) ->
+                        val selected = selectedTab == tab
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (selected) Color(0xFF171327) else Color(0xFF100D1C))
+                                .border(1.dp, if (selected) violet.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                                .clickable { selectedTab = tab },
+                            contentAlignment = Alignment.BottomCenter
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.SpaceBetween
                             ) {
-                                row.forEach { path ->
-                                    val name = prettyName(path)
+                                Text(
+                                    label,
+                                    color = if (selected) Color.White else Color(0xFF8A8899),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .height(3.dp)
+                                        .fillMaxWidth(0.42f)
+                                        .clip(RoundedCornerShape(999.dp))
+                                        .background(if (selected) violet else Color.Transparent)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                when (selectedTab) {
+                    UniversalTab.Categories -> {
+                        val hasDeeperCategories = folders.isNotEmpty()
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Include unsorted remotes",
+                                color = Color(0xFFB7B3CC),
+                                fontSize = 12.sp
+                            )
+                            Switch(
+                                checked = includeUnsortedRemotes,
+                                onCheckedChange = onIncludeUnsortedRemotesChange
+                            )
+                        }
+
+                        if (!hasDeeperCategories) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF13101E))
+                                    .border(1.dp, violet.copy(alpha = 0.16f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No more categories are available for this selection. Continue in the Commands tab.",
+                                    color = Color(0xFFB7B3CC),
+                                    fontSize = 14.sp,
+                                    lineHeight = 20.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        } else {
+                            OutlinedTextField(
+                                value = folderSearchQuery,
+                                onValueChange = { folderSearchQuery = it },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Search categories") },
+                                textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
+                                shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 0.dp, bottomEnd = 0.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = violet.copy(alpha = 0.45f),
+                                    unfocusedBorderColor = violet.copy(alpha = 0.2f),
+                                    focusedContainerColor = Color(0xFF13101E),
+                                    unfocusedContainerColor = Color(0xFF13101E)
+                                )
+                            )
+
+                            if (showingLimitedCategories) {
+                                Text(
+                                    text = "Large list detected (${matchingFolderEntries.size} items). Loaded ${filteredFolderEntries.size}. Scroll down to load more or type to narrow results.",
+                                    color = Color(0xFF8A8899),
+                                    fontSize = 11.sp,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 6.dp, bottom = 6.dp)
+                                )
+                            }
+
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                state = categoryGridState,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp))
+                                    .border(
+                                        1.dp,
+                                        violet.copy(alpha = 0.15f),
+                                        RoundedCornerShape(topStart = 0.dp, topEnd = 0.dp, bottomStart = 12.dp, bottomEnd = 12.dp)
+                                    ),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                contentPadding = PaddingValues(10.dp)
+                            ) {
+                                items(
+                                    items = filteredFolderEntries,
+                                    key = { it.path }
+                                ) { entry ->
                                     FolderButton(
-                                        title = name,
+                                        title = entry.displayName,
                                         onClick = {
                                             folderSearchQuery = ""
-                                            onOpenFolder(path)
+                                            onOpenFolder(entry.path)
                                         },
-                                        modifier = Modifier.weight(1f),
-                                        icon = { CategoryIcon(name = name, tint = violet) }
+                                        modifier = Modifier.fillMaxWidth(),
+                                        icon = if (useCompactFolderTiles) {
+                                            null
+                                        } else {
+                                            { CategorySvgIcon(name = entry.iconSourceName, tint = violet, size = 24.dp) }
+                                        }
                                     )
                                 }
-                                repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-                }
-
-                // Commands section
-                Text("Commands", color = violet, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (resolvedCommands.isEmpty()) {
-                    EmptyCard("No commands found in this category.")
-                } else {
-                    resolvedCommands.chunked(2).forEach { row ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            row.forEach { item ->
-                                val isFlashed = flashedCommand == item.actualCommand
-                                val stripeColor = if (isFlashed) Color(0xFF4CAF50) else violet.copy(alpha = 0.7f)
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(62.dp)
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(
-                                            brush = Brush.verticalGradient(
-                                                colors = listOf(Color(0xFF181327), Color(0xFF0F0D1A))
-                                            )
-                                        )
-                                        .border(
-                                            1.dp,
-                                            violet.copy(alpha = 0.22f),
-                                            RoundedCornerShape(16.dp)
-                                        )
-                                        .clickable {
+                    UniversalTab.Commands -> {
+                        if (isDedupLoading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(
+                                        color = violet,
+                                        strokeWidth = 2.5.dp,
+                                        modifier = Modifier.size(30.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "Filtering unique IR codes...",
+                                        color = Color(0xFFB7B3CC),
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        } else if (displayCommands.isEmpty()) {
+                            EmptyCard("No commands found in this category.")
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(bottom = 16.dp)
+                            ) {
+                                items(displayCommands) { item ->
+                                    val isFlashed = flashedCommand == item.actualCommand
+                                    RemoteCommandButton(
+                                        label = item.displayLabel,
+                                        protocol = "x${item.profileCoverage}",
+                                        isActive = isFlashed,
+                                        onClick = {
+                                            if (hapticEnabled) {
+                                                view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                            }
                                             flashedCommand = item.actualCommand
                                             scope.launch { delay(220); flashedCommand = null }
                                             onCommandClick(item)
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(width = 22.dp, height = 4.dp)
-                                                .clip(RoundedCornerShape(999.dp))
-                                                .background(stripeColor)
-                                        )
-                                        Column {
-                                            Text(
-                                                text = item.displayLabel,
-                                                color = Color.White,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1
-                                            )
-                                            if (item.profileCoverage > 1) {
-                                                Text(
-                                                    text = "${item.profileCoverage}x",
-                                                    color = Color(0xFF8A8899),
-                                                    fontSize = 9.sp
-                                                )
-                                            }
-                                        }
-                                    }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
                                 }
                             }
-                            repeat(2 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
 
         // Auto-send modal
-        if (autoSend && activeItem != null && activeCoverage > 1) {
+        if (autoSend && activeItem != null && displayCoverage > 1) {
             AutoSendProgressModal(
                 commandName = activeItem.displayLabel,
                 currentIndex = codeStep,
-                totalCount = activeCoverage,
-                estimatedTimeRemainingMs = estimatedTimeMs,
+                totalCount = displayCoverage,
+                estimatedTimeRemainingMs = estimatedTimeRemainingMs,
+                hapticEnabled = hapticEnabled,
                 onStop = onToggleAutoSend
             )
-        }
-    }
-}
-
-// ── Category icons drawn with Canvas ─────────────────────────────────────────
-
-@Composable
-private fun CategoryIcon(name: String, tint: Color) {
-    val lname = name.lowercase()
-    val iconColor = tint.copy(alpha = 0.75f)
-    Canvas(modifier = Modifier.size(28.dp)) {
-        when {
-            "tv" in lname || "television" in lname || "projector" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawRoundRect(color = iconColor, topLeft = Offset(2f, 4f), size = Size(size.width - 4f, size.height * 0.65f), cornerRadius = CornerRadius(3f), style = sw)
-                drawLine(iconColor, Offset(size.width / 2f, size.height * 0.7f), Offset(size.width / 2f, size.height - 4f), strokeWidth = 2.2f)
-                drawLine(iconColor, Offset(size.width * 0.3f, size.height - 4f), Offset(size.width * 0.7f, size.height - 4f), strokeWidth = 2.2f)
-            }
-            "ac" in lname || "air" in lname || "condition" in lname || "purif" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawRoundRect(color = iconColor, topLeft = Offset(2f, 6f), size = Size(size.width - 4f, size.height * 0.55f), cornerRadius = CornerRadius(4f), style = sw)
-                for (i in 0..3) {
-                    val x = 6f + i * 5f
-                    drawLine(iconColor, Offset(x, size.height * 0.55f + 4f), Offset(x, size.height - 5f), strokeWidth = 1.8f)
-                }
-            }
-            "audio" in lname || "receiver" in lname || "speaker" in lname || "sound" in lname || "amplif" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawRoundRect(color = iconColor, topLeft = Offset(2f, 8f), size = Size(size.width - 4f, size.height * 0.45f), cornerRadius = CornerRadius(3f), style = sw)
-                for (i in 0..2) {
-                    drawCircle(color = iconColor, radius = 1.5f, center = Offset(8f + i * 5f, size.height * 0.3f + 8f))
-                }
-            }
-            "blu" in lname || "dvd" in lname || "cd" in lname || "disc" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawCircle(color = iconColor, radius = size.minDimension / 2f - 3f, style = sw)
-                drawCircle(color = iconColor, radius = 4f, style = sw)
-                drawCircle(color = iconColor, radius = 1.5f)
-            }
-            "camera" in lname || "cctv" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawRoundRect(color = iconColor, topLeft = Offset(2f, 7f), size = Size(size.width * 0.65f, size.height * 0.5f), cornerRadius = CornerRadius(3f), style = sw)
-                drawCircle(color = iconColor, radius = 4f, center = Offset(size.width * 0.35f, size.height * 0.315f + 7f), style = sw)
-                val path = Path().apply {
-                    moveTo(size.width * 0.68f, size.height * 0.22f)
-                    lineTo(size.width - 3f, size.height * 0.15f)
-                    lineTo(size.width - 3f, size.height * 0.65f)
-                    lineTo(size.width * 0.68f, size.height * 0.58f)
-                    close()
-                }
-                drawPath(path, iconColor, style = sw)
-            }
-            "cable" in lname || "box" in lname || "stb" in lname || "set" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawRoundRect(color = iconColor, topLeft = Offset(2f, 8f), size = Size(size.width - 4f, size.height * 0.48f), cornerRadius = CornerRadius(3f), style = sw)
-                drawCircle(color = iconColor, radius = 2f, center = Offset(8f, size.height * 0.38f))
-                drawRoundRect(color = iconColor, topLeft = Offset(12f, size.height * 0.28f + 1f), size = Size(8f, 3.5f), cornerRadius = CornerRadius(2f))
-            }
-            "clock" in lname || "watch" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawCircle(color = iconColor, radius = size.minDimension / 2f - 3f, style = sw)
-                drawLine(iconColor, center, Offset(center.x, center.y - size.minDimension * 0.25f), strokeWidth = 2f, cap = StrokeCap.Round)
-                drawLine(iconColor, center, Offset(center.x + size.minDimension * 0.2f, center.y + size.minDimension * 0.1f), strokeWidth = 1.6f, cap = StrokeCap.Round)
-            }
-            "game" in lname || "console" in lname || "nintendo" in lname || "playstation" in lname || "xbox" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                val cx = size.width * 0.35f
-                val cy = size.height * 0.5f
-                for (angle in listOf(0f, 90f, 180f, 270f)) {
-                    val rad = Math.toRadians(angle.toDouble())
-                    val dx = (Math.cos(rad) * 7f).toFloat()
-                    val dy = (Math.sin(rad) * 7f).toFloat()
-                    drawLine(iconColor, Offset(cx, cy), Offset(cx + dx, cy + dy), strokeWidth = 2.2f, cap = StrokeCap.Round)
-                }
-                drawCircle(color = iconColor, radius = 2.5f, center = Offset(size.width * 0.75f, size.height * 0.38f), style = sw)
-                drawCircle(color = iconColor, radius = 2.5f, center = Offset(size.width * 0.75f, size.height * 0.62f), style = sw)
-            }
-            "fan" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawCircle(color = iconColor, radius = size.minDimension / 2f - 3f, style = sw)
-                drawCircle(color = iconColor, radius = 4f, style = sw)
-                for (angle in 0..2) {
-                    val rad = Math.toRadians(angle * 120.0)
-                    val dx = (Math.cos(rad) * 7f).toFloat()
-                    val dy = (Math.sin(rad) * 7f).toFloat()
-                    drawLine(iconColor, center, Offset(center.x + dx, center.y + dy), strokeWidth = 2.2f, cap = StrokeCap.Round)
-                }
-            }
-            "light" in lname || "lamp" in lname || "led" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawCircle(color = iconColor, radius = 8f, center = Offset(center.x, center.y - 2f), style = sw)
-                drawLine(iconColor, Offset(center.x - 4f, center.y + 7f), Offset(center.x + 4f, center.y + 7f), strokeWidth = 2f)
-                drawLine(iconColor, Offset(center.x - 3f, center.y + 10f), Offset(center.x + 3f, center.y + 10f), strokeWidth = 2f)
-            }
-            "micro" in lname || "oven" in lname || "kitchen" in lname -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawRoundRect(color = iconColor, topLeft = Offset(2f, 5f), size = Size(size.width - 4f, size.height - 10f), cornerRadius = CornerRadius(3f), style = sw)
-                drawRoundRect(color = iconColor, topLeft = Offset(5f, 8f), size = Size(size.width * 0.55f, size.height - 16f), cornerRadius = CornerRadius(2f), style = sw)
-                drawLine(iconColor, Offset(size.width - 6f, 9f), Offset(size.width - 6f, size.height - 6f), strokeWidth = 2.2f, cap = StrokeCap.Round)
-            }
-            else -> {
-                val sw = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawRoundRect(color = iconColor, topLeft = Offset(7f, 2f), size = Size(size.width - 14f, size.height - 4f), cornerRadius = CornerRadius(6f), style = sw)
-                drawCircle(color = iconColor, radius = 3f, center = Offset(center.x, 9f), style = sw)
-                val cx2 = center.x; val cy2 = size.height * 0.56f
-                drawLine(iconColor, Offset(cx2 - 5f, cy2), Offset(cx2 + 5f, cy2), strokeWidth = 1.8f, cap = StrokeCap.Round)
-                drawLine(iconColor, Offset(cx2, cy2 - 5f), Offset(cx2, cy2 + 5f), strokeWidth = 1.8f, cap = StrokeCap.Round)
-            }
         }
     }
 }

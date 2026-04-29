@@ -34,6 +34,13 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    androidResources {
+        // Keep default hidden-file filters, but allow underscore-prefixed folders in assets
+        // so flipper_irdb/_Converted_/IR_Plus is packaged into the APK.
+        ignoreAssetsPattern = "!.svn:!.git:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~"
     }
 }
 

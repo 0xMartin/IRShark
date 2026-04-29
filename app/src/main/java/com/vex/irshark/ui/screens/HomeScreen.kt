@@ -1,5 +1,6 @@
 package com.vex.irshark.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -8,102 +9,143 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsRemote
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vex.irshark.R
 
 @Composable
 fun HomeScreen(
     onUniversal: () -> Unit,
     onMyRemotes: () -> Unit,
-    onRemoteDb: () -> Unit,
-    onSettings: () -> Unit
+    onRemoteDb:  () -> Unit,
+    onSettings:  () -> Unit,
+    onMacros:    () -> Unit = {},
+    onIrFinder: () -> Unit = {}
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text(
-            text = "Professional IR control platform built on Flipper-IRDB",
-            color = Color(0xFF8A8899),
-            fontSize = 12.sp
+    val sharkColor = Color(0xFF9B6DFF)
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Decorative shark textures
+        Image(
+            painter = painterResource(id = R.drawable.shark),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(sharkColor, BlendMode.SrcIn),
+            modifier = Modifier
+                .size(232.dp)
+                .align(Alignment.BottomCenter)
+                .offset(y = (-40).dp)
+                .rotate(-20f)
+                .alpha(0.07f)
+        )
+        Image(
+            painter = painterResource(id = R.drawable.shark),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(sharkColor, BlendMode.SrcIn),
+            modifier = Modifier
+                .size(120.dp)
+                .align(Alignment.TopStart)
+                .rotate(165f)
+                .alpha(0.04f)
         )
 
-        HomeEntryButton("UNIVERSAL REMOTE", "Pick device category and auto test commands", Icons.Filled.SettingsRemote, onUniversal)
-        HomeEntryButton("MY REMOTES", "Your saved and reusable remotes", Icons.Filled.Folder, onMyRemotes)
-        HomeEntryButton("REMOTE DB", "Browse all remotes from Flipper-IRDB", Icons.Filled.Search, onRemoteDb)
-        HomeEntryButton("SETTINGS", "Global speed, TX LED and behavior", Icons.Filled.Settings, onSettings)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                HomeGridCard("Universal Remote", Icons.Filled.SettingsRemote, onUniversal, Modifier.weight(1f))
+                HomeGridCard("My Remotes", Icons.Filled.Folder, onMyRemotes, Modifier.weight(1f))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                HomeGridCard("Remote DB", Icons.Filled.Storage, onRemoteDb, Modifier.weight(1f))
+                HomeGridCard("IR Finder", Icons.Filled.FindInPage, onIrFinder, Modifier.weight(1f))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                HomeGridCard("Macros", Icons.Filled.AutoAwesome, onMacros, Modifier.weight(1f))
+                HomeGridCard("Settings", Icons.Filled.Settings, onSettings, Modifier.weight(1f))
+            }
+        }
     }
 }
 
 @Composable
-private fun HomeEntryButton(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+private fun HomeGridCard(
+    title: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val violet = MaterialTheme.colorScheme.primary
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(72.dp)
-            .clip(RoundedCornerShape(14.dp))
+        modifier = modifier
+            .height(118.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF100D1C))
-            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
+            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
             Box(
                 modifier = Modifier
-                    .width(64.dp)
-                    .fillMaxHeight()
-                    .background(violet.copy(alpha = 0.10f))
-                    .border(
-                        width = 0.dp,
-                        color = Color.Transparent,
-                        shape = RoundedCornerShape(0.dp)
-                    ),
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(violet.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = violet,
-                    modifier = Modifier.size(26.dp)
+                    modifier = Modifier.size(34.dp)
                 )
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(title, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(subtitle, color = Color(0xFF8A8899), fontSize = 11.sp)
-            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = title,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
         }
     }
 }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -13,7 +14,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,9 +29,6 @@ import com.vex.irshark.ui.components.ListRow
 
 @Composable
 fun RemotesListScreen(
-    query: String,
-    queryLabel: String,
-    onQueryChange: (String) -> Unit,
     emptyText: String,
     items: List<Pair<String, String>>,
     onOpen: (Int) -> Unit,
@@ -44,10 +41,11 @@ fun RemotesListScreen(
     isFavoriteForItem: ((Int) -> Boolean)? = null,
     onFavoriteToggleForItem: ((Int) -> Unit)? = null,
     onDuplicateForItem: ((Int) -> Unit)? = null,
-    secondaryActionIcon: ImageVector? = null
+    secondaryActionIcon: ImageVector? = null,
+    iconNameForItem: ((Int) -> String?)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = Modifier.fillMaxSize()) {
         if (!topActionLabel.isNullOrBlank() && onTopAction != null) {
             Box(
                 modifier = Modifier
@@ -65,23 +63,13 @@ fun RemotesListScreen(
             Spacer(modifier = Modifier.height(10.dp))
         }
 
-        OutlinedTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(queryLabel) }
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
         if (items.isEmpty()) {
             EmptyCard(emptyText)
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(500.dp),
+                    .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(items.indices.toList()) { index ->
@@ -94,6 +82,7 @@ fun RemotesListScreen(
                         actionIcon = secondaryActionIcon,
                         onOpen = { onOpen(index) },
                         onAction = { onSecondaryAction(index) },
+                        leadingIconName = iconNameForItem?.invoke(index),
                         isFavorite = isFavoriteForItem?.invoke(index) ?: false,
                         onFavoriteToggle = onFavoriteToggleForItem?.let { { it(index) } },
                         onDuplicate = onDuplicateForItem?.let { { it(index) } }
