@@ -82,7 +82,7 @@ Main sections in the app:
 
 <p align="center">
   <img src="doc/img/home_page.jpg" alt="Home" width="30%" />
-  <img src="doc/img/universal_remote.jpg" alt="Universal Remote" width="30%" />
+  <img src="doc/img/remote.jpg" alt="Remote" width="30%" />
   <img src="doc/img/my_remotes.jpg" alt="My Remotes" width="30%" />
 </p>
 
