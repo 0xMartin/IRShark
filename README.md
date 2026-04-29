@@ -9,10 +9,12 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.0-00C853" alt="Version 1.0.0" />
+  <img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-E65100" alt="PolyForm Noncommercial 1.0.0" />
   <img src="https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white" alt="Android" />
   <img src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
-  <img src="https://img.shields.io/badge/minSdk-36-2E7D32" alt="minSdk 36" />
+  <img src="https://img.shields.io/badge/minSdk-26-2E7D32" alt="minSdk 26" />
   <img src="https://img.shields.io/badge/IR-Parsed%20%2B%20Raw-0A0A0A" alt="IR parsed and raw" />
 </p>
 
@@ -61,24 +63,12 @@ This gives the app broad brand/device coverage without manual code entry.
 
 Main sections in the app:
 
-- Home
-- Universal Remote
-: quickly sends common commands across multiple profiles in a category
-- My Remotes
-: your saved remotes, custom button mappings, favorites
-- Remote DB
-: browse the built-in IR profile database
-- Remote Control
-: control screen for a specific remote
-- IR Finder
-: guided workflow to find working codes based on device response
-- Macros
-: macro list
-- Macro Editor
-: create/edit block-based command sequences
-- Running Macro
-: live macro run screen with transmitted signal log
-- Settings
+- Universal Remote: quickly sends common commands across multiple profiles in a category
+- My Remotes: your saved remotes, custom button mappings, favorites
+- Remote DB: browse the built-in IR profile database
+- Remote Control: control screen for a specific remote
+- IR Finder: guided workflow to find working codes based on device response
+- Macro Editor: create/edit block-based command sequences
 
 ## ✨ Key Features
 
@@ -87,6 +77,20 @@ Main sections in the app:
 - import/export support for remote and macro JSON files
 - category-based navigation with device icons
 - haptic feedback and visual TX activity indicator
+
+## 🖼️ Screenshots
+
+<p align="center">
+  <img src="doc/img/home_page.jpg" alt="Home" width="30%" />
+  <img src="doc/img/universal_remote.jpg" alt="Universal Remote" width="30%" />
+  <img src="doc/img/my_remotes.jpg" alt="My Remotes" width="30%" />
+</p>
+
+<p align="center">
+  <img src="doc/img/remote_db.jpg" alt="Remote DB" width="30%" />
+  <img src="doc/img/ir_finder.jpg" alt="IR Finder" width="30%" />
+  <img src="doc/img/macro_editor.jpg" alt="Macro Editor" width="30%" />
+</p>
 
 ## 🛠️ Tech Stack
 
@@ -101,6 +105,7 @@ Requirements:
 
 - Android Studio (recent version with Compose support)
 - Android SDK 36
+- Minimum supported runtime: Android 8.0+ (API 26)
 - a device with an IR blaster for real transmission
 
 Compile:
@@ -242,4 +247,17 @@ In **Settings → Database**, tap **Import database ZIP**. The ZIP must contain 
 : local copy of the Flipper IR database
 - gradle, build skripty
 : build configuration
+
+## 📄 License
+
+- IRShark application code is licensed under the PolyForm Noncommercial License 1.0.0.
+- Commercial use of the application code is not allowed without separate permission from the author.
+- License scope applies only to the IRShark application project files.
+- The bundled Flipper IRDB dataset is licensed separately by its upstream project and is not re-licensed by this repository.
+
+See:
+
+- LICENSE (project root)
+- app/src/main/assets/flipper_irdb/LICENSE
+- https://github.com/Lucaslhm/Flipper-IRDB
 

@@ -1,0 +1,16 @@
+IRShark Application License
+
+Copyright (c) 2026 Martin
+
+The IRShark application source code in this repository is licensed under the
+PolyForm Noncommercial License 1.0.0.
+
+Full license text:
+https://polyformproject.org/licenses/noncommercial/1.0.0
+
+Additional clarification:
+1. This license applies only to the IRShark application code and project files.
+2. Commercial use is not permitted unless you obtain separate written permission
+   from the copyright holder.
+3. The bundled Flipper IRDB dataset under app/src/main/assets/flipper_irdb is
+   provided under its own upstream license and is not re-licensed by this file.
