@@ -17,9 +17,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
@@ -108,6 +111,28 @@ fun SettingsScreen(
                             uriHandler.openUri("https://github.com/0xMartin")
                         }
                     )
+
+                    Button(
+                        onClick = { uriHandler.openUri("https://github.com/sponsors/0xMartin") },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFDB61A2),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(999.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 12.dp,
+                            vertical = 0.dp
+                        )
+                    ) {
+                        Icon(
+                            Icons.Filled.Favorite,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.size(6.dp))
+                        Text("Sponsor", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
 
                 Image(
@@ -193,7 +218,7 @@ fun SettingsScreen(
                 .padding(12.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Global IR speed", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Universal Remote IR delay", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text("${intervalMs.toInt()} ms between codes", color = Color(0xFF8A8899), fontSize = 11.sp)
                 Slider(
                     value = intervalMs,

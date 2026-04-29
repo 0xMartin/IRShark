@@ -579,7 +579,7 @@ fun MacroGraphCanvas(
             val irParams = node.params as? BlockParams.IrSend ?: continue
             if (irParams.irCode.isBlank()) continue
             val sp = canvasToScreen(node.pos, pan, zoom)
-            val btnPx = 44f
+            val btnPx = 132f
             Box(
                 modifier = Modifier
                     .graphicsLayer {
@@ -668,6 +668,7 @@ fun MacroGraphCanvas(
                 .fillMaxWidth()
                 .height(52.dp)
                 .align(Alignment.BottomCenter)
+                .zIndex(40f)
                 .background(Color(0xFF0E0B1A))
                 .padding(horizontal = 6.dp),
             verticalAlignment     = Alignment.CenterVertically,

@@ -455,6 +455,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     // List search queries
     var myRemotesQuery by rememberSaveable { mutableStateOf("") }
     var remoteDbQuery by rememberSaveable { mutableStateOf("") }
+    
+    // Remote DB filtering on background thread to avoid UI lag
+    var remoteDbFilteredProfiles by remember { mutableStateOf<List<FlipperProfile>>(emptyList()) }
+    var remoteDbMatchCount by remember { mutableStateOf(0) }
+    LaunchedEffect(remoteDbQuery, dbIndex.profiles) {
+        // Filter on default dispatcher (non-blocking background thread)
+        val filtered = withContext(Dispatchers.Default) {
+            dbIndex.profiles.filter {
+                matchesRemoteDbQuery(it, remoteDbQuery)
+            }
+        }
+        remoteDbMatchCount = filtered.size
+        remoteDbFilteredProfiles = filtered.take(REMOTE_DB_RESULT_LIMIT)
+    }
 
     // Remote Control state
     var controlProfilePath by rememberSaveable { mutableStateOf<String?>(null) }
@@ -878,11 +892,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 )
             }
             if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER)) {
-                val remoteDbMatchCount = if (screen == Screen.REMOTE_DB) {
-                    dbIndex.profiles.count {
-                        matchesRemoteDbQuery(it, remoteDbQuery)
-                    }
-                } else 0
                 val remoteDbShownCount = if (screen == Screen.REMOTE_DB) minOf(remoteDbMatchCount, REMOTE_DB_RESULT_LIMIT) else 0
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
@@ -1158,9 +1167,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     }
 
                     Screen.REMOTE_DB -> {
-                        val filtered = dbIndex.profiles.filter {
-                            matchesRemoteDbQuery(it, remoteDbQuery)
-                        }.take(REMOTE_DB_RESULT_LIMIT)
+                        val filtered = remoteDbFilteredProfiles
                         RemotesListScreen(
                             emptyText = "No matching remotes in database.",
                             items = filtered.map { it.name to prettyPath(it.parentPath) },
