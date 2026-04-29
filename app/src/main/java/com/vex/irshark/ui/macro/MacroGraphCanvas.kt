@@ -170,7 +170,17 @@ fun absoluteOutPin(node: MacroNode, pin: PinId): Offset {
     }
     return node.pos + outputPinOffset(pin, node.blockW(), node.blockH())
 }
-fun absoluteInPin(node: MacroNode): Offset             = node.pos + inputPinOffset(node.blockW())
+
+/** Canvas-absolute input pin position.
+ *  For JOIN blocks [slot] selects which of the evenly-spaced input pins (0-based). */
+fun absoluteInPin(node: MacroNode, slot: Int = 0): Offset {
+    if (node.type == MacroBlockType.JOIN) {
+        val count = (node.params as? BlockParams.Join)?.inputCount?.coerceIn(1, 8) ?: 2
+        val pinX  = node.blockW() / (count + 1).toFloat() * (slot + 1)
+        return node.pos + Offset(pinX, 0f)
+    }
+    return node.pos + inputPinOffset(node.blockW())
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Edge drawing (cubic bezier)
@@ -248,6 +258,8 @@ fun MacroGraphCanvas(
     var connectFromId      by remember { mutableStateOf<String?>(null) }
     var connectFromPin     by remember { mutableStateOf(PinId.OUT) }
     var connectFromIsInput by remember { mutableStateOf(false) }   // true = drag started from input pin
+    var connectFromSlot    by remember { mutableStateOf(0) }       // slot of JOIN input pin dragged from
+    var connectToSlot      by remember { mutableStateOf(0) }       // slot of JOIN input pin being targeted
     var connectCursor      by remember { mutableStateOf(Offset.Zero) }
     var hoveredInputId     by remember { mutableStateOf<String?>(null) }
     var hoveredOutputId    by remember { mutableStateOf<String?>(null) }
@@ -271,10 +283,22 @@ fun MacroGraphCanvas(
         }
         return null
     }
-    fun findInputPinHit(cPos: Offset): MacroNode? =
-        graph.nodes.firstOrNull { n ->
-            n.hasInput() && (cPos - absoluteInPin(n)).getDistance() < PIN_HIT_R * 1.5f
+    /** Returns (node, slotIndex) for the input pin closest to [cPos], or null if none hit. */
+    fun findInputPinHitWithSlot(cPos: Offset): Pair<MacroNode, Int>? {
+        for (n in graph.nodes.asReversed()) {
+            if (!n.hasInput()) continue
+            if (n.type == MacroBlockType.JOIN) {
+                val count = (n.params as? BlockParams.Join)?.inputCount?.coerceIn(1, 8) ?: 2
+                for (i in 0 until count) {
+                    if ((cPos - absoluteInPin(n, i)).getDistance() < PIN_HIT_R * 1.5f) return n to i
+                }
+            } else {
+                if ((cPos - absoluteInPin(n)).getDistance() < PIN_HIT_R * 1.5f) return n to 0
+            }
         }
+        return null
+    }
+    fun findInputPinHit(cPos: Offset): MacroNode? = findInputPinHitWithSlot(cPos)?.first
     fun findNodeHit(cPos: Offset): MacroNode? =
         graph.nodes.lastOrNull { n ->
             cPos.x in n.pos.x..(n.pos.x + n.blockW()) &&
@@ -319,9 +343,11 @@ fun MacroGraphCanvas(
                             }
                             inPinHit != null -> {
                                 // Dragging FROM an input pin → reverse-direction wire
+                                val slotHit = findInputPinHitWithSlot(cDown)
                                 connectFromId      = inPinHit.id
                                 connectFromPin     = PinId.OUT   // placeholder; direction resolved at drop
                                 connectFromIsInput = true
+                                connectFromSlot    = slotHit?.second ?: 0
                                 connectCursor      = cDown
                             }
                             nodeHit != null -> {
@@ -360,8 +386,10 @@ fun MacroGraphCanvas(
                                             hoveredOutputId = findOutputPinHit(cPos)
                                                 ?.takeIf { it.first.id != connectFromId }?.first?.id
                                         } else {
-                                            hoveredInputId = findInputPinHit(cPos)
-                                                ?.takeIf { it.id != connectFromId && it.hasInput() }?.id
+                                            val hit = findInputPinHitWithSlot(cPos)
+                                                ?.takeIf { it.first.id != connectFromId && it.first.hasInput() }
+                                            hoveredInputId = hit?.first?.id
+                                            if (hit != null) connectToSlot = hit.second
                                         }
                                     } else if (draggingId != null) {
                                         // Node drag: immediate, no touchSlop required
@@ -435,15 +463,24 @@ fun MacroGraphCanvas(
                                             ?.takeIf { it.first.id == id } } }
                                     ?: findOutputPinHit(connectCursor)?.takeIf { it.first.id != connectFromId }
                                 if (outHit != null) {
-                                    graph.tryConnect(outHit.first.id, outHit.second, connectFromId!!)
+                                    graph.tryConnect(outHit.first.id, outHit.second, connectFromId!!, connectFromSlot)
                                 }
                                 hoveredOutputId = null
                             } else {
-                                val target = hoveredInputId
-                                    ?.let { id -> graph.nodes.firstOrNull { it.id == id } }
-                                    ?: findInputPinHit(connectCursor)?.takeIf { it.id != connectFromId && it.hasInput() }
-                                    ?: if (moved) findNodeHit(connectCursor)?.takeIf { it.id != connectFromId && it.hasInput() } else null
-                                if (target != null) graph.tryConnect(connectFromId!!, connectFromPin, target.id)
+                                // Forward drag: find the target node + slot
+                                val pinHitWithSlot = hoveredInputId
+                                    ?.let { id -> graph.nodes.firstOrNull { it.id == id }?.let { n -> n to connectToSlot } }
+                                    ?: findInputPinHitWithSlot(connectCursor)?.takeIf { it.first.id != connectFromId && it.first.hasInput() }
+                                    ?: if (moved) findNodeHit(connectCursor)?.takeIf { it.id != connectFromId && it.hasInput() }?.let { n ->
+                                        // Dropped anywhere on block: assign first free slot for JOIN, else slot 0
+                                        val slot = if (n.type == MacroBlockType.JOIN) {
+                                            val usedSlots = graph.edges.filter { e -> e.toId == n.id }.map { e -> e.toSlot }.toSet()
+                                            val count = (n.params as? BlockParams.Join)?.inputCount?.coerceIn(1, 8) ?: 2
+                                            (0 until count).firstOrNull { s -> s !in usedSlots } ?: 0
+                                        } else 0
+                                        n to slot
+                                    } else null
+                                if (pinHitWithSlot != null) graph.tryConnect(connectFromId!!, connectFromPin, pinHitWithSlot.first.id, pinHitWithSlot.second)
                                 hoveredInputId = null
                             }
                             connectFromId      = null
@@ -490,7 +527,7 @@ fun MacroGraphCanvas(
                     val toNode   = graph.nodes.firstOrNull { it.id == edge.toId }   ?: continue
 
                     val fromScreen = canvasToScreen(absoluteOutPin(fromNode, edge.fromPin), pan, zoom)
-                    val toScreen   = canvasToScreen(absoluteInPin(toNode), pan, zoom)
+                    val toScreen   = canvasToScreen(absoluteInPin(toNode, edge.toSlot), pan, zoom)
 
                     val edgeColor = when (edge.fromPin) {
                         PinId.YES     -> Color(0xFF5BFF9A)
@@ -509,12 +546,12 @@ fun MacroGraphCanvas(
                     val anchorNode = graph.nodes.firstOrNull { it.id == cid }
                     if (anchorNode != null) {
                         if (connectFromIsInput) {
-                            // Dragging from input pin: draw wire from cursor to the input pin
+                            // Dragging from input pin: draw wire from cursor to the specific input slot
                             val wireColor = if (hoveredOutputId != null) Color.White
                                             else Color.White.copy(alpha = 0.45f)
                             drawEdge(
                                 canvasToScreen(connectCursor, pan, zoom),
-                                canvasToScreen(absoluteInPin(anchorNode), pan, zoom),
+                                canvasToScreen(absoluteInPin(anchorNode, connectFromSlot), pan, zoom),
                                 wireColor, 2.2f
                             )
                         } else {
@@ -579,7 +616,7 @@ fun MacroGraphCanvas(
             val irParams = node.params as? BlockParams.IrSend ?: continue
             if (irParams.irCode.isBlank()) continue
             val sp = canvasToScreen(node.pos, pan, zoom)
-            val btnPx = 44f
+            val btnPx = 132f
             Box(
                 modifier = Modifier
                     .graphicsLayer {
@@ -668,6 +705,7 @@ fun MacroGraphCanvas(
                 .fillMaxWidth()
                 .height(52.dp)
                 .align(Alignment.BottomCenter)
+                .zIndex(40f)
                 .background(Color(0xFF0E0B1A))
                 .padding(horizontal = 6.dp),
             verticalAlignment     = Alignment.CenterVertically,

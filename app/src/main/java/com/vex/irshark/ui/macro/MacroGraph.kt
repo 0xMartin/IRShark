@@ -109,7 +109,8 @@ data class MacroEdge(
     val id:       String = UUID.randomUUID().toString(),
     val fromId:   String,       // source node id
     val fromPin:  PinId,        // which output pin
-    val toId:     String        // destination node id (always input pin)
+    val toId:     String,       // destination node id (always input pin)
+    val toSlot:   Int    = 0    // for JOIN blocks: which input slot (0-based); always 0 otherwise
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -165,8 +166,9 @@ class MacroGraph {
     }
 
     /** Try to add an edge. Returns error string or null on success.
-     *  If the output pin or input pin is already connected, the old wire is replaced. */
-    fun tryConnect(fromId: String, fromPin: PinId, toId: String): String? {
+     *  If the output pin or input pin is already connected, the old wire is replaced.
+     *  For JOIN blocks [toSlot] selects which input slot (0-based) the wire connects to. */
+    fun tryConnect(fromId: String, fromPin: PinId, toId: String, toSlot: Int = 0): String? {
         if (fromId == toId) return "Cannot connect block to itself"
         val fromNode = nodes.firstOrNull { it.id == fromId } ?: return "Source not found"
         val toNode   = nodes.firstOrNull { it.id == toId }   ?: return "Target not found"
@@ -177,14 +179,15 @@ class MacroGraph {
         // Basic cycle detection: would toId eventually reach fromId?
         if (wouldCycle(from = toId, reaching = fromId)) return "Connection would create a cycle"
 
-        // Remove any existing wire from this output pin, and any existing wire into the target input
+        // Remove any existing wire from this output pin, and any existing wire into the target slot
         if (toNode.allowMultipleInputs()) {
             edges.removeAll { it.fromId == fromId && it.fromPin == fromPin }
+            edges.removeAll { it.toId == toId && it.toSlot == toSlot }
         } else {
             edges.removeAll { (it.fromId == fromId && it.fromPin == fromPin) || it.toId == toId }
         }
 
-        edges.add(MacroEdge(fromId = fromId, fromPin = fromPin, toId = toId))
+        edges.add(MacroEdge(fromId = fromId, fromPin = fromPin, toId = toId, toSlot = toSlot))
         return null
     }
 
@@ -346,7 +349,7 @@ class MacroGraph {
         sb.append("],\"edges\":[")
         edges.forEachIndexed { i, e ->
             if (i > 0) sb.append(",")
-            sb.append("{\"id\":\"${e.id}\",\"from\":\"${e.fromId}\",\"pin\":\"${e.fromPin.name}\",\"to\":\"${e.toId}\"}")
+            sb.append("{\"id\":\"${e.id}\",\"from\":\"${e.fromId}\",\"pin\":\"${e.fromPin.name}\",\"to\":\"${e.toId}\",\"slot\":${e.toSlot}}")
         }
         sb.append("]}")
         return sb.toString()
@@ -417,7 +420,8 @@ class MacroGraph {
                         id      = o.getString("id"),
                         fromId  = o.getString("from"),
                         fromPin = PinId.valueOf(o.getString("pin")),
-                        toId    = o.getString("to")
+                        toId    = o.getString("to"),
+                        toSlot  = o.optInt("slot", 0)
                     ))
                 }
             } catch (_: Exception) {}

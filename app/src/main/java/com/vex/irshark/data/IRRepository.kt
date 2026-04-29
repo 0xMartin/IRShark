@@ -58,6 +58,14 @@ private val uniquePayloadCache = object : LinkedHashMap<String, List<String>>(UN
     }
 }
 
+private const val DEDUP_COMMANDS_CACHE_LIMIT = 64
+private val dedupCommandsCacheLock = Any()
+private val dedupCommandsCache = object : LinkedHashMap<String, List<UniversalCommandItem>>(DEDUP_COMMANDS_CACHE_LIMIT, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<UniversalCommandItem>>?): Boolean {
+        return size > DEDUP_COMMANDS_CACHE_LIMIT
+    }
+}
+
 enum class DbSourceType {
     DEFAULT,
     DOWNLOADED
@@ -602,6 +610,7 @@ fun getUniquePayloadsForCommand(
 /**
  * Like [resolveUniversalCommandsForPath] but replaces each item's [UniversalCommandItem.profileCoverage]
  * with the number of *unique* IR payloads for that command (requires IO to read assets).
+ * Results are cached per (folderPath, includeConverted) pair (LRU, up to 64 entries).
  * Call this off the main thread.
  */
 fun resolveUniversalCommandsWithDedup(
@@ -611,6 +620,14 @@ fun resolveUniversalCommandsWithDedup(
     includeConverted: Boolean = true,
     limit: Int = 18
 ): List<UniversalCommandItem> {
+    // Build cache key from folderPath and includeConverted flag
+    val cacheKey = "$folderPath|$includeConverted"
+    
+    // Check cache first (thread-safe)
+    synchronized(dedupCommandsCacheLock) {
+        dedupCommandsCache[cacheKey]?.let { return it }
+    }
+    
     val base = resolveUniversalCommandsForPath(dbIndex, folderPath, includeConverted, limit)
     if (base.isEmpty()) return emptyList()
 
@@ -648,9 +665,16 @@ fun resolveUniversalCommandsWithDedup(
         }
     }
 
-    return base.map { item ->
+    val result = base.map { item ->
         item.copy(profileCoverage = uniquePayloads[item.actualCommand]?.size ?: 0)
     }
+    
+    // Store in cache (thread-safe)
+    synchronized(dedupCommandsCacheLock) {
+        dedupCommandsCache[cacheKey] = result
+    }
+    
+    return result
 }
 
 /**

@@ -390,18 +390,49 @@ private fun IrButtonEditorDialog(
     val canSave = label.trim().isNotBlank() && code.trim().isNotBlank()
     var codeError by remember { mutableStateOf<String?>(null) }
 
-    // Validates Flipper-style IR code formats:
-    // 1. Parsed: protocol=X; address=0x...; command=0x...
-    // 2. Raw: RAW_Data: <int> <int> ...  OR  raw_data hex/decimal sequences
+    // Validates IR payload formats used by the app:
+    // 1) key=value pairs (semicolon/newline separated), including DB-generated
+    //    type=raw; frequency=...; data=... and type=parsed; protocol=...; ...
+    // 2) raw space-separated integers (legacy quick paste)
     fun validateIrCode(raw: String): String? {
         val s = raw.trim()
         if (s.isBlank()) return "Code cannot be empty"
-        val parsedPattern = Regex("""(?i)protocol\s*=\s*\S+.*address\s*=\s*\S+.*command\s*=\s*\S+""")
-        if (parsedPattern.containsMatchIn(s)) return null
+
         // raw: space-separated integers (positive+negative), at least 4 values
         val rawPattern = Regex("""^-?\d+(\s+-?\d+){3,}$""")
         if (rawPattern.matches(s)) return null
-        return "Invalid IR code format. Use: protocol=NEC; address=0x..; command=0x.. or raw integers."
+
+        // Parse semicolon/newline-separated key=value payloads.
+        val pairs = s
+            .split(';', '\n')
+            .mapNotNull { segment ->
+                val token = segment.trim()
+                if (token.isEmpty()) return@mapNotNull null
+                val idx = token.indexOf('=')
+                if (idx <= 0) return@mapNotNull null
+                token.substring(0, idx).trim().lowercase() to token.substring(idx + 1).trim()
+            }
+
+        if (pairs.isEmpty()) {
+            return "Invalid IR code format. Use key=value pairs (e.g. type=raw; data=...) or raw integers."
+        }
+
+        val fields = pairs.toMap()
+        when (fields["type"]?.lowercase()) {
+            "raw" -> {
+                if (fields["data"].isNullOrBlank()) {
+                    return "RAW code must contain data=..."
+                }
+            }
+            "parsed" -> {
+                if (fields["protocol"].isNullOrBlank()) {
+                    return "Parsed code must contain protocol=..."
+                }
+                // address/command can be empty for some profiles; allow save.
+            }
+        }
+
+        return null
     }
 
     Dialog(onDismissRequest = onDismiss) {
