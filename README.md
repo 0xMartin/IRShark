@@ -70,14 +70,6 @@ Main sections in the app:
 - IR Finder: guided workflow to find working codes based on device response
 - Macro Editor: create/edit block-based command sequences
 
-## ✨ Key Features
-
-- protocol label shown directly on remote buttons
-- protocol shown in the macro transmission table during runtime
-- import/export support for remote and macro JSON files
-- category-based navigation with device icons
-- haptic feedback and visual TX activity indicator
-
 ## 🖼️ Screenshots
 
 <p align="center">
