@@ -1,6 +1,7 @@
 package com.vex.irshark.data
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -19,7 +20,7 @@ private const val KEY_SAVED_REMOTES = "saved_remotes"
 private const val KEY_REMOTE_HISTORY = "remote_history"
 private const val REMOTE_DELIMITER = "||"
 private const val DB_INDEX_CACHE_FILE_PREFIX = "db_index_cache"
-private const val DB_INDEX_CACHE_VERSION = 4
+private const val DB_INDEX_CACHE_VERSION = 5
 private const val DOWNLOADED_DB_BASE_DIR = "flipper_irdb_downloaded"
 private const val IR_CODE_BLOCK_CACHE_LIMIT = 256
 private const val UNIQUE_PAYLOAD_CACHE_LIMIT = 256
@@ -71,6 +72,7 @@ enum class DbSourceType {
     DOWNLOADED
 }
 
+@Immutable
 data class FlipperDbUpdateResult(
     val success: Boolean,
     val updated: Boolean,
@@ -78,6 +80,7 @@ data class FlipperDbUpdateResult(
     val message: String
 )
 
+@Immutable
 data class FlipperDbIndex(
     val totalProfiles: Int = 0,
     val folders: Map<String, List<String>> = emptyMap(),
@@ -87,6 +90,7 @@ data class FlipperDbIndex(
     val status: String = "Loading Flipper-IRDB..."
 )
 
+@Immutable
 data class FlipperProfile(
     val path: String,
     val parentPath: String,
@@ -94,6 +98,7 @@ data class FlipperProfile(
     val commands: List<String>
 )
 
+@Immutable
 data class SavedRemote(
     val name: String,
     val profilePath: String,
@@ -104,11 +109,13 @@ data class SavedRemote(
     val favorite: Boolean = false
 )
 
+@Immutable
 data class SavedRemoteButton(
     val label: String,
     val code: String
 )
 
+@Immutable
 data class RemoteHistoryEntry(
     val name: String,
     val profilePath: String,
@@ -126,6 +133,7 @@ data class RemoteHistoryEntry(
         }
 }
 
+@Immutable
 data class DbIrCodeOption(
     val label: String,
     val code: String,
@@ -153,15 +161,34 @@ sealed class LintMatcher {
     data class GroupReference(val group: String) : LintMatcher()
 }
 
+@Immutable
 data class UniversalCommandItem(
     val displayLabel: String,
     val actualCommand: String,
     val profileCoverage: Int
 )
 
+@Immutable
 data class DbLoadProgress(
     val loadedFiles: Int = 0,
     val totalFiles: Int = 0
+)
+
+private data class DbProfileDescriptor(
+    val path: String,
+    val parentPath: String,
+    val displayName: String,
+    val signature: String
+)
+
+private data class DbLayoutSnapshot(
+    val folders: Map<String, List<String>>,
+    val profileDescriptors: List<DbProfileDescriptor>
+)
+
+private data class DbIndexCacheSnapshot(
+    val index: FlipperDbIndex,
+    val signaturesByPath: Map<String, String>
 )
 
 private const val UNIVERSAL_OTHER_PATH = "$DB_ROOT/Other"
@@ -204,31 +231,13 @@ suspend fun loadFlipperDbIndex(
             val sourceInfo = resolveDbStorage(context)
             val cacheKey = sourceInfo.cacheKey
             val lintConfig = parseLintConfig(context)
+            val cachedSnapshot = loadDbIndexCache(context, cacheKey)
+            val layout = collectDbLayout(context)
 
-            loadDbIndexCache(context, cacheKey)?.let { cached ->
-                val missingConvertedSources = CONVERTED_DB_SOURCES.filter { source ->
-                    isDbDirectory(context, source.rootPath) && cached.profiles.none { it.path.startsWith("${source.rootPath}/") }
-                }
-                if (missingConvertedSources.isEmpty()) {
-                    if (onProgress != null) {
-                        withContext(Dispatchers.Main) {
-                            onProgress(DbLoadProgress(loadedFiles = cached.totalProfiles, totalFiles = cached.totalProfiles))
-                        }
-                    }
-                    return@runCatching cached.copy(
-                        lintConfig = lintConfig,
-                        status = "Loaded ${cached.totalProfiles} profiles (cached)"
-                    )
-                }
-            }
-
-            val folders = mutableMapOf<String, MutableList<String>>()
-            val profilesByFolder = mutableMapOf<String, MutableList<FlipperProfile>>()
-            val allProfiles = mutableListOf<FlipperProfile>()
-            val regularFiles = countIrFiles(context, DB_ROOT)
-            val convertedFiles = CONVERTED_DB_SOURCES.sumOf { source -> countIrFiles(context, source.rootPath) }
-            val totalFiles = regularFiles + convertedFiles
+            val totalFiles = layout.profileDescriptors.size
             var loadedFiles = 0
+            var reusedProfiles = 0
+            var reparsedProfiles = 0
 
             if (onProgress != null) {
                 withContext(Dispatchers.Main) {
@@ -236,83 +245,60 @@ suspend fun loadFlipperDbIndex(
                 }
             }
 
-            suspend fun walk(path: String) {
-                val children = listDbChildren(context, path)
-                folders.putIfAbsent(path, mutableListOf())
-                profilesByFolder.putIfAbsent(path, mutableListOf())
+            val cachedProfilesByPath = cachedSnapshot?.index?.profiles?.associateBy { it.path }.orEmpty()
+            val cachedSignaturesByPath = cachedSnapshot?.signaturesByPath.orEmpty()
+            val currentSignaturesByPath = linkedMapOf<String, String>()
+            val allProfiles = ArrayList<FlipperProfile>(totalFiles)
 
-                for (child in children) {
-                    val childPath = "$path/$child"
-                    if (childPath == "$DB_ROOT/_Converted_") {
-                        continue
-                    }
-                    if (child.endsWith(".ir", ignoreCase = true)) {
-                        val commands = parseIrCommands(context, childPath)
-                        val profile = FlipperProfile(
-                            path = childPath,
-                            parentPath = path,
-                            name = child.removeSuffix(".ir").replace('_', ' ').trim(),
-                            commands = commands
-                        )
-                        profilesByFolder[path]?.add(profile)
-                        allProfiles += profile
-                        loadedFiles += 1
-                        if (onProgress != null && (loadedFiles == totalFiles || loadedFiles % 20 == 0)) {
-                            withContext(Dispatchers.Main) {
-                                onProgress(DbLoadProgress(loadedFiles = loadedFiles, totalFiles = totalFiles))
-                            }
-                        }
-                    } else {
-                        if (isDbDirectory(context, childPath)) {
-                            folders[path]?.add(childPath)
-                            walk(childPath)
-                        }
+            layout.profileDescriptors.forEach { descriptor ->
+                currentSignaturesByPath[descriptor.path] = descriptor.signature
+
+                val cached = cachedProfilesByPath[descriptor.path]
+                val canReuse = cached != null && cachedSignaturesByPath[descriptor.path] == descriptor.signature
+                val profile = if (canReuse) {
+                    reusedProfiles += 1
+                    cached.copy(parentPath = descriptor.parentPath, name = descriptor.displayName)
+                } else {
+                    reparsedProfiles += 1
+                    FlipperProfile(
+                        path = descriptor.path,
+                        parentPath = descriptor.parentPath,
+                        name = descriptor.displayName,
+                        commands = parseIrCommands(context, descriptor.path)
+                    )
+                }
+
+                allProfiles += profile
+                loadedFiles += 1
+                if (onProgress != null && (loadedFiles == totalFiles || loadedFiles % 20 == 0)) {
+                    withContext(Dispatchers.Main) {
+                        onProgress(DbLoadProgress(loadedFiles = loadedFiles, totalFiles = totalFiles))
                     }
                 }
             }
 
-            suspend fun walkConverted(path: String, source: ConvertedDbSource) {
-                val children = listDbChildren(context, path)
-                for (child in children) {
-                    val childPath = "$path/$child"
-                    if (child.endsWith(".ir", ignoreCase = true)) {
-                        val commands = parseIrCommands(context, childPath)
-                        val profile = FlipperProfile(
-                            path = childPath,
-                            parentPath = source.parentPath,
-                            name = convertedDisplayName(childPath, source.rootName),
-                            commands = commands
-                        )
-                        allProfiles += profile
-                        loadedFiles += 1
-                        if (onProgress != null && (loadedFiles == totalFiles || loadedFiles % 20 == 0)) {
-                            withContext(Dispatchers.Main) {
-                                onProgress(DbLoadProgress(loadedFiles = loadedFiles, totalFiles = totalFiles))
-                            }
-                        }
-                    } else if (isDbDirectory(context, childPath)) {
-                        walkConverted(childPath, source)
-                    }
-                }
-            }
-
-            walk(DB_ROOT)
-            CONVERTED_DB_SOURCES.forEach { source ->
-                if (isDbDirectory(context, source.rootPath)) {
-                    walkConverted(source.rootPath, source)
-                }
-            }
+            val profilesByFolder = allProfiles.groupByTo(linkedMapOf()) { it.parentPath }
+            val folderMap = layout.folders
 
             val freshIndex = FlipperDbIndex(
                 totalProfiles = allProfiles.size,
-                folders = folders,
+                folders = folderMap,
                 profilesByFolder = profilesByFolder,
                 profiles = allProfiles,
                 lintConfig = lintConfig,
-                status = "Loaded ${allProfiles.size} profiles (${sourceInfo.label})"
+                status = if (cachedSnapshot != null) {
+                    "Loaded ${allProfiles.size} profiles (${sourceInfo.label}, reused $reusedProfiles, re-parsed $reparsedProfiles)"
+                } else {
+                    "Loaded ${allProfiles.size} profiles (${sourceInfo.label})"
+                }
             )
 
-            saveDbIndexCache(context, freshIndex, cacheKey)
+            saveDbIndexCache(
+                context = context,
+                index = freshIndex,
+                cacheKey = cacheKey,
+                signaturesByPath = currentSignaturesByPath
+            )
             freshIndex
         }.getOrElse {
             FlipperDbIndex(status = "Flipper-IRDB unavailable")
@@ -576,35 +562,37 @@ fun profilesForCommand(
  * profiles under [folderPath]. Profiles whose payload is byte-for-byte identical to a
  * previously seen one are skipped, so toggling TVs ON then OFF is avoided.
  */
-fun getUniquePayloadsForCommand(
+suspend fun getUniquePayloadsForCommand(
     context: android.content.Context,
     dbIndex: FlipperDbIndex,
     folderPath: String,
     command: String,
     includeConverted: Boolean = true
 ): List<String> {
-    val cacheKey = buildString {
-        append(resolveDbStorage(context).cacheKey)
-        append('|')
-        append(folderPath)
-        append('|')
-        append(includeConverted)
-        append('|')
-        append(command.lowercase())
-    }
+    return withContext(Dispatchers.Default) {
+        val cacheKey = buildString {
+            append(resolveDbStorage(context).cacheKey)
+            append('|')
+            append(folderPath)
+            append('|')
+            append(includeConverted)
+            append('|')
+            append(command.lowercase())
+        }
 
-    synchronized(uniquePayloadCacheLock) {
-        uniquePayloadCache[cacheKey]?.let { return it }
-    }
+        synchronized(uniquePayloadCacheLock) {
+            uniquePayloadCache[cacheKey]?.let { return@withContext it }
+        }
 
-    val payloads = profilesForCommand(dbIndex, folderPath, command, includeConverted)
-        .mapNotNull { getIrCodePayload(context, it.path, command) }
-        .distinctBy { it.trim() }
+        val payloads = profilesForCommand(dbIndex, folderPath, command, includeConverted)
+            .mapNotNull { getIrCodePayload(context, it.path, command) }
+            .distinctBy { it.trim() }
 
-    synchronized(uniquePayloadCacheLock) {
-        uniquePayloadCache[cacheKey] = payloads
+        synchronized(uniquePayloadCacheLock) {
+            uniquePayloadCache[cacheKey] = payloads
+        }
+        payloads
     }
-    return payloads
 }
 
 /**
@@ -613,75 +601,77 @@ fun getUniquePayloadsForCommand(
  * Results are cached per (folderPath, includeConverted) pair (LRU, up to 64 entries).
  * Call this off the main thread.
  */
-fun resolveUniversalCommandsWithDedup(
+suspend fun resolveUniversalCommandsWithDedup(
     context: android.content.Context,
     dbIndex: FlipperDbIndex,
     folderPath: String,
     includeConverted: Boolean = true,
     limit: Int = 18
 ): List<UniversalCommandItem> {
-    // Build cache key from folderPath and includeConverted flag
-    val cacheKey = "$folderPath|$includeConverted"
-    
-    // Check cache first (thread-safe)
-    synchronized(dedupCommandsCacheLock) {
-        dedupCommandsCache[cacheKey]?.let { return it }
-    }
-    
-    val base = resolveUniversalCommandsForPath(dbIndex, folderPath, includeConverted, limit)
-    if (base.isEmpty()) return emptyList()
+    return withContext(Dispatchers.Default) {
+        // Build cache key from folderPath and includeConverted flag
+        val cacheKey = "$folderPath|$includeConverted"
 
-    val targetAliases = linkedMapOf<String, String>()
-    val targetNormalized = linkedMapOf<String, String>()
-    val uniquePayloads = linkedMapOf<String, LinkedHashSet<String>>()
-
-    base.forEach { item ->
-        val actual = item.actualCommand
-        val normalized = normalizeDisplayName(actual).lowercase()
-        targetAliases.putIfAbsent(actual.lowercase(), actual)
-        targetAliases.putIfAbsent(normalized, actual)
-        targetNormalized[actual] = normalized
-        uniquePayloads[actual] = linkedSetOf()
-    }
-
-    profilesForUniversalPath(dbIndex, folderPath, includeConverted).forEach { profile ->
-        val wantedTargets = profile.commands
-            .mapNotNull { cmd ->
-                val byRaw = targetAliases[cmd.lowercase()]
-                byRaw ?: targetAliases[normalizeDisplayName(cmd).lowercase()]
-            }
-            .distinct()
-        if (wantedTargets.isEmpty()) return@forEach
-
-        val payloadByName = parseIrCodeBlocks(context, profile.path)
-            .associate { block ->
-                normalizeDisplayName(block.displayName).lowercase() to serializeIrPayload(block.fields).trim()
-            }
-
-        wantedTargets.forEach { target ->
-            val key = targetNormalized[target] ?: return@forEach
-            val payload = payloadByName[key] ?: return@forEach
-            uniquePayloads[target]?.add(payload)
+        // Check cache first (thread-safe)
+        synchronized(dedupCommandsCacheLock) {
+            dedupCommandsCache[cacheKey]?.let { return@withContext it }
         }
-    }
 
-    val result = base.map { item ->
-        item.copy(profileCoverage = uniquePayloads[item.actualCommand]?.size ?: 0)
+        val base = resolveUniversalCommandsForPath(dbIndex, folderPath, includeConverted, limit)
+        if (base.isEmpty()) return@withContext emptyList()
+
+        val targetAliases = linkedMapOf<String, String>()
+        val targetNormalized = linkedMapOf<String, String>()
+        val uniquePayloads = linkedMapOf<String, LinkedHashSet<String>>()
+
+        base.forEach { item ->
+            val actual = item.actualCommand
+            val normalized = normalizeDisplayName(actual).lowercase()
+            targetAliases.putIfAbsent(actual.lowercase(), actual)
+            targetAliases.putIfAbsent(normalized, actual)
+            targetNormalized[actual] = normalized
+            uniquePayloads[actual] = linkedSetOf()
+        }
+
+        profilesForUniversalPath(dbIndex, folderPath, includeConverted).forEach { profile ->
+            val wantedTargets = profile.commands
+                .mapNotNull { cmd ->
+                    val byRaw = targetAliases[cmd.lowercase()]
+                    byRaw ?: targetAliases[normalizeDisplayName(cmd).lowercase()]
+                }
+                .distinct()
+            if (wantedTargets.isEmpty()) return@forEach
+
+            val payloadByName = parseIrCodeBlocks(context, profile.path)
+                .associate { block ->
+                    normalizeDisplayName(block.displayName).lowercase() to serializeIrPayload(block.fields).trim()
+                }
+
+            wantedTargets.forEach { target ->
+                val key = targetNormalized[target] ?: return@forEach
+                val payload = payloadByName[key] ?: return@forEach
+                uniquePayloads[target]?.add(payload)
+            }
+        }
+
+        val result = base.map { item ->
+            item.copy(profileCoverage = uniquePayloads[item.actualCommand]?.size ?: 0)
+        }
+
+        // Store in cache (thread-safe)
+        synchronized(dedupCommandsCacheLock) {
+            dedupCommandsCache[cacheKey] = result
+        }
+
+        result
     }
-    
-    // Store in cache (thread-safe)
-    synchronized(dedupCommandsCacheLock) {
-        dedupCommandsCache[cacheKey] = result
-    }
-    
-    return result
 }
 
 /**
  * Reads a specific profile asset and returns the raw key=value payload string
  * for the given [commandName], ready to pass to [transmitIrCode].
  */
-fun getIrCodePayload(context: android.content.Context, profilePath: String, commandName: String): String? {
+private fun getIrCodePayload(context: android.content.Context, profilePath: String, commandName: String): String? {
     val normalized = normalizeDisplayName(commandName)
     val block = parseIrCodeBlocks(context, profilePath).firstOrNull {
         it.displayName.equals(normalized, ignoreCase = true) ||
@@ -1091,27 +1081,85 @@ private fun convertedDisplayName(assetPath: String, rootName: String): String {
     return base.replace(Regex("\\s+"), " ").trim()
 }
 
-private fun countIrFiles(context: Context, path: String): Int {
-    if (!isDbDirectory(context, path)) return 0
-    val children = listDbChildren(context, path)
-    var count = 0
-    for (child in children) {
-        val childPath = "$path/$child"
-        if (childPath == "$DB_ROOT/_Converted_") {
-            continue
-        }
-        if (child.endsWith(".ir", ignoreCase = true)) {
-            count += 1
-        } else {
-            if (isDbDirectory(context, childPath)) {
-                count += countIrFiles(context, childPath)
+private fun collectDbLayout(context: Context): DbLayoutSnapshot {
+    val folders = linkedMapOf<String, MutableList<String>>()
+    val descriptors = mutableListOf<DbProfileDescriptor>()
+
+    fun walkRegular(path: String) {
+        val children = listDbChildren(context, path)
+        folders.putIfAbsent(path, mutableListOf())
+
+        for (child in children) {
+            val childPath = "$path/$child"
+            if (childPath == "$DB_ROOT/_Converted_") continue
+
+            if (child.endsWith(".ir", ignoreCase = true)) {
+                descriptors += DbProfileDescriptor(
+                    path = childPath,
+                    parentPath = path,
+                    displayName = child.removeSuffix(".ir").replace('_', ' ').trim(),
+                    signature = fileSignature(context, childPath)
+                )
+            } else if (isDbDirectory(context, childPath)) {
+                folders[path]?.add(childPath)
+                walkRegular(childPath)
             }
         }
     }
-    return count
+
+    fun walkConverted(path: String, source: ConvertedDbSource) {
+        val children = listDbChildren(context, path)
+        for (child in children) {
+            val childPath = "$path/$child"
+            if (child.endsWith(".ir", ignoreCase = true)) {
+                descriptors += DbProfileDescriptor(
+                    path = childPath,
+                    parentPath = source.parentPath,
+                    displayName = convertedDisplayName(childPath, source.rootName),
+                    signature = fileSignature(context, childPath)
+                )
+            } else if (isDbDirectory(context, childPath)) {
+                walkConverted(childPath, source)
+            }
+        }
+    }
+
+    walkRegular(DB_ROOT)
+    CONVERTED_DB_SOURCES.forEach { source ->
+        if (isDbDirectory(context, source.rootPath)) {
+            walkConverted(source.rootPath, source)
+        }
+    }
+
+    return DbLayoutSnapshot(
+        folders = folders.mapValues { (_, value) -> value.toList() },
+        profileDescriptors = descriptors
+    )
 }
 
-private fun saveDbIndexCache(context: Context, index: FlipperDbIndex, cacheKey: String) {
+private fun fileSignature(context: Context, path: String): String {
+    return when (resolveDbStorage(context).type) {
+        DbSourceType.DOWNLOADED -> {
+            val file = logicalPathToDownloadedFile(context, path)
+            if (!file.exists() || !file.isFile) {
+                "missing"
+            } else {
+                "${file.length()}:${file.lastModified()}"
+            }
+        }
+        DbSourceType.DEFAULT -> {
+            // Asset timestamps are unavailable; cache key already includes app install revision.
+            "asset"
+        }
+    }
+}
+
+private fun saveDbIndexCache(
+    context: Context,
+    index: FlipperDbIndex,
+    cacheKey: String,
+    signaturesByPath: Map<String, String>
+) {
     runCatching {
         val file = File(context.filesDir, dbIndexCacheFileName(cacheKey))
         val root = JSONObject().apply {
@@ -1140,12 +1188,18 @@ private fun saveDbIndexCache(context: Context, index: FlipperDbIndex, cacheKey: 
                 )
             }
             put("profiles", profilesArr)
+
+            val signaturesObj = JSONObject()
+            signaturesByPath.forEach { (path, signature) ->
+                signaturesObj.put(path, signature)
+            }
+            put("signatures", signaturesObj)
         }
         file.writeText(root.toString(), Charsets.UTF_8)
     }
 }
 
-private fun loadDbIndexCache(context: Context, cacheKey: String): FlipperDbIndex? {
+private fun loadDbIndexCache(context: Context, cacheKey: String): DbIndexCacheSnapshot? {
     return runCatching {
         val file = File(context.filesDir, dbIndexCacheFileName(cacheKey))
         if (!file.exists()) return null
@@ -1191,14 +1245,24 @@ private fun loadDbIndexCache(context: Context, cacheKey: String): FlipperDbIndex
 
         if (profiles.isEmpty()) return null
 
+        val signaturesByPath = mutableMapOf<String, String>()
+        val signaturesObj = root.optJSONObject("signatures") ?: JSONObject()
+        signaturesObj.keys().forEach { path ->
+            val signature = signaturesObj.optString(path).trim()
+            if (path.isNotBlank() && signature.isNotBlank()) {
+                signaturesByPath[path] = signature
+            }
+        }
+
         val profilesByFolder = profiles.groupBy { it.parentPath }
-        FlipperDbIndex(
+        val index = FlipperDbIndex(
             totalProfiles = root.optInt("totalProfiles", profiles.size),
             folders = folders,
             profilesByFolder = profilesByFolder,
             profiles = profiles,
             status = "Loaded ${profiles.size} profiles (cached)"
         )
+        DbIndexCacheSnapshot(index = index, signaturesByPath = signaturesByPath)
     }.getOrNull()
 }
 
@@ -1362,20 +1426,27 @@ private data class DbStorageInfo(
 private fun resolveDbStorage(context: Context): DbStorageInfo {
     val settings = loadAppSettings(context)
     val hasDownloaded = isDownloadedDbAvailable(context)
+    val appRevision = appInstallRevision(context)
     return if (settings.preferDownloadedDb && hasDownloaded) {
         val tagSuffix = settings.downloadedDbTag?.ifBlank { "unknown" } ?: "unknown"
         DbStorageInfo(
             type = DbSourceType.DOWNLOADED,
             label = "downloaded",
-            cacheKey = "downloaded_$tagSuffix"
+            cacheKey = "downloaded_${tagSuffix}_$appRevision"
         )
     } else {
         DbStorageInfo(
             type = DbSourceType.DEFAULT,
             label = "assets",
-            cacheKey = "assets"
+            cacheKey = "assets_$appRevision"
         )
     }
+}
+
+private fun appInstallRevision(context: Context): Long {
+    return runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+    }.getOrDefault(0L)
 }
 
 private fun dbIndexCacheFileName(cacheKey: String): String {
