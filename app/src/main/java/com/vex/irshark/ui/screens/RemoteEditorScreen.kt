@@ -256,28 +256,6 @@ fun RemoteEditorScreen(
             }
         }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onBack,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232033))
-                ) {
-                    Text("Cancel")
-                }
-                Button(
-                    onClick = onSave,
-                    enabled = canSave,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Save")
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
     }
 }
 
@@ -418,27 +396,5 @@ fun RemoteButtonEditorScreen(
             }
         }
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onBack,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF232033))
-                ) {
-                    Text("Back")
-                }
-                Button(
-                    onClick = onApply,
-                    enabled = canApply,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Apply")
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-        }
     }
 }
