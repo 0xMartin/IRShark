@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-00C853" alt="Version 1.0.0" />
+  <img src="https://img.shields.io/badge/version-1.0.0-00C853" alt="Version 1.0.1" />
   <img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-E65100" alt="PolyForm Noncommercial 1.0.0" />
   <img src="https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white" alt="Android" />
   <img src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin" />
@@ -100,17 +100,85 @@ Requirements:
 - Minimum supported runtime: Android 8.0+ (API 26)
 - a device with an IR blaster for real transmission
 
-Compile:
+> Most emulators do not expose `ConsumerIrManager`. For real transmission testing use a physical device with an IR emitter (e.g. Xiaomi, OPPO, some Samsung models).
 
 ```bash
-./gradlew :app:compileDebugKotlin
+./gradlew :app:compileDebugKotlin   # compile check
+./gradlew :app:installDebug         # build + install on connected device
+./gradlew :app:assembleDebug        # build debug APK
+./gradlew :app:assembleRelease      # build release APK
 ```
 
-Build debug APK:
+## 🤝 Contributing
+
+Contributions are welcome! Here is how to get started and what to keep in mind when opening a pull request.
+
+### Getting the code
 
 ```bash
-./gradlew :app:assembleDebug
+git clone https://github.com/vexdev/IRShark.git
+cd IRShark
 ```
+
+Open the project root in Android Studio (`File → Open`). Gradle syncs automatically on first open.
+
+### Codebase overview
+
+| Area | Where to look |
+|---|---|
+| Navigation & screen state | `MainActivity.kt` |
+| Screen composables | `ui/screens/` |
+| Shared UI components | `ui/components/` |
+| IR protocol encoders | `ir/` |
+| Profile parsing & DB index | `data/IrRepository.kt` |
+| Data models | `model/` |
+| Dependency versions | `gradle/libs.versions.toml` |
+
+### Branch naming
+
+Use a short, lowercase, hyphen-separated name that describes what the branch does:
+
+```
+feat/rc6-protocol
+fix/db-cache-regression
+ui/button-editor-header
+chore/bump-compose-bom
+```
+
+| Prefix | Use for |
+|---|---|
+| `feat/` | new feature or protocol support |
+| `fix/` | bug fix |
+| `ui/` | visual / UX change with no functional impact |
+| `chore/` | dependency bumps, refactors, build changes |
+| `docs/` | documentation only |
+
+### Pull request guidelines
+
+- **One concern per PR.** Don't mix a bug fix with a refactor — open separate PRs.
+- **Title format:** `[prefix] short description in present tense`
+  - ✅ `[feat] Add RC6 protocol encoder`
+  - ✅ `[fix] Restore DB cache fast-path on startup`
+  - ❌ `Various improvements and fixes`
+- **Description should include:**
+  - What the PR does and why
+  - How to test it (which screen / device / flow to exercise)
+  - Screenshots or a short screen recording for UI changes
+- Keep the diff focused — avoid reformatting unrelated files.
+- Make sure `./gradlew :app:compileDebugKotlin` passes before opening the PR.
+
+### Adding a new IR protocol
+
+1. Add an encoder in `app/src/main/java/com/vex/irshark/ir/`.
+2. Register the protocol name in the `encode()` dispatcher (same package).
+3. Add the protocol name to the supported list in this README.
+
+### Adding a new screen
+
+1. Add a value to the `Screen` enum in `MainActivity.kt`.
+2. Add the screen title to the `screenTitle` map.
+3. Add the composable call to the `when (screen)` block in `MainContent`.
+4. If the screen needs top-bar navigation, include its `Screen` value in the `navBarScreens` set.
 
 ## 🧪 Usage Notes
 

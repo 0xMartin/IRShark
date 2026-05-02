@@ -505,6 +505,7 @@ fun SectionNavBar(
     onSearchQuery: ((String) -> Unit)? = null,
     searchResultCount: Int? = null,
     searchTotalCount: Int? = null,
+    actionsRound: Boolean = false,
     // Optional breadcrumb/back for sub-screens (e.g. IR Finder steps)
     breadcrumb: String? = null,
     onBack: (() -> Unit)? = null,
@@ -660,12 +661,13 @@ fun SectionNavBar(
                     Spacer(modifier = Modifier.weight(1f))
                 }
                 actions.forEach { (icon, onClick) ->
+                    val actionShape = if (actionsRound) RoundedCornerShape(999.dp) else RoundedCornerShape(10.dp)
                     Box(
                         modifier = Modifier
                             .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(actionShape)
                             .background(violet.copy(alpha = 0.14f))
-                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                            .border(1.dp, violet.copy(alpha = 0.35f), actionShape)
                             .clickable(onClick = onClick),
                         contentAlignment = Alignment.Center
                     ) {
