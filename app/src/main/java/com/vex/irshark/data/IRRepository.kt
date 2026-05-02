@@ -232,6 +232,31 @@ suspend fun loadFlipperDbIndex(
             val cacheKey = sourceInfo.cacheKey
             val lintConfig = parseLintConfig(context)
             val cachedSnapshot = loadDbIndexCache(context, cacheKey)
+
+            if (cachedSnapshot != null) {
+                val missingConvertedSources = CONVERTED_DB_SOURCES.filter { source ->
+                    isDbDirectory(context, source.rootPath) &&
+                        cachedSnapshot.index.profiles.none { it.path.startsWith("${source.rootPath}/") }
+                }
+                if (missingConvertedSources.isEmpty()) {
+                    val cached = cachedSnapshot.index.copy(
+                        lintConfig = lintConfig,
+                        status = "Loaded ${cachedSnapshot.index.totalProfiles} profiles (cached)"
+                    )
+                    if (onProgress != null) {
+                        withContext(Dispatchers.Main) {
+                            onProgress(
+                                DbLoadProgress(
+                                    loadedFiles = cached.totalProfiles,
+                                    totalFiles = cached.totalProfiles
+                                )
+                            )
+                        }
+                    }
+                    return@runCatching cached
+                }
+            }
+
             val layout = collectDbLayout(context)
 
             val totalFiles = layout.profileDescriptors.size
