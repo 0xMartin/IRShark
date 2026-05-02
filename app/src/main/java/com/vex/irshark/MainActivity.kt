@@ -19,7 +19,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
@@ -83,7 +85,6 @@ import com.vex.irshark.data.saveRemoteHistory
 import com.vex.irshark.data.saveSavedRemotes
 import com.vex.irshark.data.importFlipperDatabaseFromZip
 import com.vex.irshark.ui.components.AppHeader
-import com.vex.irshark.ui.components.RemoteEditorDialog
 import com.vex.irshark.ui.components.AppToastController
 import com.vex.irshark.ui.components.AppToastHost
 import com.vex.irshark.ui.components.RemoteControlNavBar
@@ -93,7 +94,9 @@ import com.vex.irshark.ui.screens.MacroEditorScreen
 import com.vex.irshark.ui.screens.MacroListScreen
 import com.vex.irshark.ui.screens.MacroDoneScreen
 import com.vex.irshark.ui.screens.MacroRunScreen
+import com.vex.irshark.ui.screens.RemoteButtonEditorScreen
 import com.vex.irshark.ui.screens.RemoteControlScreen
+import com.vex.irshark.ui.screens.RemoteEditorScreen
 import com.vex.irshark.ui.screens.RemotesListScreen
 import com.vex.irshark.ui.screens.SettingsScreen
 import com.vex.irshark.ui.screens.IrFinderScreen
@@ -134,7 +137,18 @@ class MainActivity : ComponentActivity() {
 // ── Navigation state ──────────────────────────────────────────────────────────
 
 private enum class Screen {
-    HOME, UNIVERSAL, MY_REMOTES, REMOTE_DB, REMOTE_CONTROL, SETTINGS, MACROS, MACRO_EDITOR, MACRO_RUN, IR_FINDER
+    HOME,
+    UNIVERSAL,
+    MY_REMOTES,
+    REMOTE_DB,
+    REMOTE_CONTROL,
+    REMOTE_EDITOR,
+    REMOTE_BUTTON_EDITOR,
+    SETTINGS,
+    MACROS,
+    MACRO_EDITOR,
+    MACRO_RUN,
+    IR_FINDER
 }
 
 private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
@@ -493,8 +507,15 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var historyLoaded by remember { mutableStateOf(false) }
 
     // Editor state for custom/editable remotes
-    var showRemoteEditor by remember { mutableStateOf(false) }
     var editingRemoteIndex by remember { mutableStateOf<Int?>(null) }
+    var remoteEditorReturnScreen by remember { mutableStateOf(Screen.MY_REMOTES) }
+    var editorRemoteName by remember { mutableStateOf("") }
+    var editorRemoteButtons by remember { mutableStateOf(listOf<SavedRemoteButton>()) }
+    var editorRemoteIconName by remember { mutableStateOf<String?>(null) }
+    var editorOriginalName by remember { mutableStateOf<String?>(null) }
+    var editorOriginalButtons by remember { mutableStateOf(listOf<SavedRemoteButton>()) }
+    var editorOriginalIconName by remember { mutableStateOf<String?>(null) }
+    var editingButtonIndex by remember { mutableStateOf(-1) }
     var pendingDeleteRemoteIndex by remember { mutableStateOf<Int?>(null) }
 
     // IR Finder nav state (lifted from IrFinderScreen)
@@ -537,6 +558,79 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             suffix += 1
         }
         return "$base $suffix"
+    }
+
+    fun startRemoteEditor(remoteIndex: Int?, returnScreen: Screen) {
+        val existing = remoteIndex?.let { savedRemotes.getOrNull(it) }
+        editingRemoteIndex = remoteIndex
+        remoteEditorReturnScreen = returnScreen
+        editorRemoteName = existing?.name.orEmpty()
+        editorRemoteButtons = existing?.buttons.orEmpty()
+        editorRemoteIconName = existing?.iconName
+        editorOriginalName = existing?.name
+        editorOriginalButtons = existing?.buttons.orEmpty()
+        editorOriginalIconName = existing?.iconName
+        editingButtonIndex = -1
+        screen = Screen.REMOTE_EDITOR
+    }
+
+    fun closeRemoteEditor() {
+        editingRemoteIndex = null
+        editingButtonIndex = -1
+        screen = remoteEditorReturnScreen
+    }
+
+    fun saveRemoteEditor() {
+        val normalizedName = editorRemoteName.trim()
+        val duplicateName = normalizedName.isNotBlank() &&
+            savedRemotes.withIndex().any { (idx, remote) ->
+                idx != editingRemoteIndex && remote.name.equals(normalizedName, ignoreCase = true)
+            }
+        if (normalizedName.isBlank() || duplicateName || editorRemoteButtons.isEmpty()) {
+            return
+        }
+
+        val normalizedButtons = editorRemoteButtons.map {
+            it.copy(label = it.label.trim(), code = it.code.trim())
+        }.filter { it.label.isNotBlank() }
+
+        val resolvedName = uniqueRemoteName(normalizedName, excludeIndex = editingRemoteIndex)
+
+        if (editingRemoteIndex != null && editingRemoteIndex in savedRemotes.indices) {
+            val previous = savedRemotes[editingRemoteIndex!!]
+            val changed = previous.name != resolvedName || previous.buttons != normalizedButtons
+            val detachFromDb = previous.sourceProfilePath != null && changed
+
+            val updated = previous.copy(
+                name = resolvedName,
+                profilePath = if (detachFromDb) "" else previous.profilePath,
+                commands = normalizedButtons.map { it.label },
+                buttons = normalizedButtons,
+                iconName = editorRemoteIconName,
+                sourceProfilePath = if (detachFromDb) null else previous.sourceProfilePath
+            )
+
+            savedRemotes = savedRemotes.toMutableList().also { it[editingRemoteIndex!!] = updated }
+
+            if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex == editingRemoteIndex) {
+                controlName = updated.name
+                controlButtons = updated.buttons
+                controlProfilePath = updated.profilePath
+            }
+            toastController.show("Remote updated")
+        } else {
+            savedRemotes = savedRemotes + SavedRemote(
+                name = resolvedName,
+                profilePath = "",
+                commands = normalizedButtons.map { it.label },
+                buttons = normalizedButtons,
+                iconName = editorRemoteIconName,
+                sourceProfilePath = null
+            )
+            toastController.show("Remote created")
+        }
+
+        closeRemoteEditor()
     }
 
     fun hydrateMissingCodesFromDb(
@@ -870,7 +964,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 .fillMaxSize()
         ) {
             val screenTitle = when (screen) {
-                Screen.HOME, Screen.REMOTE_CONTROL -> "IRShark"
+                Screen.HOME -> "IRShark"
+                Screen.REMOTE_CONTROL -> "Remote"
+                Screen.REMOTE_EDITOR -> "Remote Editor"
+                Screen.REMOTE_BUTTON_EDITOR -> "Button Editor"
                 Screen.UNIVERSAL -> "Universal Remote"
                 Screen.MY_REMOTES -> "My Remotes"
                 Screen.REMOTE_DB -> "Remote DB"
@@ -910,8 +1007,13 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     }
                 )
             }
-            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER)) {
+            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER, Screen.REMOTE_EDITOR)) {
                 val remoteDbShownCount = if (screen == Screen.REMOTE_DB) minOf(remoteDbMatchCount, REMOTE_DB_RESULT_LIMIT) else 0
+                val remoteEditorCanSave = editorRemoteName.trim().isNotBlank() &&
+                    editorRemoteButtons.isNotEmpty() &&
+                    savedRemotes.withIndex().none { (idx, remote) ->
+                        idx != editingRemoteIndex && remote.name.equals(editorRemoteName.trim(), ignoreCase = true)
+                    }
                 SectionNavBar(
                     onHome = { screen = Screen.HOME },
                     breadcrumb = if (screen == Screen.IR_FINDER) (irFinderBreadcrumb ?: "Root") else null,
@@ -939,10 +1041,13 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     searchResultCount = if (screen == Screen.REMOTE_DB) remoteDbShownCount else null,
                     searchTotalCount = if (screen == Screen.REMOTE_DB) remoteDbMatchCount else null,
                     actions = when (screen) {
+                        Screen.REMOTE_EDITOR -> listOf(
+                            Icons.Filled.Close to { closeRemoteEditor() },
+                            Icons.Filled.Save to { if (remoteEditorCanSave) saveRemoteEditor() }
+                        )
                         Screen.MY_REMOTES -> listOf(
                             Icons.Filled.Add to {
-                                editingRemoteIndex = null
-                                showRemoteEditor = true
+                                startRemoteEditor(remoteIndex = null, returnScreen = Screen.MY_REMOTES)
                             },
                             Icons.Filled.Download to {
                                 importLauncher.launch(arrayOf("application/json", "text/plain"))
@@ -1313,8 +1418,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             },
                             onEdit = {
                                 if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
-                                    editingRemoteIndex = controlRemoteIndex
-                                    showRemoteEditor = true
+                                    startRemoteEditor(remoteIndex = controlRemoteIndex, returnScreen = Screen.REMOTE_CONTROL)
                                 }
                             },
                             onSave = {
@@ -1347,6 +1451,81 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     )
                                 }
                             } else null
+                        )
+                    }
+
+                    Screen.REMOTE_EDITOR -> {
+                        val normalizedName = editorRemoteName.trim()
+                        val duplicateName = normalizedName.isNotBlank() &&
+                            savedRemotes.withIndex().any { (idx, remote) ->
+                                idx != editingRemoteIndex && remote.name.equals(normalizedName, ignoreCase = true)
+                            }
+                        val canSaveRemote = normalizedName.isNotBlank() && !duplicateName && editorRemoteButtons.isNotEmpty()
+
+                        RemoteEditorScreen(
+                            remoteName = editorRemoteName,
+                            iconName = editorRemoteIconName,
+                            buttons = editorRemoteButtons,
+                            duplicateName = duplicateName,
+                            onNameChange = { editorRemoteName = it },
+                            onIconChange = { editorRemoteIconName = it },
+                            onAddButton = {
+                                editingButtonIndex = -1
+                                screen = Screen.REMOTE_BUTTON_EDITOR
+                            },
+                            onEditButton = { idx ->
+                                editingButtonIndex = idx
+                                screen = Screen.REMOTE_BUTTON_EDITOR
+                            },
+                            onMoveButtonUp = { idx ->
+                                if (idx <= 0 || idx >= editorRemoteButtons.size) return@RemoteEditorScreen
+                                editorRemoteButtons = editorRemoteButtons.toMutableList().also {
+                                    val tmp = it[idx - 1]
+                                    it[idx - 1] = it[idx]
+                                    it[idx] = tmp
+                                }
+                            },
+                            onMoveButtonDown = { idx ->
+                                if (idx < 0 || idx >= editorRemoteButtons.lastIndex) return@RemoteEditorScreen
+                                editorRemoteButtons = editorRemoteButtons.toMutableList().also {
+                                    val tmp = it[idx + 1]
+                                    it[idx + 1] = it[idx]
+                                    it[idx] = tmp
+                                }
+                            },
+                            onDeleteButton = { idx ->
+                                if (idx in editorRemoteButtons.indices) {
+                                    editorRemoteButtons = editorRemoteButtons.toMutableList().also { it.removeAt(idx) }
+                                }
+                            },
+                            onBack = {
+                                closeRemoteEditor()
+                            },
+                            onSave = { saveRemoteEditor() },
+                            canSave = canSaveRemote
+                        )
+                    }
+
+                    Screen.REMOTE_BUTTON_EDITOR -> {
+                        val initialButton = if (editingButtonIndex in editorRemoteButtons.indices) {
+                            editorRemoteButtons[editingButtonIndex]
+                        } else {
+                            null
+                        }
+
+                        RemoteButtonEditorScreen(
+                            initialButton = initialButton,
+                            dbProfiles = dbIndex.profiles,
+                            onBack = { screen = Screen.REMOTE_EDITOR },
+                            onApply = { updatedButton ->
+                                editorRemoteButtons = if (editingButtonIndex in editorRemoteButtons.indices) {
+                                    editorRemoteButtons.toMutableList().also { it[editingButtonIndex] = updatedButton }
+                                } else {
+                                    editorRemoteButtons + updatedButton
+                                }
+                                editingButtonIndex = -1
+                                screen = Screen.REMOTE_EDITOR
+                            }
                         )
                     }
 
@@ -1630,70 +1809,6 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 }
             }
 
-        }
-
-        if (showRemoteEditor) {
-            val editIndex = editingRemoteIndex
-            val existing = editIndex?.let { savedRemotes.getOrNull(it) }
-            RemoteEditorDialog(
-                initialName = existing?.name.orEmpty(),
-                initialButtons = existing?.buttons.orEmpty(),
-                initialIconName = existing?.iconName,
-                existingNames = savedRemotes.map { it.name }.toSet(),
-                originalName = existing?.name,
-                dbProfiles = dbIndex.profiles,
-                onDismiss = {
-                    showRemoteEditor = false
-                    editingRemoteIndex = null
-                },
-                onSave = { rawName, buttons, iconName ->
-                    val normalizedButtons = buttons.map {
-                        it.copy(
-                            label = it.label.trim(),
-                            code = it.code.trim()
-                        )
-                    }.filter { it.label.isNotBlank() }
-
-                    val resolvedName = uniqueRemoteName(rawName, excludeIndex = editIndex)
-
-                    if (editIndex != null && editIndex in savedRemotes.indices) {
-                        val previous = savedRemotes[editIndex]
-                        val changed = previous.name != resolvedName || previous.buttons != normalizedButtons
-                        val detachFromDb = previous.sourceProfilePath != null && changed
-
-                        val updated = previous.copy(
-                            name = resolvedName,
-                            profilePath = if (detachFromDb) "" else previous.profilePath,
-                            commands = normalizedButtons.map { it.label },
-                            buttons = normalizedButtons,
-                            iconName = iconName,
-                            sourceProfilePath = if (detachFromDb) null else previous.sourceProfilePath
-                        )
-
-                        savedRemotes = savedRemotes.toMutableList().also { it[editIndex] = updated }
-
-                        if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex == editIndex) {
-                            controlName = updated.name
-                            controlButtons = updated.buttons
-                            controlProfilePath = updated.profilePath
-                        }
-                        toastController.show("Remote updated")
-                    } else {
-                        savedRemotes = savedRemotes + SavedRemote(
-                            name = resolvedName,
-                            profilePath = "",
-                            commands = normalizedButtons.map { it.label },
-                            buttons = normalizedButtons,
-                            iconName = iconName,
-                            sourceProfilePath = null
-                        )
-                        toastController.show("Remote created")
-                    }
-
-                    showRemoteEditor = false
-                    editingRemoteIndex = null
-                }
-            )
         }
 
         if (pendingDeleteRemoteIndex != null) {
