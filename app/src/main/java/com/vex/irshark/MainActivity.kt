@@ -70,6 +70,9 @@ import com.vex.irshark.data.SavedMacro
 import com.vex.irshark.data.recordRemoteHistory
 import com.vex.irshark.data.resolveEffectiveDbSource
 import com.vex.irshark.util.transmitIrCode
+import com.vex.irshark.util.getIrCompatibilityReport
+import com.vex.irshark.util.IrTransmitStatus
+import com.vex.irshark.util.transmitIrCodeResult
 import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.data.loadFlipperDbIndex
 import com.vex.irshark.data.loadSavedRemotes
@@ -204,6 +207,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
     var showTxLed by rememberSaveable { mutableStateOf(true) }
     var hapticFeedback by rememberSaveable { mutableStateOf(true) }
+    var txModeRaw by rememberSaveable { mutableStateOf("AUTO") }
+    var bridgeEndpoint by rememberSaveable { mutableStateOf("") }
     var preferDownloadedDb by rememberSaveable { mutableStateOf(false) }
     var downloadedDbTag by rememberSaveable { mutableStateOf<String?>(null) }
     var downloadedDbAvailable by remember { mutableStateOf(false) }
@@ -235,6 +240,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     val macroEngine = remember { MacroEngine(context) }
     val macroState by macroEngine.state.collectAsState()
     LaunchedEffect(hapticFeedback) { macroEngine.hapticEnabled = hapticFeedback }
+    LaunchedEffect(txModeRaw, bridgeEndpoint) {
+        macroEngine.txModeRaw = txModeRaw
+        macroEngine.bridgeEndpoint = bridgeEndpoint
+    }
 
     fun shareJsonFile(fileStem: String, subject: String, chooserTitle: String, json: String) {
         scope.launch {
@@ -676,6 +685,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         autoStopAtEnd = settings.autoStopAtEnd
         showTxLed = settings.showTxLed
         hapticFeedback = settings.hapticFeedback
+        txModeRaw = settings.txMode
+        bridgeEndpoint = settings.bridgeEndpoint
         irFinderLastTested = settings.irFinderLastTested
         preferDownloadedDb = settings.preferDownloadedDb
         downloadedDbTag = settings.downloadedDbTag
@@ -714,7 +725,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         saveSavedMacros(context, savedMacros)
     }
 
-    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed, hapticFeedback, preferDownloadedDb, downloadedDbTag) {
+    LaunchedEffect(settingsDirty, universalIntervalMs, autoStopAtEnd, showTxLed, hapticFeedback, txModeRaw, bridgeEndpoint, preferDownloadedDb, downloadedDbTag) {
         if (!settingsLoaded || !settingsDirty) return@LaunchedEffect
         saveAppSettings(
             context,
@@ -723,6 +734,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 autoStopAtEnd = autoStopAtEnd,
                 showTxLed = showTxLed,
                 hapticFeedback = hapticFeedback,
+                txMode = txModeRaw,
+                bridgeEndpoint = bridgeEndpoint,
                 irFinderLastTested = irFinderLastTested,
                 preferDownloadedDb = preferDownloadedDb,
                 downloadedDbTag = downloadedDbTag
@@ -776,8 +789,14 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 // Transmit the unique IR payload for the current step (1-based index).
                 val idx = (universalCodeStep - 1).coerceIn(0, payloads.size - 1)
                 val payload = payloads[idx]
-                val transmitOk = withContext(Dispatchers.IO) { transmitIrCode(context, payload) }
+                val txResult = withContext(Dispatchers.IO) {
+                    transmitIrCodeResult(context, payload, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                }
+                val transmitOk = txResult.success
                 universalProcessedCount = (universalProcessedCount + 1).coerceAtMost(universalCoverage)
+                if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                    toastController.show("No IR output found. Internal IR or live bridge not available.")
+                }
                 if (!transmitOk) {
                     if (universalCodeStep >= universalCoverage) {
                         if (autoStopAtEnd) {
@@ -1278,7 +1297,17 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 val button = controlButtons.firstOrNull { it.label.equals(cmdLabel, ignoreCase = true) }
                                 if (button != null && button.code.isNotBlank()) {
                                     scope.launch(Dispatchers.IO) {
-                                        transmitIrCode(context, button.code)
+                                        val txResult = transmitIrCodeResult(
+                                            context,
+                                            button.code,
+                                            modeRaw = txModeRaw,
+                                            bridgeEndpointRaw = bridgeEndpoint
+                                        )
+                                        if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                                            withContext(Dispatchers.Main) {
+                                                toastController.show("No IR output found. Internal IR or live bridge not available.")
+                                            }
+                                        }
                                     }
                                 }
                             },
@@ -1327,6 +1356,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             autoStopAtEnd = autoStopAtEnd,
                             showTxLed = showTxLed,
                             hapticFeedback = hapticFeedback,
+                            txModeRaw = txModeRaw,
+                            bridgeEndpoint = bridgeEndpoint,
+                            compatibilityReport = getIrCompatibilityReport(context, txModeRaw, bridgeEndpoint),
                             useDownloadedDb = preferDownloadedDb,
                             downloadedDbAvailable = downloadedDbAvailable,
                             bundledDbVersion = bundledDbVersionLabel(),
@@ -1350,6 +1382,14 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 hapticFeedback = it
                                 settingsDirty = true
                             },
+                            onTxModeChange = {
+                                txModeRaw = it
+                                settingsDirty = true
+                            },
+                            onBridgeEndpointChange = {
+                                bridgeEndpoint = it
+                                settingsDirty = true
+                            },
                             onUseDefaultDb = {
                                 preferDownloadedDb = false
                                 settingsDirty = true
@@ -1362,6 +1402,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                                 autoStopAtEnd = autoStopAtEnd,
                                                 showTxLed = showTxLed,
                                                 hapticFeedback = hapticFeedback,
+                                                txMode = txModeRaw,
+                                                bridgeEndpoint = bridgeEndpoint,
                                                 irFinderLastTested = irFinderLastTested,
                                                 preferDownloadedDb = false,
                                                 downloadedDbTag = downloadedDbTag
@@ -1383,6 +1425,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                                 autoStopAtEnd = autoStopAtEnd,
                                                 showTxLed = showTxLed,
                                                 hapticFeedback = hapticFeedback,
+                                                txMode = txModeRaw,
+                                                bridgeEndpoint = bridgeEndpoint,
                                                 irFinderLastTested = irFinderLastTested,
                                                 preferDownloadedDb = true,
                                                 downloadedDbTag = downloadedDbTag
@@ -1404,6 +1448,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 autoStopAtEnd = true
                                 showTxLed = true
                                 hapticFeedback = true
+                                txModeRaw = "AUTO"
+                                bridgeEndpoint = ""
                                 settingsDirty = true
                             }
                         )
@@ -1456,7 +1502,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 editingMacroId = null
                                 screen = Screen.MACROS
                             },
-                            onTransmit    = { emitTxPulse() }
+                            onTransmit    = { emitTxPulse() },
+                            txModeRaw = txModeRaw,
+                            bridgeEndpoint = bridgeEndpoint
                         )
                     }
 
@@ -1470,6 +1518,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onTransmit = { emitTxPulse() },
                             addedProfilePaths = savedRemotes.mapNotNull { it.sourceProfilePath }.toSet(),
                             hapticEnabled = hapticFeedback,
+                            txModeRaw = txModeRaw,
+                            bridgeEndpoint = bridgeEndpoint,
                             lastTested = irFinderLastTested,
                             onUpdateLastTested = { tested ->
                                 irFinderLastTested = tested
@@ -1481,6 +1531,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                             autoStopAtEnd = autoStopAtEnd,
                                             showTxLed = showTxLed,
                                             hapticFeedback = hapticFeedback,
+                                            txMode = txModeRaw,
+                                            bridgeEndpoint = bridgeEndpoint,
                                             irFinderLastTested = tested,
                                             preferDownloadedDb = preferDownloadedDb,
                                             downloadedDbTag = downloadedDbTag

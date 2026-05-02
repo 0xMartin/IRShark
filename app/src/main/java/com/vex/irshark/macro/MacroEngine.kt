@@ -3,7 +3,8 @@ package com.vex.irshark.macro
 import android.content.Context
 import com.vex.irshark.data.MacroStep
 import com.vex.irshark.data.SavedMacro
-import com.vex.irshark.util.transmitIrCode
+import com.vex.irshark.util.IrTransmitStatus
+import com.vex.irshark.util.transmitIrCodeResult
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -65,6 +66,8 @@ data class SwitchRequest(
 class MacroEngine(private val context: Context) {
 
     var hapticEnabled: Boolean = true
+    var txModeRaw: String = "AUTO"
+    var bridgeEndpoint: String = ""
 
     private val _state = MutableStateFlow<MacroRunState>(MacroRunState.Idle)
     val state: StateFlow<MacroRunState> = _state
@@ -85,6 +88,7 @@ class MacroEngine(private val context: Context) {
     private var macroName = ""
     private var macroStartTime = 0L
     private val displayTexts = java.util.concurrent.CopyOnWriteArrayList<String>()
+    private var noIrOutputWarningShown = false
     private var irLog: List<IrLogEntry> = emptyList()
 
     fun launch(macro: SavedMacro, scope: CoroutineScope) {
@@ -93,6 +97,7 @@ class MacroEngine(private val context: Context) {
         loopIter    = 0
         inLoop      = false
         displayTexts.clear()
+        noIrOutputWarningShown = false
         irLog           = emptyList()
         macroStartTime  = System.currentTimeMillis()
         runScope    = scope
@@ -121,35 +126,48 @@ class MacroEngine(private val context: Context) {
     fun respondYes() {
         confirmDeferred?.complete(true)
         confirmDeferred = null
+        clearPromptsInState()
     }
 
     /** Called when user taps No on an IfConfirm. */
     fun respondNo() {
         confirmDeferred?.complete(false)
         confirmDeferred = null
+        clearPromptsInState()
     }
 
     /** Called when user picks an option in a Switch block. index=-1 means default. */
     fun respondSwitch(index: Int) {
         switchDeferred?.complete(index)
         switchDeferred = null
+        clearPromptsInState()
+    }
+
+    private fun clearPromptsInState() {
+        val current = _state.value
+        if (current is MacroRunState.Running) {
+            _state.value = current.copy(confirm = null, switch = null)
+        }
     }
 
     // ── Internal execution ────────────────────────────────────────────────────
 
-    private suspend fun executeSteps(steps: List<MacroStep>) {
+    private suspend fun executeSteps(steps: List<MacroStep>): Boolean {
+        var allSuccessful = true
         for (step in steps) {
             currentCoroutineContext().ensureActive()
-            executeStep(step)
+            val stepSuccessful = executeStep(step)
+            allSuccessful = allSuccessful && stepSuccessful
         }
+        return allSuccessful
     }
 
-    private suspend fun executeStep(step: MacroStep) {
+    private suspend fun executeStep(step: MacroStep): Boolean {
         currentCoroutineContext().ensureActive()
         flatStep++
         pushProgress()
 
-        when (step) {
+        return when (step) {
             is MacroStep.IrSend -> {
                 val elapsed = System.currentTimeMillis() - macroStartTime
                 val protocol = com.vex.irshark.util.extractProtocolFromPayload(step.irCode)
@@ -157,10 +175,25 @@ class MacroEngine(private val context: Context) {
                 irLog = irLog + entry
                 _irTransmitEvent.tryEmit(entry)
                 pushProgress()  // update state with new log entry immediately
-                withContext(Dispatchers.IO) { transmitIrCode(context, step.irCode) }
-                delay(100L)
+                val txResult = withContext(Dispatchers.IO) {
+                    transmitIrCodeResult(context, step.irCode, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                }
+                if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                    if (!noIrOutputWarningShown) {
+                        displayTexts.add("No IR output found. Internal IR or live bridge not available.")
+                        noIrOutputWarningShown = true
+                    }
+                    pushProgress()
+                    false
+                } else {
+                    delay(100L)
+                    txResult.success
+                }
             }
-            is MacroStep.Delay -> delay(step.ms.coerceAtLeast(1L))
+            is MacroStep.Delay -> {
+                delay(step.ms.coerceAtLeast(1L))
+                true
+            }
             is MacroStep.ShowText -> {
                 displayTexts.add(step.text)
                 pushProgress()
@@ -178,18 +211,43 @@ class MacroEngine(private val context: Context) {
                     displayTexts.remove(step.text)
                     pushProgress()
                 }
+                true
             }
             is MacroStep.WaitConfirm -> {
                 val ok = suspendConfirm(step.message, hasNo = false)
                 if (!ok) throw CancellationException("User stopped macro")
+                true
             }
             is MacroStep.RepeatBlock -> {
+                var allSuccessful = true
                 repeat(step.count) { iter ->
                     currentCoroutineContext().ensureActive()
                     pushProgress("Repeat ${iter + 1}/${step.count}")
-                    executeSteps(step.steps)
+                    val repeatSuccessful = executeSteps(step.steps)
+                    allSuccessful = allSuccessful && repeatSuccessful
                 }
                 pushProgress()
+                allSuccessful
+            }
+            is MacroStep.RetryBlock -> {
+                var anySuccessful = false
+                var iteration = 0
+                while (true) {
+                    currentCoroutineContext().ensureActive()
+                    iteration++
+                    pushProgress("Retry iter $iteration")
+                    val attemptSuccessful = executeSteps(step.steps)
+                    anySuccessful = anySuccessful || attemptSuccessful
+
+                    val continueRetry = suspendConfirm(step.question.ifBlank { "Repeat again?" }, hasNo = true)
+                    if (!continueRetry) {
+                        break
+                    }
+
+                    delay(step.retryDelayMs.coerceAtLeast(1L))
+                }
+                pushProgress()
+                anySuccessful
             }
             is MacroStep.LoopUntilStop -> {
                 inLoop = true
@@ -200,6 +258,8 @@ class MacroEngine(private val context: Context) {
                     pushProgress("Loop · iter $loopIter")
                     executeSteps(step.steps)
                 }
+                @Suppress("UNREACHABLE_CODE")
+                true
             }
             is MacroStep.IfConfirm -> {
                 val yes    = suspendConfirm(step.message, hasNo = true)
@@ -212,19 +272,21 @@ class MacroEngine(private val context: Context) {
             is MacroStep.Stop -> throw CancellationException("Stop block reached")
             is MacroStep.Vibrate -> {
                 // Fire-and-forget: vibrate without blocking macro execution
-                if (!hapticEnabled) return
-                runScope?.launch(Dispatchers.Main) {
-                    val vib = context.getSystemService(android.content.Context.VIBRATOR_SERVICE)
-                        as? android.os.Vibrator
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                        vib?.vibrate(android.os.VibrationEffect.createOneShot(
-                            step.durationMs.coerceIn(1L, 5000L),
-                            android.os.VibrationEffect.DEFAULT_AMPLITUDE))
-                    } else {
-                        @Suppress("DEPRECATION")
-                        vib?.vibrate(step.durationMs.coerceIn(1L, 5000L))
+                if (hapticEnabled) {
+                    runScope?.launch(Dispatchers.Main) {
+                        val vib = context.getSystemService(android.content.Context.VIBRATOR_SERVICE)
+                            as? android.os.Vibrator
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            vib?.vibrate(android.os.VibrationEffect.createOneShot(
+                                step.durationMs.coerceIn(1L, 5000L),
+                                android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            vib?.vibrate(step.durationMs.coerceIn(1L, 5000L))
+                        }
                     }
                 }
+                true
             }
             is MacroStep.Switch -> {
                 val idx    = suspendSwitch(step.message, step.options)
@@ -241,7 +303,7 @@ class MacroEngine(private val context: Context) {
                                     else "Step $flatStep / $totalSteps"
         val current = _state.value
         _state.value = if (current is MacroRunState.Running)
-            current.copy(progress = progress, displayTexts = displayTexts.toList(), confirm = null, switch = null, irLog = irLog)
+            current.copy(progress = progress, displayTexts = displayTexts.toList(), irLog = irLog)
         else
             MacroRunState.Running(macroName, progress, displayTexts.toList(), null, irLog)
     }

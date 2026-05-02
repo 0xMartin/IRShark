@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +21,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CenterFocusStrong
@@ -33,8 +36,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -65,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.window.Dialog
 import kotlin.math.roundToInt
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,6 +115,7 @@ fun MacroNode.blockW(): Float = when (type) {
     MacroBlockType.DELAY   -> 360f
     MacroBlockType.VIBRATE -> 360f
     MacroBlockType.REPEAT  -> 450f
+    MacroBlockType.RETRY   -> 450f
     MacroBlockType.JOIN    -> 300f
     MacroBlockType.SWITCH  -> {
         val p = params as? BlockParams.Switch ?: BlockParams.Switch()
@@ -133,6 +137,7 @@ fun MacroNode.blockH(): Float = when (type) {
     MacroBlockType.IF_ELSE                   -> 260f
     MacroBlockType.VIBRATE                   -> 200f
     MacroBlockType.REPEAT                    -> 320f
+    MacroBlockType.RETRY                     -> 340f
     MacroBlockType.JOIN                      -> 200f
     MacroBlockType.SWITCH                    -> {
         val msgLen = (params as? BlockParams.Switch)?.message?.length ?: 0
@@ -212,6 +217,7 @@ fun blockColor(type: MacroBlockType): Color = when (type) {
     MacroBlockType.IF_ELSE      -> Color(0xFF1E8AA8)
     MacroBlockType.VIBRATE      -> Color(0xFF9B3DC2)
     MacroBlockType.REPEAT       -> Color(0xFFD47B1A)
+    MacroBlockType.RETRY        -> Color(0xFFFF914D)
     MacroBlockType.SWITCH       -> Color(0xFF3D8ADF)
     MacroBlockType.JOIN         -> Color(0xFF3DA87A)
 }
@@ -226,6 +232,7 @@ fun blockLabel(type: MacroBlockType): String = when (type) {
     MacroBlockType.IF_ELSE      -> "If / Else"
     MacroBlockType.VIBRATE      -> "Vibrate"
     MacroBlockType.REPEAT       -> "Repeat"
+    MacroBlockType.RETRY        -> "Retry"
     MacroBlockType.SWITCH       -> "Switch"
     MacroBlockType.JOIN         -> "Join"
 }
@@ -712,18 +719,7 @@ fun MacroGraphCanvas(
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             // Add button — first position
-            Box {
-                NavBtn(Icons.Filled.Add) { showAddMenu = true }
-                AddBlockMenu(
-                    expanded  = showAddMenu,
-                    onDismiss = { showAddMenu = false },
-                    onPick    = { type ->
-                        showAddMenu = false
-                        val center = snapToGrid(screenToCanvas(Offset(400f, 300f), pan, zoom))
-                        onAddBlock(type, center)
-                    }
-                )
-            }
+            NavBtn(Icons.Filled.Add) { showAddMenu = true }
             NavBtn(Icons.Filled.ZoomOut)            { zoom = (zoom / 1.3f).coerceAtLeast(0.25f) }
             NavBtn(Icons.Filled.ZoomIn)             { zoom = (zoom * 1.3f).coerceAtMost(4f) }
             NavBtn(Icons.Filled.KeyboardArrowLeft)  { pan += Offset( 80f, 0f) }
@@ -731,6 +727,17 @@ fun MacroGraphCanvas(
             NavBtn(Icons.Filled.KeyboardArrowUp)    { pan += Offset(0f,  80f) }
             NavBtn(Icons.Filled.KeyboardArrowDown)  { pan -= Offset(0f,  80f) }
             NavBtn(Icons.Filled.CenterFocusStrong)  { pan = Offset(40f, 60f); zoom = 1f }
+        }
+
+        if (showAddMenu) {
+            AddBlockDialog(
+                onDismiss = { showAddMenu = false },
+                onPick = { type ->
+                    showAddMenu = false
+                    val center = snapToGrid(screenToCanvas(Offset(400f, 300f), pan, zoom))
+                    onAddBlock(type, center)
+                }
+            )
         }
     }
 }
@@ -905,7 +912,7 @@ private fun BlockViewContent(
                                 Text("NO", color = Color(0xFFFF7B9D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
-                        MacroBlockType.REPEAT -> {
+                        MacroBlockType.REPEAT, MacroBlockType.RETRY -> {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -915,8 +922,10 @@ private fun BlockViewContent(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("BODY", color = Color(0xFFFFAA3D), fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                Text("OUT", color = Color(0xFF6DB4FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                val bodyColor = if (node.type == MacroBlockType.RETRY) Color(0xFFFFB86B) else Color(0xFFFFAA3D)
+                                val outColor = if (node.type == MacroBlockType.RETRY) Color(0xFFFFCFA8) else Color(0xFF6DB4FF)
+                                Text("BODY", color = bodyColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("OUT", color = outColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                         MacroBlockType.SWITCH -> {
@@ -1005,12 +1014,12 @@ private fun BlockViewContent(
                     .border(2.5.dp, Color(0xFFFF7B9D).copy(alpha = 0.98f), CircleShape)
                     .graphicsLayer { shadowElevation = 4f; shape = CircleShape })
             }
-            MacroBlockType.REPEAT -> {
+            MacroBlockType.REPEAT, MacroBlockType.RETRY -> {
                 val bw       = node.blockW()
                 val bodyPad  = ((bw * 0.28f - PIN_R) / density).dp
                 val contPad  = ((bw * 0.28f - PIN_R) / density).dp
-                val bodyColor = Color(0xFFFFAA3D)
-                val contColor = Color(0xFF6DB4FF)
+                val bodyColor = if (node.type == MacroBlockType.RETRY) Color(0xFFFFB86B) else Color(0xFFFFAA3D)
+                val contColor = if (node.type == MacroBlockType.RETRY) Color(0xFFFFCFA8) else Color(0xFF6DB4FF)
                 // BODY pin (left)
                 Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = bodyPad)
                     .offset(y = pinOutDp).size(pinDp).clip(CircleShape)
@@ -1068,6 +1077,7 @@ private fun blockSummary(node: MacroNode): String = when (val p = node.params) {
     is BlockParams.IfElse      -> p.message.ifEmpty { "Continue?" }
     is BlockParams.Vibrate     -> "${p.durationMs} ms"
     is BlockParams.Repeat      -> "× ${p.count} times"
+    is BlockParams.Retry       -> "Q: ${p.question.take(26)}\n${p.retryDelayMs} ms delay"
     is BlockParams.Switch      -> p.message.take(36)
     is BlockParams.Join        -> ""
     else                       -> ""
@@ -1127,6 +1137,7 @@ private val addableBlockTypes = listOf(
     MacroBlockType.DELAY,
     MacroBlockType.VIBRATE,
     MacroBlockType.REPEAT,
+    MacroBlockType.RETRY,
     MacroBlockType.JOIN,
     MacroBlockType.SWITCH,
     MacroBlockType.SHOW_TEXT,
@@ -1136,30 +1147,73 @@ private val addableBlockTypes = listOf(
 )
 
 @Composable
-private fun AddBlockMenu(
-    expanded:  Boolean,
+private fun AddBlockDialog(
     onDismiss: () -> Unit,
-    onPick:    (MacroBlockType) -> Unit
+    onPick: (MacroBlockType) -> Unit
 ) {
-    DropdownMenu(
-        expanded         = expanded,
-        onDismissRequest = onDismiss,
-        modifier         = Modifier.background(Color(0xFF121024))
-    ) {
-        addableBlockTypes.forEach { type ->
-            val color = blockColor(type)
-            DropdownMenuItem(
-                text = {
+    val scroll = rememberScrollState()
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.75f)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0xFF121024))
+                .border(1.dp, Color(0xFF9B6DFF).copy(alpha = 0.40f), RoundedCornerShape(16.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Add Block",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Choose a block type",
+                color = Color(0xFF8A8899),
+                fontSize = 12.sp
+            )
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scroll),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                addableBlockTypes.forEach { type ->
+                    val color = blockColor(type)
                     Row(
-                        verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF181327))
+                            .border(1.dp, color.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                            .clickable { onPick(type) }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+                        Box(Modifier.size(9.dp).clip(CircleShape).background(color))
                         Text(blockLabel(type), color = Color.White, fontSize = 13.sp)
                     }
-                },
-                onClick = { onPick(type) }
-            )
+                }
+            }
+
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF1A1726))
+                    .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(10.dp))
+                    .clickable(onClick = onDismiss)
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Close", color = Color(0xFFB7B3CC), fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            }
         }
     }
 }

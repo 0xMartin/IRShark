@@ -10,6 +10,8 @@ private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
 private const val KEY_IR_FINDER_LAST_TESTED = "ir_finder_last_tested"
 private const val KEY_PREFER_DOWNLOADED_DB = "prefer_downloaded_db"
 private const val KEY_DOWNLOADED_DB_TAG = "downloaded_db_tag"
+private const val KEY_TX_MODE = "tx_mode"
+private const val KEY_BRIDGE_ENDPOINT = "bridge_endpoint"
 
 data class AppSettings(
     val globalIntervalMs: Float = 150f,
@@ -18,7 +20,9 @@ data class AppSettings(
     val hapticFeedback: Boolean = true,
     val irFinderLastTested: String? = null,
     val preferDownloadedDb: Boolean = false,
-    val downloadedDbTag: String? = null
+    val downloadedDbTag: String? = null,
+    val txMode: String = "AUTO",
+    val bridgeEndpoint: String = ""
 )
 
 fun loadAppSettings(context: Context): AppSettings {
@@ -30,7 +34,9 @@ fun loadAppSettings(context: Context): AppSettings {
         hapticFeedback      = prefs.getBoolean(KEY_HAPTIC_FEEDBACK, true),
         irFinderLastTested  = prefs.getString(KEY_IR_FINDER_LAST_TESTED, null),
         preferDownloadedDb  = prefs.getBoolean(KEY_PREFER_DOWNLOADED_DB, false),
-        downloadedDbTag     = prefs.getString(KEY_DOWNLOADED_DB_TAG, null)
+        downloadedDbTag     = prefs.getString(KEY_DOWNLOADED_DB_TAG, null),
+        txMode              = prefs.getString(KEY_TX_MODE, "AUTO") ?: "AUTO",
+        bridgeEndpoint      = prefs.getString(KEY_BRIDGE_ENDPOINT, "") ?: ""
     )
 }
 
@@ -44,5 +50,7 @@ fun saveAppSettings(context: Context, settings: AppSettings) {
         .putString(KEY_IR_FINDER_LAST_TESTED, settings.irFinderLastTested)
         .putBoolean(KEY_PREFER_DOWNLOADED_DB, settings.preferDownloadedDb)
         .putString(KEY_DOWNLOADED_DB_TAG, settings.downloadedDbTag)
+        .putString(KEY_TX_MODE, settings.txMode)
+        .putString(KEY_BRIDGE_ENDPOINT, settings.bridgeEndpoint)
         .apply()
 }

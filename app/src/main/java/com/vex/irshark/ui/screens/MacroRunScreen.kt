@@ -2,6 +2,7 @@ package com.vex.irshark.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,14 +26,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,147 +42,236 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.clickable
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import com.vex.irshark.macro.ConfirmRequest
 import com.vex.irshark.macro.IrLogEntry
 import com.vex.irshark.macro.MacroRunState
 import com.vex.irshark.macro.SwitchRequest
 
+private const val NO_IR_WARNING_TEXT = "No IR output found. Internal IR or live bridge not available."
+
 @Composable
 fun MacroRunScreen(
-    state:      MacroRunState.Running,
-    onStop:     () -> Unit,
-    onYes:      () -> Unit,   // WaitConfirm OK  /  IfConfirm Yes
-    onNo:       () -> Unit,   // IfConfirm No
-    onSwitch:   (Int) -> Unit // Switch option selected (index, -1 = default)
+    state: MacroRunState.Running,
+    onStop: () -> Unit,
+    onYes: () -> Unit,
+    onNo: () -> Unit,
+    onSwitch: (Int) -> Unit
 ) {
     val violet = MaterialTheme.colorScheme.primary
+    val noIrWarningShown = state.displayTexts.any { it == NO_IR_WARNING_TEXT }
+    val visibleDisplayTexts = state.displayTexts.filter { it != NO_IR_WARNING_TEXT }
 
-    // Parse progress fraction for the progress bar
     val fraction = run {
         val parts = state.progress.split("/")
         if (parts.size == 2) {
             val cur = parts[0].filter { it.isDigit() }.toLongOrNull()
             val tot = parts[1].filter { it.isDigit() }.toLongOrNull()
             if (cur != null && tot != null && tot > 0) cur.toFloat() / tot.toFloat() else null
-        } else null
+        } else {
+            null
+        }
     }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .padding(horizontal = 14.dp)
             .padding(bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Spacer(modifier = Modifier.height(4.dp))
+        item { Spacer(modifier = Modifier.height(4.dp)) }
 
-        // ── Header card ───────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF100D1C))
-                .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
-                .padding(14.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            "Running: ${state.macroName}",
-                            color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            state.progress,
-                            color = violet, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                    // Stop button
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF2A0A18))
-                            .border(1.dp, Color(0xFFFF7B9D).copy(alpha = 0.6f), RoundedCornerShape(10.dp))
-                            .clickable(onClick = onStop),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Stop,
-                            contentDescription = "Stop",
-                            tint = Color(0xFFFF7B9D),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                // Progress bar (only when we have a fraction)
-                if (fraction != null) {
-                    LinearProgressIndicator(
-                        progress         = { fraction.coerceIn(0f, 1f) },
-                        modifier         = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                        color            = violet,
-                        trackColor       = violet.copy(alpha = 0.18f)
-                    )
-                } else {
-                    // Indeterminate for loops
-                    LinearProgressIndicator(
-                        modifier   = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                        color      = violet,
-                        trackColor = violet.copy(alpha = 0.18f)
-                    )
-                }
-            }
-        }
-
-        // ── Display text(s) (ShowText step) ──────────────────────────────
-        state.displayTexts.forEach { msg ->
+        item {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF0C1A12))
-                    .border(1.dp, Color(0xFF5BFF9A).copy(alpha = 0.30f), RoundedCornerShape(14.dp))
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
+                    .background(Color(0xFF100D1C))
+                    .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+                    .padding(14.dp)
             ) {
-                Text(
-                    text       = msg,
-                    color      = Color(0xFF5BFF9A),
-                    fontSize   = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign  = TextAlign.Center
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                "Running Macro",
+                                color = Color(0xFFB7B3CC),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                state.macroName,
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                state.progress,
+                                color = violet,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF2A0A18))
+                                .border(1.dp, Color(0xFFFF7B9D).copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                                .clickable(onClick = onStop),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Stop,
+                                contentDescription = "Stop",
+                                tint = Color(0xFFFF7B9D),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    if (fraction != null) {
+                        LinearProgressIndicator(
+                            progress = { fraction.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = violet,
+                            trackColor = violet.copy(alpha = 0.18f)
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = violet,
+                            trackColor = violet.copy(alpha = 0.18f)
+                        )
+                    }
+                }
             }
         }
 
-        // ── Confirm prompt ────────────────────────────────────────────────
+        if (noIrWarningShown) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF2A1010))
+                        .border(1.dp, Color(0xFFFF7B7B).copy(alpha = 0.65f), RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFFF7B7B),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = NO_IR_WARNING_TEXT,
+                            color = Color(0xFFFFB1B1),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        if (visibleDisplayTexts.isNotEmpty()) {
+            item {
+                Text(
+                    text = "Messages",
+                    color = Color(0xFFB7B3CC),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
+            itemsIndexed(visibleDisplayTexts) { index, msg ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF0C1A12))
+                        .border(1.dp, Color(0xFF5BFF9A).copy(alpha = 0.30f), RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = msg,
+                        color = Color(0xFF5BFF9A),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
         state.confirm?.let { req ->
-            ConfirmCard(req = req, onYes = onYes, onNo = onNo)
+            item {
+                Text(
+                    text = "Question",
+                    color = Color(0xFFB7B3CC),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
+            item { ConfirmCard(req = req, onYes = onYes, onNo = onNo) }
         }
-        // ── Switch prompt ─────────────────────────────────────────────────
+
         state.switch?.let { req ->
-            SwitchCard(req = req, onSelect = onSwitch)
+            item {
+                Text(
+                    text = "Choice",
+                    color = Color(0xFFB7B3CC),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
+            item { SwitchCard(req = req, onSelect = onSwitch) }
         }
-        // ── IR transmission log ────────────────────────────────────────
+
         if (state.irLog.isNotEmpty()) {
-            IrLogTable(entries = state.irLog)
+            item {
+                Text(
+                    text = "Transmitted Signals",
+                    color = Color(0xFFB7B3CC),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
+            item { IrLogTable(entries = state.irLog) }
         }
+
+        item { Spacer(modifier = Modifier.height(12.dp)) }
     }
 }
 
 @Composable
 fun MacroDoneScreen(
-    finished:  Boolean,        // true = Finished, false = Cancelled
+    finished: Boolean,
     macroName: String,
-    irLog:     List<IrLogEntry>,
-    onDone:    () -> Unit
+    irLog: List<IrLogEntry>,
+    onDone: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -196,17 +285,17 @@ fun MacroDoneScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Text(
-            text       = if (finished) "Macro finished ✓" else "Macro finished",
-            color      = Color(0xFF5BFF9A),
-            fontSize   = 26.sp,
+            text = if (finished) "Macro finished \u2713" else "Macro finished",
+            color = Color(0xFF5BFF9A),
+            fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
-            textAlign  = TextAlign.Center
+            textAlign = TextAlign.Center
         )
         if (!finished) {
             Text(
-                text      = "Stopped early",
-                color     = Color(0xFFFF7B9D),
-                fontSize  = 13.sp,
+                text = "Stopped early",
+                color = Color(0xFFFF7B9D),
+                fontSize = 13.sp,
                 textAlign = TextAlign.Center
             )
         }
@@ -234,14 +323,14 @@ fun MacroDoneScreen(
 
 @Composable
 private fun IrLogTable(entries: List<IrLogEntry>) {
-    val screenH  = LocalConfiguration.current.screenHeightDp.dp
-    val maxH     = screenH * 0.35f
-    // entries already in chronological order; newest on top
+    val screenH = LocalConfiguration.current.screenHeightDp.dp
+    val maxH = screenH * 0.35f
     val reversed = entries.reversed()
     val listState = rememberLazyListState()
     LaunchedEffect(entries.size) {
         if (entries.isNotEmpty()) listState.animateScrollToItem(0)
     }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -251,19 +340,19 @@ private fun IrLogTable(entries: List<IrLogEntry>) {
             .padding(12.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Time",     color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(48.dp))
+                Text("Time", color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(48.dp))
                 Text("Protocol", color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(56.dp))
-                Text("Signal",   color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text("Src",      color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(42.dp), textAlign = TextAlign.End)
+                Text("Signal", color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Src", color = Color(0xFF9B6DFF), fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(42.dp), textAlign = TextAlign.End)
             }
             HorizontalDivider(color = Color(0xFF9B6DFF).copy(alpha = 0.20f))
+
             LazyColumn(
-                state   = listState,
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = maxH),
@@ -275,10 +364,11 @@ private fun IrLogTable(entries: List<IrLogEntry>) {
                     val ss = totalSec % 60
                     val timeStr = "%d:%02d".format(mm, ss)
                     val srcColor = when (entry.irSource) {
-                        "DB"     -> Color(0xFF2E7ADB)
+                        "DB" -> Color(0xFF2E7ADB)
                         "CUSTOM" -> Color(0xFF1E8A5E)
-                        else     -> Color(0xFF8A8899)
+                        else -> Color(0xFF8A8899)
                     }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -286,7 +376,7 @@ private fun IrLogTable(entries: List<IrLogEntry>) {
                         Text(timeStr, color = Color(0xFF8A8899), fontSize = 11.sp, modifier = Modifier.width(48.dp))
                         Text(
                             entry.protocol.ifEmpty { "-" },
-                            color    = Color(0xFFFFC14D),
+                            color = Color(0xFFFFC14D),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.width(56.dp),
@@ -295,7 +385,7 @@ private fun IrLogTable(entries: List<IrLogEntry>) {
                         )
                         Text(
                             entry.displayLabel,
-                            color    = Color.White.copy(alpha = 0.90f),
+                            color = Color.White.copy(alpha = 0.90f),
                             fontSize = 12.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -303,7 +393,7 @@ private fun IrLogTable(entries: List<IrLogEntry>) {
                         )
                         Text(
                             entry.irSource.ifEmpty { "-" },
-                            color    = srcColor,
+                            color = srcColor,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.width(42.dp),
@@ -329,12 +419,12 @@ private fun ConfirmCard(req: ConfirmRequest, onYes: () -> Unit, onNo: () -> Unit
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
-                text      = req.message,
-                color     = Color(0xFFFFC14D),
-                fontSize  = 15.sp,
+                text = req.message,
+                color = Color(0xFFFFC14D),
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,
-                modifier  = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth()
             )
             HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
             Row(
@@ -342,42 +432,40 @@ private fun ConfirmCard(req: ConfirmRequest, onYes: () -> Unit, onNo: () -> Unit
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (req.hasNoOption) {
-                    // IfConfirm: Yes / No
                     ConfirmButton(
-                        label   = "Yes",
-                        icon    = Icons.Filled.Check,
-                        tint    = Color(0xFF5BFF9A),
-                        bg      = Color(0x225BFF9A),
-                        border  = Color(0xFF5BFF9A),
+                        label = "Yes",
+                        icon = Icons.Filled.Check,
+                        tint = Color(0xFF5BFF9A),
+                        bg = Color(0x225BFF9A),
+                        border = Color(0xFF5BFF9A),
                         modifier = Modifier.weight(1f),
                         onClick = onYes
                     )
                     ConfirmButton(
-                        label   = "No",
-                        icon    = Icons.Filled.Close,
-                        tint    = Color(0xFFFF7B9D),
-                        bg      = Color(0xFF1A1726),
-                        border  = Color.White.copy(alpha = 0.18f),
+                        label = "No",
+                        icon = Icons.Filled.Close,
+                        tint = Color(0xFFFF7B9D),
+                        bg = Color(0xFF1A1726),
+                        border = Color.White.copy(alpha = 0.18f),
                         modifier = Modifier.weight(1f),
                         onClick = onNo
                     )
                 } else {
-                    // WaitConfirm: OK / Stop
                     ConfirmButton(
-                        label   = "OK – Continue",
-                        icon    = Icons.Filled.Check,
-                        tint    = violet,
-                        bg      = violet.copy(alpha = 0.18f),
-                        border  = violet,
+                        label = "OK - Continue",
+                        icon = Icons.Filled.Check,
+                        tint = violet,
+                        bg = violet.copy(alpha = 0.18f),
+                        border = violet,
                         modifier = Modifier.weight(1f),
                         onClick = onYes
                     )
                     ConfirmButton(
-                        label   = "Stop macro",
-                        icon    = Icons.Filled.Stop,
-                        tint    = Color(0xFFFF7B9D),
-                        bg      = Color(0xFF1A1726),
-                        border  = Color.White.copy(alpha = 0.18f),
+                        label = "Stop macro",
+                        icon = Icons.Filled.Stop,
+                        tint = Color(0xFFFF7B9D),
+                        bg = Color(0xFF1A1726),
+                        border = Color.White.copy(alpha = 0.18f),
                         modifier = Modifier.weight(1f),
                         onClick = onNo
                     )
@@ -399,12 +487,12 @@ private fun SwitchCard(req: SwitchRequest, onSelect: (Int) -> Unit) {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text       = req.message,
-                color      = Color(0xFF7BB4FF),
-                fontSize   = 15.sp,
+                text = req.message,
+                color = Color(0xFF7BB4FF),
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
-                textAlign  = TextAlign.Center,
-                modifier   = Modifier.fillMaxWidth()
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
             HorizontalDivider(color = Color.White.copy(alpha = 0.06f))
             req.options.forEachIndexed { i, opt ->
@@ -439,13 +527,13 @@ private fun SwitchCard(req: SwitchRequest, onSelect: (Int) -> Unit) {
 
 @Composable
 private fun ConfirmButton(
-    label:    String,
-    icon:     androidx.compose.ui.graphics.vector.ImageVector,
-    tint:     Color,
-    bg:       Color,
-    border:   Color,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    bg: Color,
+    border: Color,
     modifier: Modifier = Modifier,
-    onClick:  () -> Unit
+    onClick: () -> Unit
 ) {
     Box(
         modifier = modifier
