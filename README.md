@@ -109,77 +109,6 @@ Requirements:
 ./gradlew :app:assembleRelease      # build release APK
 ```
 
-## 🤝 Contributing
-
-Contributions are welcome! Here is how to get started and what to keep in mind when opening a pull request.
-
-### Getting the code
-
-```bash
-git clone https://github.com/vexdev/IRShark.git
-cd IRShark
-```
-
-Open the project root in Android Studio (`File → Open`). Gradle syncs automatically on first open.
-
-### Codebase overview
-
-| Area | Where to look |
-|---|---|
-| Navigation & screen state | `MainActivity.kt` |
-| Screen composables | `ui/screens/` |
-| Shared UI components | `ui/components/` |
-| IR protocol encoders | `ir/` |
-| Profile parsing & DB index | `data/IrRepository.kt` |
-| Data models | `model/` |
-| Dependency versions | `gradle/libs.versions.toml` |
-
-### Branch naming
-
-Use a short, lowercase, hyphen-separated name that describes what the branch does:
-
-```
-feat/rc6-protocol
-fix/db-cache-regression
-ui/button-editor-header
-chore/bump-compose-bom
-```
-
-| Prefix | Use for |
-|---|---|
-| `feat/` | new feature or protocol support |
-| `fix/` | bug fix |
-| `ui/` | visual / UX change with no functional impact |
-| `chore/` | dependency bumps, refactors, build changes |
-| `docs/` | documentation only |
-
-### Pull request guidelines
-
-- **One concern per PR.** Don't mix a bug fix with a refactor — open separate PRs.
-- **Title format:** `[prefix] short description in present tense`
-  - ✅ `[feat] Add RC6 protocol encoder`
-  - ✅ `[fix] Restore DB cache fast-path on startup`
-  - ❌ `Various improvements and fixes`
-- **Description should include:**
-  - What the PR does and why
-  - How to test it (which screen / device / flow to exercise)
-  - Screenshots or a short screen recording for UI changes
-- Keep the diff focused — avoid reformatting unrelated files.
-- Make sure `./gradlew :app:compileDebugKotlin` passes before opening the PR.
-
-### Adding a new IR protocol
-
-1. Add an encoder in `app/src/main/java/com/vex/irshark/ir/`.
-2. Register the protocol name in the `encode()` dispatcher (same package).
-3. Add the protocol name to the supported list in this README.
-
-### Adding a new screen
-
-1. Add a value to the `Screen` enum in `MainActivity.kt`.
-2. Add the screen title to the `screenTitle` map.
-3. Add the composable call to the `when (screen)` block in `MainContent`.
-4. If the screen needs top-bar navigation, include its `Screen` value in the `navBarScreens` set.
-
 ## 🧪 Usage Notes
 
 - some commands may need repeats or a longer press depending on device behavior
@@ -299,14 +228,51 @@ data: 9042 4484 620 532 620 532 620 1658 620 532 620 532 620 532 620 532 620 532
 
 In **Settings → Database**, tap **Import database ZIP**. The ZIP must contain a `flipper_irdb/` root directory matching the structure above. The app validates that at least one `.ir` file is present before accepting the archive.
 
-## 🗂️ Project Structure
+## 🤝 Contributing
 
-- app
-: Android app source code
-- app/src/main/assets/flipper_irdb
-: local copy of the Flipper IR database
-- gradle, build skripty
-: build configuration
+Contributions are welcome! Here is how to get started and what to keep in mind when opening a pull request.
+
+### Getting the code
+
+```bash
+git clone https://github.com/vexdev/IRShark.git
+cd IRShark
+```
+
+Open the project root in Android Studio (`File → Open`). Gradle syncs automatically on first open.
+
+### Branch naming
+
+Use a short, lowercase, hyphen-separated name that describes what the branch does:
+
+```
+feat/rc6-protocol
+fix/db-cache-regression
+ui/button-editor-header
+chore/bump-compose-bom
+```
+
+| Prefix | Use for |
+|---|---|
+| `feat/` | new feature or protocol support |
+| `fix/` | bug fix |
+| `ui/` | visual / UX change with no functional impact |
+| `chore/` | dependency bumps, refactors, build changes |
+| `docs/` | documentation only |
+
+### Pull request guidelines
+
+- **One concern per PR.** Don't mix a bug fix with a refactor — open separate PRs.
+- **Title format:** `[prefix] short description in present tense`
+  - ✅ `[feat] Add RC6 protocol encoder`
+  - ✅ `[fix] Restore DB cache fast-path on startup`
+  - ❌ `Various improvements and fixes`
+- **Description should include:**
+  - What the PR does and why
+  - How to test it (which screen / device / flow to exercise)
+  - Screenshots or a short screen recording for UI changes
+- Keep the diff focused — avoid reformatting unrelated files.
+- Make sure `./gradlew :app:compileDebugKotlin` passes before opening the PR.
 
 ## 📄 License
 
