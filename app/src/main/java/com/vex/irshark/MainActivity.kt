@@ -155,6 +155,8 @@ private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
 
 private const val REMOTE_DB_RESULT_LIMIT = 150
 
+// ── Search & utility helpers ────────────────────────────────────────────────
+
 private fun estimateUniversalRemainingMs(
     processedCount: Int,
     totalCount: Int,
@@ -218,6 +220,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var universalIncludeUnsorted by rememberSaveable { mutableStateOf(false) }
     var universalAutoSend by rememberSaveable { mutableStateOf(false) }
     var universalIntervalMs by rememberSaveable { mutableStateOf(250f) }
+
+    // ── Settings & persistent flags ──────────────────────────────────────────────
     var autoStopAtEnd by rememberSaveable { mutableStateOf(true) }
     var showTxLed by rememberSaveable { mutableStateOf(true) }
     var hapticFeedback by rememberSaveable { mutableStateOf(true) }
@@ -228,6 +232,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var downloadedDbAvailable by remember { mutableStateOf(false) }
     var effectiveDbSourceLabel by remember { mutableStateOf("Default") }
     var irFinderLastTested by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // ── Loading & runtime state ───────────────────────────────────────────────────
     var txPulseActive by remember { mutableStateOf(false) }
     var settingsDirty by remember { mutableStateOf(false) }
     var settingsToastPending by remember { mutableStateOf(false) }
@@ -259,6 +265,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         macroEngine.bridgeEndpoint = bridgeEndpoint
     }
 
+    // ── Utility functions ─────────────────────────────────────────────────────────
     fun shareJsonFile(fileStem: String, subject: String, chooserTitle: String, json: String) {
         scope.launch {
             runCatching {
@@ -416,6 +423,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
+    // ── IR transmit & database reload ────────────────────────────────────────────
     fun emitTxPulse(durationMs: Long = 180L) {
         txPulseJob?.cancel()
         txPulseJob = scope.launch {
@@ -442,6 +450,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
+    // ── Database ZIP import ──────────────────────────────────────────────────────
     val zipPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -475,7 +484,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
-    // List search queries
+    // ── List search & filtering ─────────────────────────────────────────────────
     var myRemotesQuery by rememberSaveable { mutableStateOf("") }
     var remoteDbQuery by rememberSaveable { mutableStateOf("") }
     
@@ -493,7 +502,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         remoteDbFilteredProfiles = filtered.take(REMOTE_DB_RESULT_LIMIT)
     }
 
-    // Remote Control state
+    // ── Remote Control state ──────────────────────────────────────────────────────
     var controlProfilePath by rememberSaveable { mutableStateOf<String?>(null) }
     var controlName by rememberSaveable { mutableStateOf<String?>(null) }
     var controlRemoteIndex by rememberSaveable { mutableIntStateOf(-1) }
@@ -506,7 +515,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var remoteHistory by remember { mutableStateOf(listOf<RemoteHistoryEntry>()) }
     var historyLoaded by remember { mutableStateOf(false) }
 
-    // Editor state for custom/editable remotes
+    // ── Remote editor state ───────────────────────────────────────────────────────
     var editingRemoteIndex by remember { mutableStateOf<Int?>(null) }
     var remoteEditorReturnScreen by remember { mutableStateOf(Screen.MY_REMOTES) }
     var editorRemoteName by remember { mutableStateOf("") }
@@ -552,7 +561,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         editorButtonLoadingCodes = false
     }
 
-    // IR Finder nav state (lifted from IrFinderScreen)
+    // ── IR Finder state ───────────────────────────────────────────────────────────
+    // State is lifted here so it survives recomposition and can be reset on navigation.
     var irFinderBreadcrumb by remember { mutableStateOf<String?>(null) }
     var irFinderOnBack by remember { mutableStateOf<(() -> Unit)?>(null) }
     var irFinderOnUndo by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -578,6 +588,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         macroEngine.irTransmitEvent.collect { emitTxPulse() }
     }
 
+    // ── Remote editor helpers ─────────────────────────────────────────────────────
+    // Name deduplication, opening the editor, tracking dirty state, and starting
+    // the per-button sub-editor.
     fun uniqueRemoteName(baseName: String, excludeIndex: Int? = null): String {
         val taken = savedRemotes
             .filterIndexed { idx, _ -> excludeIndex == null || idx != excludeIndex }
@@ -641,6 +654,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         screen = Screen.REMOTE_BUTTON_EDITOR
     }
 
+    // ── Remote editor actions ─────────────────────────────────────────────────────
+    // Validation, saving button/remote changes, exit-with-dirty-check logic.
     fun validateEditorButtonCode(raw: String): String? {
         val s = raw.trim()
         if (s.isBlank()) return "Code cannot be empty"
@@ -781,6 +796,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         closeRemoteEditor()
     }
 
+    // ── Remote control helpers ────────────────────────────────────────────────────
+    // Code hydration from DB, history recording, and opening a remote control screen
+    // from various sources (My Remotes, Remote DB, history).
     fun hydrateMissingCodesFromDb(
         buttons: List<SavedRemoteButton>,
         dbCodes: List<com.vex.irshark.data.DbIrCodeOption>
@@ -920,7 +938,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
-    // Load data
+    // ── Data loading ──────────────────────────────────────────────────────────────
+    // Load all persisted data once on startup: settings, DB index, remotes, history, macros.
     LaunchedEffect(Unit) {
         val settings = loadAppSettings(context)
         universalIntervalMs = settings.globalIntervalMs
@@ -952,6 +971,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         macrosLoaded = true
     }
 
+    // ── Data persistence ──────────────────────────────────────────────────────────
+    // Auto-save whenever corresponding state changes (guarded by the loaded flag
+    // to avoid overwriting persisted data before it has been read).
     LaunchedEffect(savedRemotes) {
         if (!remotesLoaded) return@LaunchedEffect
         saveSavedRemotes(context, savedRemotes)
@@ -994,8 +1016,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         toastController.show("Settings saved")
     }
 
-    // Deduplicated payloads for the currently selected universal command.
-    // Recomputed on IO whenever the selected command or path changes.
+    // ── Universal auto-send ───────────────────────────────────────────────────────
+    // Computes deduplicated payloads for the active command and drives the
+    // timed auto-transmit loop when universalAutoSend is enabled.
     var universalUniquePayloads by remember { mutableStateOf<List<String>>(emptyList()) }
     LaunchedEffect(universalCommand, universalPath, universalIncludeUnsorted) {
         val cmd = universalCommand
@@ -1082,7 +1105,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
-    // Keep display awake while universal auto-send is running.
+    // ── Screen wake lock ───────────────────────────────────────────────────────────
+    // Keep the display awake while universal auto-send is running.
     DisposableEffect(view, universalAutoSend) {
         view.keepScreenOn = universalAutoSend
         onDispose {
@@ -1090,7 +1114,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
     }
 
-    // Control command labels
+    // ── Screen rendering ───────────────────────────────────────────────────────────
     val controlCommands = controlButtons.map { it.label }.filter { it.isNotBlank() }
     // Show splash while loading
     if (!settingsLoaded || !dbLoaded) {
@@ -2009,6 +2033,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
         }
 
+        // ── Overlay dialogs ───────────────────────────────────────────────────────────
+        // Delete confirmations shown as overlays on top of the current screen.
         if (pendingDeleteRemoteIndex != null) {
             val deleteIndex = pendingDeleteRemoteIndex ?: -1
             val deleteTarget = savedRemotes.getOrNull(deleteIndex)

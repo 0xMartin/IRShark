@@ -387,7 +387,7 @@ fun SettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Recent remotes", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Text(
-                    text = "Up to 200 recently opened remotes are stored locally.",
+                    text = "Up to 100 recently opened remotes are stored locally.",
                     color = Color(0xFF8A8899),
                     fontSize = 11.sp
                 )

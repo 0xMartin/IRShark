@@ -857,7 +857,7 @@ fun loadRemoteHistory(context: Context): List<RemoteHistoryEntry> {
 fun saveRemoteHistory(context: Context, history: List<RemoteHistoryEntry>) {
     val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     val serialized = JSONArray().apply {
-        history.take(200).forEach { entry ->
+        history.take(100).forEach { entry ->
             put(
                 JSONObject().apply {
                     put("name", entry.name)
@@ -888,7 +888,7 @@ fun saveRemoteHistory(context: Context, history: List<RemoteHistoryEntry>) {
 fun recordRemoteHistory(
     history: List<RemoteHistoryEntry>,
     entry: RemoteHistoryEntry,
-    limit: Int = 200
+    limit: Int = 100
 ): List<RemoteHistoryEntry> {
     val deduped = history.filterNot { it.stableKey == entry.stableKey }
     return listOf(entry) + deduped.take((limit - 1).coerceAtLeast(0))
