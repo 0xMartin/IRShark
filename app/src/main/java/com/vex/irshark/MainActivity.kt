@@ -516,7 +516,41 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var editorOriginalButtons by remember { mutableStateOf(listOf<SavedRemoteButton>()) }
     var editorOriginalIconName by remember { mutableStateOf<String?>(null) }
     var editingButtonIndex by remember { mutableStateOf(-1) }
+    var editorButtonLabel by remember { mutableStateOf("") }
+    var editorButtonCode by remember { mutableStateOf("") }
+    var editorButtonOriginalLabel by remember { mutableStateOf("") }
+    var editorButtonOriginalCode by remember { mutableStateOf("") }
+    var editorButtonProfileSearch by remember { mutableStateOf("") }
+    var editorButtonSelectedProfilePath by remember { mutableStateOf<String?>(null) }
+    var editorButtonSelectedCodeIdx by remember { mutableIntStateOf(-1) }
+    var editorButtonDbCodes by remember { mutableStateOf(listOf<com.vex.irshark.data.DbIrCodeOption>()) }
+    var editorButtonLoadingCodes by remember { mutableStateOf(false) }
+    var editorButtonCodeError by remember { mutableStateOf<String?>(null) }
+    var showEditorDiscardDialog by remember { mutableStateOf(false) }
+    var editorDiscardTarget by remember { mutableStateOf<Screen?>(null) }
     var pendingDeleteRemoteIndex by remember { mutableStateOf<Int?>(null) }
+
+    val editorFilteredProfiles = remember(editorButtonProfileSearch, dbIndex.profiles) {
+        dbIndex.profiles.filter {
+            editorButtonProfileSearch.isBlank() ||
+                it.name.contains(editorButtonProfileSearch, ignoreCase = true) ||
+                it.parentPath.contains(editorButtonProfileSearch, ignoreCase = true)
+        }.take(40)
+    }
+
+    LaunchedEffect(screen, editorButtonSelectedProfilePath) {
+        if (screen != Screen.REMOTE_BUTTON_EDITOR) return@LaunchedEffect
+        val path = editorButtonSelectedProfilePath
+        if (path.isNullOrBlank()) {
+            editorButtonDbCodes = emptyList()
+            editorButtonSelectedCodeIdx = -1
+            return@LaunchedEffect
+        }
+        editorButtonLoadingCodes = true
+        editorButtonDbCodes = loadDbIrCodeOptions(context, path)
+        editorButtonSelectedCodeIdx = -1
+        editorButtonLoadingCodes = false
+    }
 
     // IR Finder nav state (lifted from IrFinderScreen)
     var irFinderBreadcrumb by remember { mutableStateOf<String?>(null) }
@@ -578,6 +612,120 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         editingRemoteIndex = null
         editingButtonIndex = -1
         screen = remoteEditorReturnScreen
+    }
+
+    fun isRemoteEditorDirty(): Boolean {
+        return editorRemoteName != editorOriginalName.orEmpty() ||
+            editorRemoteButtons != editorOriginalButtons ||
+            editorRemoteIconName != editorOriginalIconName
+    }
+
+    fun isButtonEditorDirty(): Boolean {
+        return editorButtonLabel != editorButtonOriginalLabel || editorButtonCode != editorButtonOriginalCode
+    }
+
+    fun startButtonEditor(index: Int) {
+        val defaultCode = "protocol=NEC; address=0x00FF; command=0x20DF"
+        val existing = editorRemoteButtons.getOrNull(index)
+        editingButtonIndex = index
+        editorButtonLabel = existing?.label ?: "POWER"
+        editorButtonCode = existing?.code ?: defaultCode
+        editorButtonOriginalLabel = editorButtonLabel
+        editorButtonOriginalCode = editorButtonCode
+        editorButtonProfileSearch = ""
+        editorButtonSelectedProfilePath = null
+        editorButtonSelectedCodeIdx = -1
+        editorButtonDbCodes = emptyList()
+        editorButtonLoadingCodes = false
+        editorButtonCodeError = null
+        screen = Screen.REMOTE_BUTTON_EDITOR
+    }
+
+    fun validateEditorButtonCode(raw: String): String? {
+        val s = raw.trim()
+        if (s.isBlank()) return "Code cannot be empty"
+
+        val rawPattern = Regex("""^-?\d+(\s+-?\d+){3,}$""")
+        if (rawPattern.matches(s)) return null
+
+        val pairs = s
+            .split(';', '\n')
+            .mapNotNull { segment ->
+                val token = segment.trim()
+                if (token.isEmpty()) return@mapNotNull null
+                val idx = token.indexOf('=')
+                if (idx <= 0) return@mapNotNull null
+                token.substring(0, idx).trim().lowercase() to token.substring(idx + 1).trim()
+            }
+
+        if (pairs.isEmpty()) return "Invalid IR code format. Use key=value pairs or raw integers."
+
+        val fields = pairs.toMap()
+        when (fields["type"]?.lowercase()) {
+            "raw" -> if (fields["data"].isNullOrBlank()) return "RAW code must contain data=..."
+            "parsed" -> if (fields["protocol"].isNullOrBlank()) return "Parsed code must contain protocol=..."
+        }
+        return null
+    }
+
+    fun saveButtonEditor() {
+        val err = validateEditorButtonCode(editorButtonCode)
+        if (err != null) {
+            editorButtonCodeError = err
+            return
+        }
+        val updatedButton = SavedRemoteButton(
+            label = editorButtonLabel.trim(),
+            code = editorButtonCode.trim()
+        )
+        editorRemoteButtons = if (editingButtonIndex in editorRemoteButtons.indices) {
+            editorRemoteButtons.toMutableList().also { it[editingButtonIndex] = updatedButton }
+        } else {
+            editorRemoteButtons + updatedButton
+        }
+        editingButtonIndex = -1
+        screen = Screen.REMOTE_EDITOR
+    }
+
+    fun performEditorExit(target: Screen) {
+        when (screen) {
+            Screen.REMOTE_EDITOR -> {
+                if (target == Screen.HOME) {
+                    editingRemoteIndex = null
+                    editingButtonIndex = -1
+                    screen = Screen.HOME
+                } else {
+                    closeRemoteEditor()
+                }
+            }
+            Screen.REMOTE_BUTTON_EDITOR -> {
+                if (target == Screen.HOME) {
+                    editingRemoteIndex = null
+                    editingButtonIndex = -1
+                    screen = Screen.HOME
+                } else {
+                    editingButtonIndex = -1
+                    screen = Screen.REMOTE_EDITOR
+                }
+            }
+            else -> {
+                screen = target
+            }
+        }
+    }
+
+    fun requestEditorExit(target: Screen) {
+        val dirty = when (screen) {
+            Screen.REMOTE_EDITOR -> isRemoteEditorDirty()
+            Screen.REMOTE_BUTTON_EDITOR -> isButtonEditorDirty()
+            else -> false
+        }
+        if (dirty) {
+            editorDiscardTarget = target
+            showEditorDiscardDialog = true
+        } else {
+            performEditorExit(target)
+        }
     }
 
     fun saveRemoteEditor() {
@@ -1007,15 +1155,22 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     }
                 )
             }
-            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER, Screen.REMOTE_EDITOR)) {
+            if (screen in listOf(Screen.MY_REMOTES, Screen.REMOTE_DB, Screen.SETTINGS, Screen.MACROS, Screen.IR_FINDER, Screen.REMOTE_EDITOR, Screen.REMOTE_BUTTON_EDITOR)) {
                 val remoteDbShownCount = if (screen == Screen.REMOTE_DB) minOf(remoteDbMatchCount, REMOTE_DB_RESULT_LIMIT) else 0
                 val remoteEditorCanSave = editorRemoteName.trim().isNotBlank() &&
                     editorRemoteButtons.isNotEmpty() &&
                     savedRemotes.withIndex().none { (idx, remote) ->
                         idx != editingRemoteIndex && remote.name.equals(editorRemoteName.trim(), ignoreCase = true)
                     }
+                val buttonEditorCanSave = editorButtonLabel.trim().isNotBlank() && editorButtonCode.trim().isNotBlank()
                 SectionNavBar(
-                    onHome = { screen = Screen.HOME },
+                    onHome = {
+                        if (screen == Screen.REMOTE_EDITOR || screen == Screen.REMOTE_BUTTON_EDITOR) {
+                            requestEditorExit(Screen.HOME)
+                        } else {
+                            screen = Screen.HOME
+                        }
+                    },
                     breadcrumb = if (screen == Screen.IR_FINDER) (irFinderBreadcrumb ?: "Root") else null,
                     onBack = if (screen == Screen.IR_FINDER) irFinderOnBack else null,
                     extraActions = if (screen == Screen.IR_FINDER && irFinderOnUndo != null)
@@ -1040,10 +1195,15 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     },
                     searchResultCount = if (screen == Screen.REMOTE_DB) remoteDbShownCount else null,
                     searchTotalCount = if (screen == Screen.REMOTE_DB) remoteDbMatchCount else null,
+                    actionsRound = screen == Screen.REMOTE_EDITOR || screen == Screen.REMOTE_BUTTON_EDITOR,
                     actions = when (screen) {
                         Screen.REMOTE_EDITOR -> listOf(
-                            Icons.Filled.Close to { closeRemoteEditor() },
+                            Icons.Filled.Close to { requestEditorExit(remoteEditorReturnScreen) },
                             Icons.Filled.Save to { if (remoteEditorCanSave) saveRemoteEditor() }
+                        )
+                        Screen.REMOTE_BUTTON_EDITOR -> listOf(
+                            Icons.Filled.Close to { requestEditorExit(Screen.REMOTE_EDITOR) },
+                            Icons.Filled.Save to { if (buttonEditorCanSave) saveButtonEditor() }
                         )
                         Screen.MY_REMOTES -> listOf(
                             Icons.Filled.Add to {
@@ -1103,6 +1263,32 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     dismissButton = {
                         TextButton(onClick = { showConfirmNavDialog = false }) {
                             Text("Cancel")
+                        }
+                    }
+                )
+            }
+
+            if (showEditorDiscardDialog) {
+                AlertDialog(
+                    onDismissRequest = { showEditorDiscardDialog = false },
+                    title = { Text("Discard changes?") },
+                    text = { Text("You have unsaved changes. Leave without saving?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showEditorDiscardDialog = false
+                            val target = editorDiscardTarget
+                            editorDiscardTarget = null
+                            if (target != null) performEditorExit(target)
+                        }) {
+                            Text("Leave")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            showEditorDiscardDialog = false
+                            editorDiscardTarget = null
+                        }) {
+                            Text("Stay")
                         }
                     }
                 )
@@ -1470,12 +1656,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onNameChange = { editorRemoteName = it },
                             onIconChange = { editorRemoteIconName = it },
                             onAddButton = {
-                                editingButtonIndex = -1
-                                screen = Screen.REMOTE_BUTTON_EDITOR
+                                startButtonEditor(-1)
                             },
                             onEditButton = { idx ->
-                                editingButtonIndex = idx
-                                screen = Screen.REMOTE_BUTTON_EDITOR
+                                startButtonEditor(idx)
                             },
                             onMoveButtonUp = { idx ->
                                 if (idx <= 0 || idx >= editorRemoteButtons.size) return@RemoteEditorScreen
@@ -1499,7 +1683,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 }
                             },
                             onBack = {
-                                closeRemoteEditor()
+                                requestEditorExit(remoteEditorReturnScreen)
                             },
                             onSave = { saveRemoteEditor() },
                             canSave = canSaveRemote
@@ -1507,25 +1691,39 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                     }
 
                     Screen.REMOTE_BUTTON_EDITOR -> {
-                        val initialButton = if (editingButtonIndex in editorRemoteButtons.indices) {
-                            editorRemoteButtons[editingButtonIndex]
-                        } else {
-                            null
-                        }
-
                         RemoteButtonEditorScreen(
-                            initialButton = initialButton,
-                            dbProfiles = dbIndex.profiles,
-                            onBack = { screen = Screen.REMOTE_EDITOR },
-                            onApply = { updatedButton ->
-                                editorRemoteButtons = if (editingButtonIndex in editorRemoteButtons.indices) {
-                                    editorRemoteButtons.toMutableList().also { it[editingButtonIndex] = updatedButton }
-                                } else {
-                                    editorRemoteButtons + updatedButton
-                                }
-                                editingButtonIndex = -1
-                                screen = Screen.REMOTE_EDITOR
-                            }
+                            buttonLabel = editorButtonLabel,
+                            buttonCode = editorButtonCode,
+                            profileSearch = editorButtonProfileSearch,
+                            selectedProfilePath = editorButtonSelectedProfilePath,
+                            selectedCodeIdx = editorButtonSelectedCodeIdx,
+                            dbCodes = editorButtonDbCodes,
+                            loadingCodes = editorButtonLoadingCodes,
+                            filteredProfiles = editorFilteredProfiles,
+                            codeError = editorButtonCodeError,
+                            onLabelChange = {
+                                editorButtonLabel = it
+                            },
+                            onCodeChange = {
+                                editorButtonCode = it
+                                editorButtonCodeError = null
+                            },
+                            onProfileSearchChange = {
+                                editorButtonProfileSearch = it
+                            },
+                            onSelectProfile = {
+                                editorButtonSelectedProfilePath = it
+                            },
+                            onSelectDbCode = { idx ->
+                                val hit = editorButtonDbCodes.getOrNull(idx) ?: return@RemoteButtonEditorScreen
+                                editorButtonSelectedCodeIdx = idx
+                                editorButtonLabel = hit.label
+                                editorButtonCode = hit.code
+                                editorButtonCodeError = null
+                            },
+                            onBack = { requestEditorExit(Screen.REMOTE_EDITOR) },
+                            onApply = { saveButtonEditor() },
+                            canApply = editorButtonLabel.trim().isNotBlank() && editorButtonCode.trim().isNotBlank()
                         )
                     }
 

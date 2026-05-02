@@ -33,17 +33,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -51,7 +44,6 @@ import androidx.compose.ui.unit.sp
 import com.vex.irshark.data.DbIrCodeOption
 import com.vex.irshark.data.FlipperProfile
 import com.vex.irshark.data.SavedRemoteButton
-import com.vex.irshark.data.loadDbIrCodeOptions
 import com.vex.irshark.ui.components.CategorySvgIcon
 import com.vex.irshark.ui.components.EmptyCard
 
@@ -291,76 +283,24 @@ fun RemoteEditorScreen(
 
 @Composable
 fun RemoteButtonEditorScreen(
-    initialButton: SavedRemoteButton?,
-    dbProfiles: List<FlipperProfile>,
+    buttonLabel: String,
+    buttonCode: String,
+    profileSearch: String,
+    selectedProfilePath: String?,
+    selectedCodeIdx: Int,
+    dbCodes: List<DbIrCodeOption>,
+    loadingCodes: Boolean,
+    filteredProfiles: List<FlipperProfile>,
+    codeError: String?,
+    onLabelChange: (String) -> Unit,
+    onCodeChange: (String) -> Unit,
+    onProfileSearchChange: (String) -> Unit,
+    onSelectProfile: (String) -> Unit,
+    onSelectDbCode: (Int) -> Unit,
     onBack: () -> Unit,
-    onApply: (SavedRemoteButton) -> Unit
+    onApply: () -> Unit,
+    canApply: Boolean
 ) {
-    val context = LocalContext.current
-    val defaultCode = "protocol=NEC; address=0x00FF; command=0x20DF"
-
-    var label by remember { mutableStateOf(initialButton?.label ?: "POWER") }
-    var code by remember { mutableStateOf(initialButton?.code ?: defaultCode) }
-
-    var profileSearch by remember { mutableStateOf("") }
-    var selectedProfilePath by remember { mutableStateOf<String?>(null) }
-    var selectedCodeIdx by remember { mutableIntStateOf(-1) }
-    var dbCodes by remember { mutableStateOf(listOf<DbIrCodeOption>()) }
-    var loadingCodes by remember { mutableStateOf(false) }
-    var codeError by remember { mutableStateOf<String?>(null) }
-
-    val filteredProfiles = remember(profileSearch, dbProfiles) {
-        dbProfiles.filter {
-            profileSearch.isBlank() ||
-                it.name.contains(profileSearch, ignoreCase = true) ||
-                it.parentPath.contains(profileSearch, ignoreCase = true)
-        }.take(40)
-    }
-
-    LaunchedEffect(selectedProfilePath) {
-        val path = selectedProfilePath
-        if (path.isNullOrBlank()) {
-            dbCodes = emptyList()
-            selectedCodeIdx = -1
-            return@LaunchedEffect
-        }
-        loadingCodes = true
-        dbCodes = loadDbIrCodeOptions(context, path)
-        selectedCodeIdx = -1
-        loadingCodes = false
-    }
-
-    fun validateIrCode(raw: String): String? {
-        val s = raw.trim()
-        if (s.isBlank()) return "Code cannot be empty"
-
-        val rawPattern = Regex("""^-?\d+(\s+-?\d+){3,}$""")
-        if (rawPattern.matches(s)) return null
-
-        val pairs = s
-            .split(';', '\n')
-            .mapNotNull { segment ->
-                val token = segment.trim()
-                if (token.isEmpty()) return@mapNotNull null
-                val idx = token.indexOf('=')
-                if (idx <= 0) return@mapNotNull null
-                token.substring(0, idx).trim().lowercase() to token.substring(idx + 1).trim()
-            }
-
-        if (pairs.isEmpty()) {
-            return "Invalid IR code format. Use key=value pairs or raw integers."
-        }
-
-        val fields = pairs.toMap()
-        when (fields["type"]?.lowercase()) {
-            "raw" -> if (fields["data"].isNullOrBlank()) return "RAW code must contain data=..."
-            "parsed" -> if (fields["protocol"].isNullOrBlank()) return "Parsed code must contain protocol=..."
-        }
-
-        return null
-    }
-
-    val canApply = label.trim().isNotBlank() && code.trim().isNotBlank()
     val violet = MaterialTheme.colorScheme.primary
 
     LazyColumn(
@@ -378,8 +318,8 @@ fun RemoteButtonEditorScreen(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
-                        value = label,
-                        onValueChange = { label = it },
+                        value = buttonLabel,
+                        onValueChange = onLabelChange,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         label = { Text("Button name") },
@@ -387,8 +327,8 @@ fun RemoteButtonEditorScreen(
                     )
 
                     OutlinedTextField(
-                        value = code,
-                        onValueChange = { code = it; codeError = null },
+                        value = buttonCode,
+                        onValueChange = onCodeChange,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(96.dp),
@@ -416,7 +356,7 @@ fun RemoteButtonEditorScreen(
 
                     OutlinedTextField(
                         value = profileSearch,
-                        onValueChange = { profileSearch = it },
+                        onValueChange = onProfileSearchChange,
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         label = { Text("Search remote profile") }
@@ -434,7 +374,7 @@ fun RemoteButtonEditorScreen(
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
                                         .border(1.dp, Color.White.copy(alpha = if (selected) 0.24f else 0.10f), RoundedCornerShape(10.dp))
-                                        .clickable { selectedProfilePath = profile.path }
+                                        .clickable { onSelectProfile(profile.path) }
                                         .padding(8.dp)
                                 ) {
                                     Column {
@@ -461,10 +401,7 @@ fun RemoteButtonEditorScreen(
                                             .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
                                             .border(1.dp, Color.White.copy(alpha = if (selected) 0.24f else 0.10f), RoundedCornerShape(10.dp))
                                             .clickable {
-                                                selectedCodeIdx = idx
-                                                label = item.label
-                                                code = item.code
-                                                codeError = null
+                                                onSelectDbCode(idx)
                                             }
                                             .padding(8.dp)
                                     ) {
@@ -494,14 +431,7 @@ fun RemoteButtonEditorScreen(
                     Text("Back")
                 }
                 Button(
-                    onClick = {
-                        val err = validateIrCode(code)
-                        if (err != null) {
-                            codeError = err
-                        } else {
-                            onApply(SavedRemoteButton(label = label.trim(), code = code.trim()))
-                        }
-                    },
+                    onClick = onApply,
                     enabled = canApply,
                     modifier = Modifier.weight(1f)
                 ) {
