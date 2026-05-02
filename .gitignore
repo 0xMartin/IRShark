@@ -38,3 +38,6 @@ captures/
 # Signing files (keep private)
 *.jks
 *.keystore
+
+# app release files
+app/release/
