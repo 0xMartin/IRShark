@@ -56,6 +56,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import android.widget.Toast
 import com.vex.irshark.data.FlipperProfile
 import com.vex.irshark.data.SavedMacro
 import com.vex.irshark.data.SavedRemote
@@ -66,7 +67,8 @@ import com.vex.irshark.ui.macro.MacroGraph
 import com.vex.irshark.ui.macro.MacroGraphCanvas
 import com.vex.irshark.ui.macro.MacroNode
 import com.vex.irshark.ui.macro.blockLabel
-import com.vex.irshark.util.transmitIrCode
+import com.vex.irshark.util.IrTransmitStatus
+import com.vex.irshark.util.transmitIrCodeResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -84,7 +86,9 @@ fun MacroEditorScreen(
     existingNames: Set<String>,
     onSave:        (SavedMacro) -> Unit,
     onDismiss:     () -> Unit,
-    onTransmit:    () -> Unit = {}
+    onTransmit:    () -> Unit = {},
+    txModeRaw: String = "AUTO",
+    bridgeEndpoint: String = ""
 ) {
     var macroName by remember { mutableStateOf(initialMacro?.name ?: "") }
     var nameError by remember { mutableStateOf(false) }
@@ -363,7 +367,23 @@ fun MacroEditorScreen(
             },
             onSendIrPreview = { irParams ->
                 scope.launch {
-                    withContext(Dispatchers.IO) { transmitIrCode(context, irParams.irCode) }
+                    withContext(Dispatchers.IO) {
+                        val txResult = transmitIrCodeResult(
+                            context,
+                            irParams.irCode,
+                            modeRaw = txModeRaw,
+                            bridgeEndpointRaw = bridgeEndpoint
+                        )
+                        if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(
+                                    context,
+                                    "No IR output found. Internal IR or live bridge not available.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
                 }
                 onTransmit()
             }
@@ -379,6 +399,7 @@ private fun defaultParams(type: MacroBlockType): BlockParams = when (type) {
     MacroBlockType.IF_ELSE      -> BlockParams.IfElse()
     MacroBlockType.VIBRATE      -> BlockParams.Vibrate()
     MacroBlockType.REPEAT       -> BlockParams.Repeat()
+    MacroBlockType.RETRY        -> BlockParams.Retry()
     MacroBlockType.SWITCH       -> BlockParams.Switch()
     MacroBlockType.JOIN         -> BlockParams.Join()
     else                        -> BlockParams.None
@@ -406,6 +427,8 @@ private fun NodeParamDialog(
     var ifMsg    by remember { mutableStateOf((node.params as? BlockParams.IfElse)?.message ?: "Continue?") }
     var vibrateMs by remember { mutableStateOf(((node.params as? BlockParams.Vibrate)?.durationMs ?: 500L).toString()) }
     var repeatCount by remember { mutableStateOf(((node.params as? BlockParams.Repeat)?.count ?: 3).toString()) }
+    var retryQuestion by remember { mutableStateOf((node.params as? BlockParams.Retry)?.question ?: "Repeat again?") }
+    var retryDelayMs by remember { mutableStateOf(((node.params as? BlockParams.Retry)?.retryDelayMs ?: 300L).toString()) }
     var joinCount by remember { mutableStateOf(((node.params as? BlockParams.Join)?.inputCount ?: 2).toString()) }
     var switchMsg     by remember { mutableStateOf((node.params as? BlockParams.Switch)?.message ?: "Choose an option") }
     var switchOptions by remember { mutableStateOf((node.params as? BlockParams.Switch)?.options ?: listOf("Option 1", "Option 2")) }
@@ -484,6 +507,15 @@ private fun NodeParamDialog(
                             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                         Text("Repeats the BODY branch N times, then continues via OUT pin.", color = Color(0xFF8A8899), fontSize = 11.sp)
                     }
+                    MacroBlockType.RETRY -> {
+                        OutlinedTextField(value = retryQuestion, onValueChange = { retryQuestion = it },
+                            label = { Text("Yes/No question") }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true)
+                        OutlinedTextField(value = retryDelayMs, onValueChange = { retryDelayMs = it },
+                            label = { Text("Delay between attempts (ms)") }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                        Text("After each iteration, macro asks this Yes/No question. YES repeats, NO exits via OUT pin.", color = Color(0xFF8A8899), fontSize = 11.sp)
+                    }
                     MacroBlockType.JOIN -> {
                         OutlinedTextField(value = joinCount, onValueChange = { joinCount = it },
                             label = { Text("Number of inputs") }, modifier = Modifier.fillMaxWidth(),
@@ -558,6 +590,10 @@ private fun NodeParamDialog(
                         MacroBlockType.IF_ELSE      -> BlockParams.IfElse(ifMsg.ifBlank { "Continue?" })
                         MacroBlockType.VIBRATE      -> BlockParams.Vibrate(vibrateMs.toLongOrNull()?.coerceIn(1L, 5000L) ?: 500L)
                         MacroBlockType.REPEAT       -> BlockParams.Repeat(repeatCount.toIntOrNull()?.coerceIn(1, 999) ?: 3)
+                        MacroBlockType.RETRY        -> BlockParams.Retry(
+                            question = retryQuestion.ifBlank { "Repeat again?" },
+                            retryDelayMs = retryDelayMs.toLongOrNull()?.coerceIn(1L, 60_000L) ?: 300L
+                        )
                         MacroBlockType.SWITCH       -> BlockParams.Switch(
                             message = switchMsg.ifBlank { "Choose an option" },
                             options = switchOptions.filter { it.isNotBlank() }.take(10).ifEmpty { listOf("Option 1") },

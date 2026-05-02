@@ -14,7 +14,7 @@ import java.util.UUID
 enum class MacroBlockType {
     START, END,
     IR_SEND, DELAY, SHOW_TEXT, WAIT_CONFIRM, IF_ELSE,
-    VIBRATE, REPEAT, SWITCH, JOIN
+    VIBRATE, REPEAT, RETRY, SWITCH, JOIN
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,6 +44,12 @@ sealed class BlockParams {
 
     /** Loop: repeat the body chain N times, then follow the continue pin. */
     data class Repeat(val count: Int = 3) : BlockParams()
+
+    /** Retry: execute body, ask Yes/No, repeat while user answers Yes. */
+    data class Retry(
+        val question: String = "Repeat again?",
+        val retryDelayMs: Long = 300L
+    ) : BlockParams()
 
     data class Switch(
         val message: String = "Choose an option",
@@ -84,6 +90,7 @@ data class MacroNode(
         MacroBlockType.IF_ELSE    -> listOf(PinId.YES, PinId.NO)
         MacroBlockType.JOIN       -> listOf(PinId.OUT)
         MacroBlockType.REPEAT     -> listOf(PinId.BODY, PinId.CONT)
+        MacroBlockType.RETRY      -> listOf(PinId.BODY, PinId.CONT)
         MacroBlockType.SWITCH     -> {
             val p = params as? BlockParams.Switch ?: BlockParams.Switch()
             val optPins = listOf(PinId.OPT0, PinId.OPT1, PinId.OPT2, PinId.OPT3, PinId.OPT4,
@@ -298,6 +305,24 @@ class MacroGraph {
                 if (contEdge != null) compileFrom(contEdge.toId, visited, out)
                 return null
             }
+            MacroBlockType.RETRY -> {
+                val p = node.params as? BlockParams.Retry ?: BlockParams.Retry()
+                val bodyEdge = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.BODY }
+                val bodySteps = mutableListOf<MacroStep>()
+                val bodyVisited = mutableSetOf<String>()
+                if (bodyEdge != null) compileFrom(bodyEdge.toId, bodyVisited, bodySteps)
+                visited.addAll(bodyVisited)
+                out.add(
+                    MacroStep.RetryBlock(
+                        question = p.question.ifBlank { "Repeat again?" },
+                        retryDelayMs = p.retryDelayMs.coerceAtLeast(1L),
+                        steps = bodySteps
+                    )
+                )
+                val contEdge = edges.firstOrNull { it.fromId == nodeId && it.fromPin == PinId.CONT }
+                if (contEdge != null) compileFrom(contEdge.toId, visited, out)
+                return null
+            }
             MacroBlockType.SWITCH -> {
                 val p = node.params as? BlockParams.Switch ?: BlockParams.Switch()
                 val allOptPins = listOf(
@@ -364,6 +389,7 @@ class MacroGraph {
         is BlockParams.IfElse      -> "{\"kind\":\"if\",\"msg\":${jsonStr(p.message)}}"
         is BlockParams.Vibrate     -> "{\"kind\":\"vibrate\",\"ms\":${p.durationMs}}"
         is BlockParams.Repeat      -> "{\"kind\":\"repeat\",\"count\":${p.count}}"
+        is BlockParams.Retry       -> "{\"kind\":\"retry\",\"question\":${jsonStr(p.question)},\"delay\":${p.retryDelayMs}}"
         is BlockParams.Switch      -> {
             val opts = p.options.joinToString(",") { jsonStr(it) }
             "{\"kind\":\"switch\",\"msg\":${jsonStr(p.message)},\"options\":[$opts],\"allowDefault\":${p.allowDefault}}"
@@ -394,6 +420,10 @@ class MacroGraph {
                         "if"      -> BlockParams.IfElse(pObj.optString("msg"))
                         "vibrate" -> BlockParams.Vibrate(pObj.optLong("ms", 500L))
                         "repeat"  -> BlockParams.Repeat(pObj.optInt("count", 3))
+                        "retry"   -> BlockParams.Retry(
+                            question = pObj.optString("question", pObj.optString("msg", "Repeat again?")),
+                            retryDelayMs = pObj.optLong("delay", 300L)
+                        )
                         "switch"  -> {
                             val arr  = pObj.optJSONArray("options") ?: org.json.JSONArray()
                             val opts = (0 until arr.length()).map { arr.optString(it) }

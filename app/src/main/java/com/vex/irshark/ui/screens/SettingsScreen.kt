@@ -20,6 +20,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -42,6 +44,8 @@ import com.vex.irshark.BuildConfig
 import com.vex.irshark.R
 import com.vex.irshark.data.RemoteHistoryEntry
 import com.vex.irshark.ui.components.ListRow
+import com.vex.irshark.util.IrCompatibilityReport
+import com.vex.irshark.util.IrTxMode
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -56,6 +60,9 @@ fun SettingsScreen(
     autoStopAtEnd: Boolean,
     showTxLed: Boolean,
     hapticFeedback: Boolean,
+    txModeRaw: String,
+    bridgeEndpoint: String,
+    compatibilityReport: IrCompatibilityReport,
     useDownloadedDb: Boolean,
     downloadedDbAvailable: Boolean,
     bundledDbVersion: String,
@@ -67,6 +74,8 @@ fun SettingsScreen(
     onAutoStopAtEndChange: (Boolean) -> Unit,
     onShowTxLedChange: (Boolean) -> Unit,
     onHapticFeedbackChange: (Boolean) -> Unit,
+    onTxModeChange: (String) -> Unit,
+    onBridgeEndpointChange: (String) -> Unit,
     onUseDefaultDb: () -> Unit,
     onUseDownloadedDb: () -> Unit,
     onImportDatabaseZip: () -> Unit,
@@ -74,6 +83,7 @@ fun SettingsScreen(
     onResetDefaults: () -> Unit
 ) {
     val violet = MaterialTheme.colorScheme.primary
+    val txMode = IrTxMode.fromRaw(txModeRaw)
     val historyMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.5f
     val uriHandler = LocalUriHandler.current
 
@@ -141,6 +151,90 @@ fun SettingsScreen(
                     modifier = Modifier
                         .size(88.dp)
                         .clip(RoundedCornerShape(20.dp))
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF0F0D1A))
+                .border(1.dp, violet.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                .padding(12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Transmission", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+
+                Text(
+                    text = "Phone IR blaster: ${if (compatibilityReport.hasIrEmitter) "Available" else "Not detected"}",
+                    color = Color(0xFF8A8899),
+                    fontSize = 11.sp
+                )
+                Text(
+                    text = "Effective route: ${compatibilityReport.effectiveRoute}",
+                    color = if (compatibilityReport.canTransmit) Color(0xFF9BE7B6) else Color(0xFFFFA1A1),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = compatibilityReport.message,
+                    color = Color(0xFF8A8899),
+                    fontSize = 11.sp
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { onTxModeChange(IrTxMode.AUTO.rawValue) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (txMode == IrTxMode.AUTO) violet else Color(0xFF8A8899)
+                        )
+                    ) {
+                        Text("Auto", fontSize = 11.sp)
+                    }
+                    OutlinedButton(
+                        onClick = { onTxModeChange(IrTxMode.LOCAL.rawValue) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (txMode == IrTxMode.LOCAL) violet else Color(0xFF8A8899)
+                        )
+                    ) {
+                        Text("Local", fontSize = 11.sp)
+                    }
+                    OutlinedButton(
+                        onClick = { onTxModeChange(IrTxMode.BRIDGE_HTTP.rawValue) },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = if (txMode == IrTxMode.BRIDGE_HTTP) violet else Color(0xFF8A8899)
+                        )
+                    ) {
+                        Text("Bridge", fontSize = 11.sp)
+                    }
+                }
+
+                OutlinedTextField(
+                    value = bridgeEndpoint,
+                    onValueChange = onBridgeEndpointChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Bridge endpoint") },
+                    placeholder = { Text("http://192.168.1.20:8080/ir/send") },
+                    textStyle = androidx.compose.material3.LocalTextStyle.current.copy(fontSize = 12.sp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = violet.copy(alpha = 0.45f),
+                        unfocusedBorderColor = violet.copy(alpha = 0.2f),
+                        focusedContainerColor = Color(0xFF13101E),
+                        unfocusedContainerColor = Color(0xFF13101E)
+                    )
+                )
+
+                Text(
+                    text = "Bridge mode sends JSON POST with field payload.",
+                    color = Color(0xFF6A6880),
+                    fontSize = 10.sp
                 )
             }
         }

@@ -1,6 +1,7 @@
 package com.vex.irshark.ui.screens
 
 import android.view.HapticFeedbackConstants
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -64,6 +65,8 @@ import com.vex.irshark.data.profilesUnderPath
 import com.vex.irshark.ui.components.CategorySvgIcon
 import com.vex.irshark.util.transmitIrCode
 import com.vex.irshark.util.extractProtocolFromPayload
+import com.vex.irshark.util.IrTransmitStatus
+import com.vex.irshark.util.transmitIrCodeResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -214,7 +217,9 @@ fun IrFinderScreen(
     onHome: () -> Unit = {},
     lastTested: String? = null,
     onUpdateLastTested: (String) -> Unit = {},
-    hapticEnabled: Boolean = true
+    hapticEnabled: Boolean = true,
+    txModeRaw: String = "AUTO",
+    bridgeEndpoint: String = ""
 ) {
     val context = LocalContext.current
     val scope   = rememberCoroutineScope()
@@ -523,14 +528,36 @@ fun IrFinderScreen(
                         val btn = finderButtons.getOrNull(actualIdx) ?: return@TestButtonsStep
                         selectedButtonId = btn.id
                         val code = btn.code
-                        scope.launch(Dispatchers.IO) { transmitIrCode(context, code) }
+                        scope.launch(Dispatchers.IO) {
+                            val txResult = transmitIrCodeResult(context, code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                            if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(
+                                        context,
+                                        "No IR output found. Internal IR or live bridge not available.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        }
                         pendingSendDialogButtonId = btn.id
                         onTransmit()
                     },
                     onSendConfirmed = { buttonId ->
                         val actualIdx = finderButtons.indexOfFirst { it.id == buttonId }
                         val btn = finderButtons.getOrNull(actualIdx) ?: return@TestButtonsStep
-                        scope.launch(Dispatchers.IO) { transmitIrCode(context, btn.code) }
+                        scope.launch(Dispatchers.IO) {
+                            val txResult = transmitIrCodeResult(context, btn.code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                            if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(
+                                        context,
+                                        "No IR output found. Internal IR or live bridge not available.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        }
                         onTransmit()
                     },
                     onBack = {
@@ -647,7 +674,18 @@ fun IrFinderScreen(
                                         val actualIdx = finderButtons.indexOfFirst { it.id == pendingDialogButton.id }
                                         val btn = finderButtons.getOrNull(actualIdx)
                                         if (btn != null) {
-                                            scope.launch(Dispatchers.IO) { transmitIrCode(context, btn.code) }
+                                            scope.launch(Dispatchers.IO) {
+                                                val txResult = transmitIrCodeResult(context, btn.code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                                                if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                                                    withContext(Dispatchers.Main) {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "No IR output found. Internal IR or live bridge not available.",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                }
+                                            }
                                             onTransmit()
                                         }
                                     }

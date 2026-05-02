@@ -3,6 +3,8 @@ package com.vex.irshark.util
 import android.content.Context
 import android.hardware.ConsumerIrManager
 import android.util.Log
+import java.net.HttpURLConnection
+import java.net.URL
 
 private const val RC5_CARRIER_HZ = 36000
 private const val RC5_HALF_BIT_US = 889
@@ -15,6 +17,48 @@ private const val KASEIKYO_CARRIER_HZ = 38000
 private const val PIONEER_CARRIER_HZ = 40000
 private const val MAX_TRANSMIT_PATTERN_US = 2_000_000L
 private const val TAG = "IrTransmitter"
+private const val PREFS_NAME = "irshark_prefs"
+private const val KEY_TX_MODE = "tx_mode"
+private const val KEY_BRIDGE_ENDPOINT = "bridge_endpoint"
+private const val DEFAULT_BRIDGE_TIMEOUT_MS = 3500
+
+enum class IrTxMode(val rawValue: String) {
+    AUTO("AUTO"),
+    LOCAL("LOCAL"),
+    BRIDGE_HTTP("BRIDGE_HTTP");
+
+    companion object {
+        fun fromRaw(raw: String?): IrTxMode {
+            return entries.firstOrNull { it.rawValue.equals(raw?.trim(), ignoreCase = true) } ?: AUTO
+        }
+    }
+}
+
+data class IrCompatibilityReport(
+    val hasIrEmitter: Boolean,
+    val selectedMode: IrTxMode,
+    val effectiveRoute: String,
+    val canTransmit: Boolean,
+    val message: String
+)
+
+enum class IrTransmitStatus {
+    SUCCESS,
+    NO_OUTPUT_AVAILABLE,
+    FAILED
+}
+
+data class IrTransmitResult(
+    val status: IrTransmitStatus,
+    val message: String = ""
+) {
+    val success: Boolean get() = status == IrTransmitStatus.SUCCESS
+}
+
+private data class BridgeTxResult(
+    val success: Boolean,
+    val reachable: Boolean
+)
 
 private val rc6Lock = Any()
 private var rc6ToggleBit = false
@@ -36,6 +80,40 @@ fun extractProtocolFromPayload(payload: String): String? {
     return match?.groupValues?.get(1)?.uppercase()?.trim(';')
 }
 
+fun getIrCompatibilityReport(context: Context, modeRaw: String, bridgeEndpointRaw: String): IrCompatibilityReport {
+    val hasEmitter = hasIrEmitter(context)
+    val mode = IrTxMode.fromRaw(modeRaw)
+    val normalizedBridge = normalizeBridgeEndpoint(bridgeEndpointRaw)
+    val bridgeReady = normalizedBridge.isNotBlank()
+
+    val effective = when (mode) {
+        IrTxMode.LOCAL -> if (hasEmitter) "LOCAL" else "UNAVAILABLE"
+        IrTxMode.BRIDGE_HTTP -> if (bridgeReady) "BRIDGE_HTTP" else "UNAVAILABLE"
+        IrTxMode.AUTO -> when {
+            hasEmitter -> "LOCAL"
+            bridgeReady -> "BRIDGE_HTTP"
+            else -> "UNAVAILABLE"
+        }
+    }
+
+    val canTransmit = effective != "UNAVAILABLE"
+    val message = when {
+        mode == IrTxMode.LOCAL && !hasEmitter -> "This phone has no IR blaster."
+        mode == IrTxMode.BRIDGE_HTTP && !bridgeReady -> "Bridge mode selected, but endpoint is not configured."
+        mode == IrTxMode.AUTO && !hasEmitter && !bridgeReady -> "No local IR and no bridge endpoint configured."
+        effective == "LOCAL" -> "IR blaster is available."
+        else -> "Bridge endpoint is ready."
+    }
+
+    return IrCompatibilityReport(
+        hasIrEmitter = hasEmitter,
+        selectedMode = mode,
+        effectiveRoute = effective,
+        canTransmit = canTransmit,
+        message = message
+    )
+}
+
 /**
  * Transmits an IR code payload via ConsumerIrManager.
  * Supports two formats:
@@ -45,6 +123,78 @@ fun extractProtocolFromPayload(payload: String): String? {
  * Returns true if transmission was attempted, false if IR hardware unavailable.
  */
 fun transmitIrCode(context: Context, codePayload: String): Boolean {
+    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val modeRaw = prefs.getString(KEY_TX_MODE, IrTxMode.AUTO.rawValue)
+    val bridgeEndpoint = prefs.getString(KEY_BRIDGE_ENDPOINT, "").orEmpty()
+    return transmitIrCodeResult(context, codePayload, modeRaw = modeRaw.orEmpty(), bridgeEndpointRaw = bridgeEndpoint).success
+}
+
+fun transmitIrCode(context: Context, codePayload: String, modeRaw: String, bridgeEndpointRaw: String): Boolean {
+    return transmitIrCodeResult(context, codePayload, modeRaw, bridgeEndpointRaw).success
+}
+
+fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String, bridgeEndpointRaw: String): IrTransmitResult {
+    val mode = IrTxMode.fromRaw(modeRaw)
+    val normalizedBridgeEndpoint = normalizeBridgeEndpoint(bridgeEndpointRaw)
+    val canUseLocal = hasIrEmitter(context)
+
+    val effectiveMode = when (mode) {
+        IrTxMode.LOCAL -> if (canUseLocal) IrTxMode.LOCAL else null
+        IrTxMode.BRIDGE_HTTP -> if (normalizedBridgeEndpoint.isNotBlank()) IrTxMode.BRIDGE_HTTP else null
+        IrTxMode.AUTO -> when {
+            canUseLocal -> IrTxMode.LOCAL
+            normalizedBridgeEndpoint.isNotBlank() -> IrTxMode.BRIDGE_HTTP
+            else -> null
+        }
+    }
+
+    if (effectiveMode == null) {
+        return IrTransmitResult(
+            status = IrTransmitStatus.NO_OUTPUT_AVAILABLE,
+            message = "No IR output found. Enable internal IR or connect a live IR bridge."
+        )
+    }
+
+    return when (effectiveMode) {
+        IrTxMode.LOCAL -> {
+            val ok = transmitLocalIrCode(context, codePayload)
+            if (ok) {
+                IrTransmitResult(IrTransmitStatus.SUCCESS)
+            } else if (!canUseLocal) {
+                IrTransmitResult(
+                    IrTransmitStatus.NO_OUTPUT_AVAILABLE,
+                    "No internal IR blaster found."
+                )
+            } else {
+                IrTransmitResult(IrTransmitStatus.FAILED, "IR transmission failed.")
+            }
+        }
+
+        IrTxMode.BRIDGE_HTTP -> {
+            val bridge = transmitViaBridge(normalizedBridgeEndpoint, codePayload)
+            if (bridge.success) {
+                IrTransmitResult(IrTransmitStatus.SUCCESS)
+            } else if (!canUseLocal && !bridge.reachable) {
+                IrTransmitResult(
+                    IrTransmitStatus.NO_OUTPUT_AVAILABLE,
+                    "No internal IR and IR bridge is not reachable."
+                )
+            } else {
+                IrTransmitResult(IrTransmitStatus.FAILED, "Bridge transmission failed.")
+            }
+        }
+
+        IrTxMode.AUTO -> {
+            // AUTO resolves above to LOCAL or BRIDGE_HTTP, so this branch should not be hit.
+            IrTransmitResult(IrTransmitStatus.FAILED, "Invalid auto routing state.")
+        }
+    }
+}
+
+/**
+ * Legacy local transmitter implementation using ConsumerIrManager.
+ */
+private fun transmitLocalIrCode(context: Context, codePayload: String): Boolean {
     val irManager = context.getSystemService(Context.CONSUMER_IR_SERVICE) as? ConsumerIrManager
         ?: return false
     if (!irManager.hasIrEmitter()) return false
@@ -114,6 +264,63 @@ fun transmitIrCode(context: Context, codePayload: String): Boolean {
     }
 
     return false
+}
+
+private fun hasIrEmitter(context: Context): Boolean {
+    val irManager = context.getSystemService(Context.CONSUMER_IR_SERVICE) as? ConsumerIrManager
+        ?: return false
+    return irManager.hasIrEmitter()
+}
+
+private fun normalizeBridgeEndpoint(raw: String): String {
+    val trimmed = raw.trim()
+    if (trimmed.isBlank()) return ""
+    return if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        trimmed
+    } else {
+        "http://$trimmed"
+    }
+}
+
+private fun transmitViaBridge(endpoint: String, codePayload: String): BridgeTxResult {
+    if (endpoint.isBlank()) return BridgeTxResult(success = false, reachable = false)
+
+    return try {
+        val url = URL(endpoint)
+        val conn = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            connectTimeout = DEFAULT_BRIDGE_TIMEOUT_MS
+            readTimeout = DEFAULT_BRIDGE_TIMEOUT_MS
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        }
+
+        val body = "{\"payload\":\"${escapeJson(codePayload)}\"}"
+        conn.outputStream.use { out -> out.write(body.toByteArray(Charsets.UTF_8)) }
+
+        val ok = conn.responseCode in 200..299
+        val reachable = true
+        conn.disconnect()
+        BridgeTxResult(success = ok, reachable = reachable)
+    } catch (error: Exception) {
+        Log.w(TAG, "Bridge transmit failed: ${error.message}")
+        BridgeTxResult(success = false, reachable = false)
+    }
+}
+
+private fun escapeJson(value: String): String {
+    val sb = StringBuilder(value.length + 16)
+    for (ch in value) {
+        when (ch) {
+            '\\' -> sb.append("\\\\")
+            '"' -> sb.append("\\\"")
+            '\n' -> sb.append("\\n")
+            '\r' -> sb.append("\\r")
+            '\t' -> sb.append("\\t")
+            else -> sb.append(ch)
+        }
+    }
+    return sb.toString()
 }
 
 private fun isTransmitPatternSupported(pattern: IntArray): Boolean {

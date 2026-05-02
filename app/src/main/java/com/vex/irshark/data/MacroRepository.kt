@@ -29,6 +29,13 @@ sealed class MacroStep {
     /** Repeat the child steps a fixed number of times. */
     data class RepeatBlock(val count: Int, val steps: List<MacroStep>) : MacroStep()
 
+    /** Retry child steps until user answers No on per-iteration question. */
+    data class RetryBlock(
+        val question: String = "Repeat again?",
+        val retryDelayMs: Long,
+        val steps: List<MacroStep>
+    ) : MacroStep()
+
     /** Loop the child steps indefinitely until the user stops the macro. */
     data class LoopUntilStop(val steps: List<MacroStep>) : MacroStep()
 
@@ -127,6 +134,12 @@ private fun stepToObj(s: MacroStep): JSONObject = JSONObject().apply {
         is MacroStep.ShowText -> { put("type", "show_text"); put("text", s.text); put("durationMs", s.durationMs); put("async", s.async) }
         is MacroStep.WaitConfirm -> { put("type", "wait_confirm"); put("message", s.message) }
         is MacroStep.RepeatBlock -> { put("type", "repeat"); put("count", s.count); put("steps", stepsToArr(s.steps)) }
+        is MacroStep.RetryBlock  -> {
+            put("type", "retry")
+            put("question", s.question)
+            put("retryDelayMs", s.retryDelayMs)
+            put("steps", stepsToArr(s.steps))
+        }
         is MacroStep.LoopUntilStop -> { put("type", "loop_until_stop"); put("steps", stepsToArr(s.steps)) }
         is MacroStep.Vibrate       -> { put("type", "vibrate"); put("durationMs", s.durationMs) }
         is MacroStep.Switch        -> {
@@ -173,6 +186,11 @@ private fun parseStepObj(o: JSONObject): MacroStep? = when (o.optString("type"))
     "show_text"     -> MacroStep.ShowText(o.optString("text"), o.optLong("durationMs", 3000L), o.optBoolean("async", false))
     "wait_confirm"  -> MacroStep.WaitConfirm(o.optString("message", "Continue?"))
     "repeat"        -> MacroStep.RepeatBlock(o.optInt("count", 1), parseStepsArr(o.optJSONArray("steps") ?: JSONArray()))
+    "retry"         -> MacroStep.RetryBlock(
+        question = o.optString("question", o.optString("message", "Repeat again?")),
+        retryDelayMs = o.optLong("retryDelayMs", 300L),
+        steps = parseStepsArr(o.optJSONArray("steps") ?: JSONArray())
+    )
     "loop_until_stop" -> MacroStep.LoopUntilStop(parseStepsArr(o.optJSONArray("steps") ?: JSONArray()))
     "vibrate"         -> MacroStep.Vibrate(o.optLong("durationMs", 500L))
     "switch"          -> {
@@ -196,6 +214,7 @@ private fun parseStepObj(o: JSONObject): MacroStep? = when (o.optString("type"))
 fun countMacroSteps(steps: List<MacroStep>): Int = steps.sumOf {
     when (it) {
         is MacroStep.RepeatBlock   -> it.count * countMacroSteps(it.steps)
+        is MacroStep.RetryBlock    -> 1 + countMacroSteps(it.steps)
         is MacroStep.LoopUntilStop -> 1 + countMacroSteps(it.steps)
         is MacroStep.IfConfirm     -> 1
         is MacroStep.Switch        -> 1
