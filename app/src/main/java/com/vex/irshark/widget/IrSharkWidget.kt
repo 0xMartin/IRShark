@@ -22,6 +22,7 @@ import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.state.getAppWidgetState
+import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.background
 import androidx.glance.currentState
 import androidx.glance.layout.Alignment
@@ -31,6 +32,7 @@ import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.LocalContext
 import androidx.glance.state.GlanceStateDefinition
@@ -42,11 +44,13 @@ import androidx.glance.unit.ColorProvider
 import com.vex.irshark.R
 import com.vex.irshark.util.transmitIrCode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 internal val KEY_COLUMNS = intPreferencesKey("columns")
 internal val KEY_ROWS = intPreferencesKey("rows")
 internal val KEY_STYLE = stringPreferencesKey("widget_style")
+internal val KEY_ACTIVE_INDEX = intPreferencesKey("active_button_index")
 internal fun keyButtonLabel(index: Int) = stringPreferencesKey("button_label_$index")
 internal fun keyButtonCode(index: Int) = stringPreferencesKey("button_code_$index")
 internal fun keyButtonRemote(index: Int) = stringPreferencesKey("button_remote_$index")
@@ -125,6 +129,7 @@ private fun WidgetContent() {
     val columns = prefs[KEY_COLUMNS] ?: 0
     val rows = prefs[KEY_ROWS] ?: 0
     val style = WidgetStyle.fromCode(prefs[KEY_STYLE])
+    val activeIndex = prefs[KEY_ACTIVE_INDEX] ?: -1
     val isConfigured = columns > 0 && rows > 0 && prefs[keyButtonLabel(0)]?.isNotBlank() == true
 
     if (!isConfigured) {
@@ -162,6 +167,7 @@ private fun WidgetContent() {
                     val index = row * columns + col
                     val remoteName = prefs[keyButtonRemote(index)].orEmpty()
                     val buttonLabel = prefs[keyButtonLabel(index)].orEmpty()
+                    val isPressed = activeIndex == index
 
                     Box(
                         modifier = GlanceModifier
@@ -182,29 +188,44 @@ private fun WidgetContent() {
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = GlanceModifier.padding(horizontal = 6.dp, vertical = 8.dp)
-                        ) {
-                            if (remoteName.isNotBlank()) {
+                        Column(modifier = GlanceModifier.fillMaxSize()) {
+                            Box(
+                                modifier = GlanceModifier
+                                    .fillMaxWidth()
+                                    .height(4.dp)
+                                    .background(
+                                        ColorProvider(
+                                            if (isPressed) Color(0xFFE53935) else Color(0x33FFFFFF)
+                                        )
+                                    )
+                            ) {}
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = GlanceModifier
+                                    .defaultWeight()
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 6.dp, vertical = 8.dp)
+                            ) {
+                                if (remoteName.isNotBlank()) {
+                                    Text(
+                                        text = remoteName,
+                                        maxLines = 1,
+                                        style = TextStyle(
+                                            color = ColorProvider(style.remoteText),
+                                            fontSize = 10.sp
+                                        )
+                                    )
+                                }
                                 Text(
-                                    text = remoteName,
+                                    text = buttonLabel.ifBlank { "—" },
                                     maxLines = 1,
                                     style = TextStyle(
-                                        color = ColorProvider(style.remoteText),
-                                        fontSize = 10.sp
+                                        color = ColorProvider(style.labelText),
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
                                     )
                                 )
                             }
-                            Text(
-                                text = buttonLabel.ifBlank { "—" },
-                                maxLines = 1,
-                                style = TextStyle(
-                                    color = ColorProvider(style.labelText),
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
                         }
                     }
                     }
@@ -222,12 +243,28 @@ class SendIrAction : ActionCallback {
         parameters: ActionParameters
     ) {
         val index = parameters[KEY_BUTTON_INDEX] ?: 0
+        updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
+            prefs.toMutablePreferences().apply {
+                this[KEY_ACTIVE_INDEX] = index
+            }
+        }
+        IrSharkWidget().update(context, glanceId)
+
         val prefs = getAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId)
         val buttonCode = prefs[keyButtonCode(index)]
-        if (buttonCode.isNullOrBlank()) return
-        withContext(Dispatchers.IO) {
-            transmitIrCode(context, buttonCode)
+        if (!buttonCode.isNullOrBlank()) {
+            withContext(Dispatchers.IO) {
+                transmitIrCode(context, buttonCode)
+            }
         }
+
+        delay(180)
+        updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
+            prefs.toMutablePreferences().apply {
+                this[KEY_ACTIVE_INDEX] = -1
+            }
+        }
+        IrSharkWidget().update(context, glanceId)
     }
 }
 

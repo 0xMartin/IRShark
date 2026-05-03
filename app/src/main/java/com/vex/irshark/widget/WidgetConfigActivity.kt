@@ -53,6 +53,7 @@ private val WIDGET_SIZES = listOf(
     WidgetSize(1, 1, R.string.widget_size_1x1),
     WidgetSize(2, 1, R.string.widget_size_2x1),
     WidgetSize(4, 1, R.string.widget_size_4x1),
+    WidgetSize(1, 4, R.string.widget_size_1x4),
     WidgetSize(2, 2, R.string.widget_size_2x2),
     WidgetSize(2, 3, R.string.widget_size_2x3)
 )

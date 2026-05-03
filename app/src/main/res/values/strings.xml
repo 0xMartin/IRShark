@@ -7,6 +7,7 @@
     <string name="widget_size_1x1">1×1  –  1 button</string>
     <string name="widget_size_2x1">2×1  –  2 buttons side by side</string>
     <string name="widget_size_4x1">4×1  –  4 buttons in one row</string>
+    <string name="widget_size_1x4">1×4  –  4 buttons in one column</string>
     <string name="widget_size_2x2">2×2  –  4 buttons (2 columns, 2 rows)</string>
     <string name="widget_size_2x3">2×3  –  6 buttons (2 columns, 3 rows)</string>
     <string name="widget_style_picker_title">Choose widget style</string>
