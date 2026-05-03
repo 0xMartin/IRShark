@@ -46,10 +46,67 @@ import kotlinx.coroutines.withContext
 
 internal val KEY_COLUMNS = intPreferencesKey("columns")
 internal val KEY_ROWS = intPreferencesKey("rows")
+internal val KEY_STYLE = stringPreferencesKey("widget_style")
 internal fun keyButtonLabel(index: Int) = stringPreferencesKey("button_label_$index")
 internal fun keyButtonCode(index: Int) = stringPreferencesKey("button_code_$index")
 internal fun keyButtonRemote(index: Int) = stringPreferencesKey("button_remote_$index")
 internal val KEY_BUTTON_INDEX = ActionParameters.Key<Int>("button_index")
+
+internal enum class WidgetStyle(
+    val code: String,
+    val background: Color,
+    val setupText: Color,
+    val buttonBackground: Color,
+    val remoteText: Color,
+    val labelText: Color
+) {
+    DEFAULT(
+        code = "default",
+        background = Color(0xFF0D0618),
+        setupText = Color(0x88BBAAFF),
+        buttonBackground = Color(0xFF2C1558),
+        remoteText = Color(0xFF9977CC),
+        labelText = Color.White
+    ),
+    DARK(
+        code = "dark",
+        background = Color(0xFF121212),
+        setupText = Color(0xFF9E9E9E),
+        buttonBackground = Color(0xFF2A2A2A),
+        remoteText = Color(0xFFB0B0B0),
+        labelText = Color(0xFFF2F2F2)
+    ),
+    LIGHT(
+        code = "light",
+        background = Color(0xFFF3F5F8),
+        setupText = Color(0xFF5D6778),
+        buttonBackground = Color(0xFFFFFFFF),
+        remoteText = Color(0xFF4E5D75),
+        labelText = Color(0xFF1E2430)
+    ),
+    SUNSET(
+        code = "sunset",
+        background = Color(0xFF2A1220),
+        setupText = Color(0xFFF8B08A),
+        buttonBackground = Color(0xFFC64F7A),
+        remoteText = Color(0xFFFFD1B5),
+        labelText = Color(0xFFFFF5EE)
+    ),
+    OCEAN(
+        code = "ocean",
+        background = Color(0xFF0A1F30),
+        setupText = Color(0xFF89D2E8),
+        buttonBackground = Color(0xFF145374),
+        remoteText = Color(0xFF9BD8E8),
+        labelText = Color(0xFFE8F7FF)
+    );
+
+    companion object {
+        fun fromCode(raw: String?): WidgetStyle {
+            return entries.firstOrNull { it.code == raw } ?: DEFAULT
+        }
+    }
+}
 
 class IrSharkWidget : GlanceAppWidget() {
 
@@ -67,20 +124,21 @@ private fun WidgetContent() {
     val prefs = currentState<Preferences>()
     val columns = prefs[KEY_COLUMNS] ?: 0
     val rows = prefs[KEY_ROWS] ?: 0
+    val style = WidgetStyle.fromCode(prefs[KEY_STYLE])
     val isConfigured = columns > 0 && rows > 0 && prefs[keyButtonLabel(0)]?.isNotBlank() == true
 
     if (!isConfigured) {
         Box(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(ColorProvider(Color(0xFF0D0618)))
+                .background(ColorProvider(style.background))
                 .clickable(actionRunCallback<OpenConfigAction>()),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = LocalContext.current.getString(R.string.widget_setup_prompt),
                 style = TextStyle(
-                    color = ColorProvider(Color(0x88BBAAFF)),
+                    color = ColorProvider(style.setupText),
                     fontSize = 12.sp
                 )
             )
@@ -91,7 +149,7 @@ private fun WidgetContent() {
     Column(
         modifier = GlanceModifier
             .fillMaxSize()
-            .background(ColorProvider(Color(0xFF0D0618)))
+            .background(ColorProvider(style.background))
             .padding(3.dp)
     ) {
         repeat(rows) { row ->
@@ -115,7 +173,7 @@ private fun WidgetContent() {
                         Box(
                             modifier = GlanceModifier
                                 .fillMaxSize()
-                                .background(ColorProvider(Color(0xFF2C1558)))
+                                .background(ColorProvider(style.buttonBackground))
                                 .cornerRadius(14.dp)
                             .clickable(
                                 actionRunCallback<SendIrAction>(
@@ -133,7 +191,7 @@ private fun WidgetContent() {
                                     text = remoteName,
                                     maxLines = 1,
                                     style = TextStyle(
-                                        color = ColorProvider(Color(0xFF9977CC)),
+                                        color = ColorProvider(style.remoteText),
                                         fontSize = 10.sp
                                     )
                                 )
@@ -142,7 +200,7 @@ private fun WidgetContent() {
                                 text = buttonLabel.ifBlank { "—" },
                                 maxLines = 1,
                                 style = TextStyle(
-                                    color = ColorProvider(Color.White),
+                                    color = ColorProvider(style.labelText),
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )

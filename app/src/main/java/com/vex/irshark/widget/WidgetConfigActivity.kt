@@ -35,8 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.state.PreferencesGlanceStateDefinition
@@ -48,18 +46,31 @@ import com.vex.irshark.ui.theme.IRSharkTheme
 import com.vex.irshark.R
 import kotlinx.coroutines.launch
 
-data class WidgetSize(val columns: Int, val rows: Int, val labelRes: Int)
+private data class WidgetSize(val columns: Int, val rows: Int, val labelRes: Int)
+private data class WidgetVisualStyle(val style: WidgetStyle, val labelRes: Int)
 
-val WIDGET_SIZES = listOf(
+private val WIDGET_SIZES = listOf(
     WidgetSize(1, 1, R.string.widget_size_1x1),
     WidgetSize(2, 1, R.string.widget_size_2x1),
+    WidgetSize(4, 1, R.string.widget_size_4x1),
     WidgetSize(2, 2, R.string.widget_size_2x2),
     WidgetSize(2, 3, R.string.widget_size_2x3)
 )
 
-data class ButtonConfig(val remoteName: String, val label: String, val code: String)
+private val WIDGET_STYLES = listOf(
+    WidgetVisualStyle(WidgetStyle.DEFAULT, R.string.widget_style_default),
+    WidgetVisualStyle(WidgetStyle.DARK, R.string.widget_style_dark),
+    WidgetVisualStyle(WidgetStyle.LIGHT, R.string.widget_style_light),
+    WidgetVisualStyle(WidgetStyle.SUNSET, R.string.widget_style_sunset),
+    WidgetVisualStyle(WidgetStyle.OCEAN, R.string.widget_style_ocean)
+)
 
-sealed class WizardScreen {
+private data class ButtonConfig(val remoteName: String, val label: String, val code: String)
+
+private const val MAX_WIDGET_BUTTON_SLOTS = 12
+
+private sealed class WizardScreen {
+    object StylePicker : WizardScreen()
     object SizePicker : WizardScreen()
     data class RemotePicker(val slotIndex: Int, val totalSlots: Int) : WizardScreen()
     data class ButtonPicker(
@@ -96,8 +107,8 @@ class WidgetConfigActivity : ComponentActivity() {
             IRSharkTheme {
                 WidgetConfigWizard(
                     remotes = remotes,
-                    onComplete = { columns, rows, buttons ->
-                        saveAndFinish(appWidgetId, columns, rows, buttons)
+                    onComplete = { style, columns, rows, buttons ->
+                        saveAndFinish(appWidgetId, style, columns, rows, buttons)
                     }
                 )
             }
@@ -106,6 +117,7 @@ class WidgetConfigActivity : ComponentActivity() {
 
     private fun saveAndFinish(
         appWidgetId: Int,
+        style: WidgetStyle,
         columns: Int,
         rows: Int,
         buttons: List<ButtonConfig>
@@ -115,12 +127,18 @@ class WidgetConfigActivity : ComponentActivity() {
             val glanceId = GlanceAppWidgetManager(context).getGlanceIdBy(appWidgetId)
             updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
                 prefs.toMutablePreferences().apply {
-                    this[intPreferencesKey("columns")] = columns
-                    this[intPreferencesKey("rows")] = rows
+                    this[KEY_COLUMNS] = columns
+                    this[KEY_ROWS] = rows
+                    this[KEY_STYLE] = style.code
+                    repeat(MAX_WIDGET_BUTTON_SLOTS) { i ->
+                        remove(keyButtonRemote(i))
+                        remove(keyButtonLabel(i))
+                        remove(keyButtonCode(i))
+                    }
                     buttons.forEachIndexed { i, btn ->
-                        this[stringPreferencesKey("button_remote_$i")] = btn.remoteName
-                        this[stringPreferencesKey("button_label_$i")] = btn.label
-                        this[stringPreferencesKey("button_code_$i")] = btn.code
+                        this[keyButtonRemote(i)] = btn.remoteName
+                        this[keyButtonLabel(i)] = btn.label
+                        this[keyButtonCode(i)] = btn.code
                     }
                 }
             }
@@ -136,15 +154,25 @@ class WidgetConfigActivity : ComponentActivity() {
 @Composable
 private fun WidgetConfigWizard(
     remotes: List<SavedRemote>,
-    onComplete: (Int, Int, List<ButtonConfig>) -> Unit
+    onComplete: (WidgetStyle, Int, Int, List<ButtonConfig>) -> Unit
 ) {
-    var screen by remember { mutableStateOf<WizardScreen>(WizardScreen.SizePicker) }
+    var screen by remember { mutableStateOf<WizardScreen>(WizardScreen.StylePicker) }
+    var selectedStyle by remember { mutableStateOf(WidgetStyle.DEFAULT) }
     var selectedSize by remember { mutableStateOf<WidgetSize?>(null) }
     val configuredButtons = remember { mutableStateListOf<ButtonConfig>() }
 
     when (val s = screen) {
+        is WizardScreen.StylePicker -> {
+            StylePickerScreen(
+                onStyleSelected = { style ->
+                    selectedStyle = style
+                    screen = WizardScreen.SizePicker
+                }
+            )
+        }
         is WizardScreen.SizePicker -> {
             SizePickerScreen(
+                onBack = { screen = WizardScreen.StylePicker },
                 onSizeSelected = { size ->
                     selectedSize = size
                     configuredButtons.clear()
@@ -188,6 +216,7 @@ private fun WidgetConfigWizard(
                     val nextIndex = s.slotIndex + 1
                     if (nextIndex >= s.totalSlots) {
                         onComplete(
+                            selectedStyle,
                             selectedSize!!.columns,
                             selectedSize!!.rows,
                             configuredButtons.toList()
@@ -202,7 +231,7 @@ private fun WidgetConfigWizard(
 }
 
 @Composable
-private fun SizePickerScreen(onSizeSelected: (WidgetSize) -> Unit) {
+private fun StylePickerScreen(onStyleSelected: (WidgetStyle) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -216,9 +245,67 @@ private fun SizePickerScreen(onSizeSelected: (WidgetSize) -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = stringResource(R.string.widget_size_picker_title),
+                text = stringResource(R.string.widget_style_picker_title),
                 style = MaterialTheme.typography.titleLarge,
                 color = Color.White
+            )
+        }
+        HorizontalDivider(color = Color(0xFF3A2A5E))
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(WIDGET_STYLES) { visualStyle ->
+                StyleRow(visualStyle = visualStyle, onClick = { onStyleSelected(visualStyle.style) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun StyleRow(visualStyle: WidgetVisualStyle, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(visualStyle.labelRes),
+            color = Color.White,
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+    HorizontalDivider(color = Color(0xFF2A1A4E), modifier = Modifier.padding(start = 20.dp))
+}
+
+@Composable
+private fun SizePickerScreen(
+    onBack: () -> Unit,
+    onSizeSelected: (WidgetSize) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF120722))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.widget_back),
+                    tint = Color.White
+                )
+            }
+            Text(
+                text = stringResource(R.string.widget_size_picker_title),
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+                modifier = Modifier.padding(start = 6.dp)
             )
         }
         HorizontalDivider(color = Color(0xFF3A2A5E))

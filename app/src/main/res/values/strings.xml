@@ -6,8 +6,15 @@
     <string name="widget_size_picker_title">Choose widget size</string>
     <string name="widget_size_1x1">1×1  –  1 button</string>
     <string name="widget_size_2x1">2×1  –  2 buttons side by side</string>
+    <string name="widget_size_4x1">4×1  –  4 buttons in one row</string>
     <string name="widget_size_2x2">2×2  –  4 buttons (2 columns, 2 rows)</string>
     <string name="widget_size_2x3">2×3  –  6 buttons (2 columns, 3 rows)</string>
+    <string name="widget_style_picker_title">Choose widget style</string>
+    <string name="widget_style_default">Default</string>
+    <string name="widget_style_dark">Dark</string>
+    <string name="widget_style_light">Light</string>
+    <string name="widget_style_sunset">Sunset</string>
+    <string name="widget_style_ocean">Ocean</string>
     <string name="widget_button_progress">Button %1$d of %2$d</string>
     <string name="widget_button_progress_remote">Button %1$d of %2$d – %3$s</string>
     <string name="widget_select_remote">Select remote</string>
