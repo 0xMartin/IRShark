@@ -23,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -73,6 +74,7 @@ private const val MAX_WIDGET_BUTTON_SLOTS = 12
 private sealed class WizardScreen {
     object StylePicker : WizardScreen()
     object SizePicker : WizardScreen()
+    object FeedbackPicker : WizardScreen()
     data class RemotePicker(val slotIndex: Int, val totalSlots: Int) : WizardScreen()
     data class ButtonPicker(
         val slotIndex: Int,
@@ -108,8 +110,8 @@ class WidgetConfigActivity : ComponentActivity() {
             IRSharkTheme {
                 WidgetConfigWizard(
                     remotes = remotes,
-                    onComplete = { style, columns, rows, buttons ->
-                        saveAndFinish(appWidgetId, style, columns, rows, buttons)
+                    onComplete = { style, columns, rows, feedbackEnabled, buttons ->
+                        saveAndFinish(appWidgetId, style, columns, rows, feedbackEnabled, buttons)
                     }
                 )
             }
@@ -121,6 +123,7 @@ class WidgetConfigActivity : ComponentActivity() {
         style: WidgetStyle,
         columns: Int,
         rows: Int,
+        feedbackEnabled: Boolean,
         buttons: List<ButtonConfig>
     ) {
         lifecycleScope.launch {
@@ -131,6 +134,7 @@ class WidgetConfigActivity : ComponentActivity() {
                     this[KEY_COLUMNS] = columns
                     this[KEY_ROWS] = rows
                     this[KEY_STYLE] = style.code
+                    this[KEY_FEEDBACK_ENABLED] = feedbackEnabled
                     repeat(MAX_WIDGET_BUTTON_SLOTS) { i ->
                         remove(keyButtonRemote(i))
                         remove(keyButtonLabel(i))
@@ -155,11 +159,12 @@ class WidgetConfigActivity : ComponentActivity() {
 @Composable
 private fun WidgetConfigWizard(
     remotes: List<SavedRemote>,
-    onComplete: (WidgetStyle, Int, Int, List<ButtonConfig>) -> Unit
+    onComplete: (WidgetStyle, Int, Int, Boolean, List<ButtonConfig>) -> Unit
 ) {
     var screen by remember { mutableStateOf<WizardScreen>(WizardScreen.StylePicker) }
     var selectedStyle by remember { mutableStateOf(WidgetStyle.DEFAULT) }
     var selectedSize by remember { mutableStateOf<WidgetSize?>(null) }
+    var feedbackEnabled by remember { mutableStateOf(true) }
     val configuredButtons = remember { mutableStateListOf<ButtonConfig>() }
 
     when (val s = screen) {
@@ -177,6 +182,17 @@ private fun WidgetConfigWizard(
                 onSizeSelected = { size ->
                     selectedSize = size
                     configuredButtons.clear()
+                    screen = WizardScreen.FeedbackPicker
+                }
+            )
+        }
+        is WizardScreen.FeedbackPicker -> {
+            FeedbackPickerScreen(
+                feedbackEnabled = feedbackEnabled,
+                onFeedbackEnabledChanged = { feedbackEnabled = it },
+                onBack = { screen = WizardScreen.SizePicker },
+                onContinue = {
+                    val size = selectedSize ?: return@FeedbackPickerScreen
                     screen = WizardScreen.RemotePicker(
                         slotIndex = 0,
                         totalSlots = size.columns * size.rows
@@ -191,7 +207,7 @@ private fun WidgetConfigWizard(
                 remotes = remotes,
                 onBack = {
                     if (s.slotIndex == 0) {
-                        screen = WizardScreen.SizePicker
+                        screen = WizardScreen.FeedbackPicker
                     } else {
                         if (configuredButtons.isNotEmpty()) configuredButtons.removeLastOrNull()
                         screen = WizardScreen.RemotePicker(s.slotIndex - 1, s.totalSlots)
@@ -220,6 +236,7 @@ private fun WidgetConfigWizard(
                             selectedStyle,
                             selectedSize!!.columns,
                             selectedSize!!.rows,
+                            feedbackEnabled,
                             configuredButtons.toList()
                         )
                     } else {
@@ -228,6 +245,85 @@ private fun WidgetConfigWizard(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun FeedbackPickerScreen(
+    feedbackEnabled: Boolean,
+    onFeedbackEnabledChanged: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onContinue: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF120722))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(end = 8.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.widget_back),
+                    tint = Color.White
+                )
+            }
+            Text(
+                text = stringResource(R.string.widget_feedback_title),
+                style = MaterialTheme.typography.titleLarge,
+                color = Color.White,
+                modifier = Modifier.padding(start = 6.dp)
+            )
+        }
+        HorizontalDivider(color = Color(0xFF3A2A5E))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onFeedbackEnabledChanged(!feedbackEnabled) }
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.widget_feedback_label),
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    text = stringResource(R.string.widget_feedback_hint),
+                    color = Color(0xFFAA88FF),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Switch(
+                checked = feedbackEnabled,
+                onCheckedChange = onFeedbackEnabledChanged
+            )
+        }
+
+        HorizontalDivider(color = Color(0xFF2A1A4E), modifier = Modifier.padding(start = 20.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onContinue)
+                .padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.widget_continue),
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+        HorizontalDivider(color = Color(0xFF2A1A4E), modifier = Modifier.padding(start = 20.dp))
     }
 }
 

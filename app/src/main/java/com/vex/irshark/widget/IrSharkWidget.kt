@@ -1,14 +1,23 @@
 package com.vex.irshark.widget
 
 import android.appwidget.AppWidgetManager
+import android.content.Context.AUDIO_SERVICE
+import android.content.Context.VIBRATOR_SERVICE
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
@@ -50,6 +59,9 @@ import kotlinx.coroutines.withContext
 internal val KEY_COLUMNS = intPreferencesKey("columns")
 internal val KEY_ROWS = intPreferencesKey("rows")
 internal val KEY_STYLE = stringPreferencesKey("widget_style")
+internal val KEY_FEEDBACK_ENABLED = booleanPreferencesKey("feedback_enabled")
+internal val KEY_LAST_PRESS_INDEX = intPreferencesKey("last_press_index")
+internal val KEY_LAST_PRESS_TIME = longPreferencesKey("last_press_time")
 internal val KEY_ACTIVE_INDEX = intPreferencesKey("active_button_index")
 internal fun keyButtonLabel(index: Int) = stringPreferencesKey("button_label_$index")
 internal fun keyButtonCode(index: Int) = stringPreferencesKey("button_code_$index")
@@ -112,6 +124,9 @@ internal enum class WidgetStyle(
     }
 }
 
+private const val DOUBLE_TAP_GUARD_MS = 250L
+private const val PRESSED_INDICATOR_MS = 180L
+
 class IrSharkWidget : GlanceAppWidget() {
 
     override val stateDefinition: GlanceStateDefinition<*> = PreferencesGlanceStateDefinition
@@ -130,6 +145,7 @@ private fun WidgetContent() {
     val rows = prefs[KEY_ROWS] ?: 0
     val style = WidgetStyle.fromCode(prefs[KEY_STYLE])
     val activeIndex = prefs[KEY_ACTIVE_INDEX] ?: -1
+    val compactMode = (columns == 1 && rows == 1) || (columns == 2 && rows == 1)
     val isConfigured = columns > 0 && rows > 0 && prefs[keyButtonLabel(0)]?.isNotBlank() == true
 
     if (!isConfigured) {
@@ -155,7 +171,7 @@ private fun WidgetContent() {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(style.background))
-            .padding(3.dp)
+            .padding(if (compactMode) 1.dp else 3.dp)
     ) {
         repeat(rows) { row ->
             Row(
@@ -173,61 +189,64 @@ private fun WidgetContent() {
                         modifier = GlanceModifier
                             .defaultWeight()
                             .fillMaxHeight()
-                            .padding(3.dp),
+                            .padding(if (compactMode) 1.dp else 3.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Box(
                             modifier = GlanceModifier
                                 .fillMaxSize()
                                 .background(ColorProvider(style.buttonBackground))
-                                .cornerRadius(14.dp)
-                            .clickable(
-                                actionRunCallback<SendIrAction>(
-                                    actionParametersOf(KEY_BUTTON_INDEX to index)
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(modifier = GlanceModifier.fillMaxSize()) {
-                            Box(
-                                modifier = GlanceModifier
-                                    .fillMaxWidth()
-                                    .height(4.dp)
-                                    .background(
-                                        ColorProvider(
-                                            if (isPressed) Color(0xFFE53935) else Color(0x33FFFFFF)
-                                        )
+                                .cornerRadius(if (compactMode) 10.dp else 14.dp)
+                                .clickable(
+                                    actionRunCallback<SendIrAction>(
+                                        actionParametersOf(KEY_BUTTON_INDEX to index)
                                     )
-                            ) {}
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = GlanceModifier
-                                    .defaultWeight()
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 6.dp, vertical = 8.dp)
-                            ) {
-                                if (remoteName.isNotBlank()) {
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(modifier = GlanceModifier.fillMaxSize()) {
+                                Box(
+                                    modifier = GlanceModifier
+                                        .fillMaxWidth()
+                                        .height(if (compactMode) 3.dp else 4.dp)
+                                        .background(
+                                            ColorProvider(
+                                                if (isPressed) Color(0xFFE53935) else Color(0x33FFFFFF)
+                                            )
+                                        )
+                                ) {}
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = GlanceModifier
+                                        .defaultWeight()
+                                        .fillMaxWidth()
+                                        .padding(
+                                            horizontal = if (compactMode) 4.dp else 6.dp,
+                                            vertical = if (compactMode) 3.dp else 8.dp
+                                        )
+                                ) {
+                                    if (!compactMode && remoteName.isNotBlank()) {
+                                        Text(
+                                            text = remoteName,
+                                            maxLines = 1,
+                                            style = TextStyle(
+                                                color = ColorProvider(style.remoteText),
+                                                fontSize = 10.sp
+                                            )
+                                        )
+                                    }
                                     Text(
-                                        text = remoteName,
+                                        text = buttonLabel.ifBlank { "—" },
                                         maxLines = 1,
                                         style = TextStyle(
-                                            color = ColorProvider(style.remoteText),
-                                            fontSize = 10.sp
+                                            color = ColorProvider(style.labelText),
+                                            fontSize = if (compactMode) 13.sp else 15.sp,
+                                            fontWeight = FontWeight.Bold
                                         )
                                     )
                                 }
-                                Text(
-                                    text = buttonLabel.ifBlank { "—" },
-                                    maxLines = 1,
-                                    style = TextStyle(
-                                        color = ColorProvider(style.labelText),
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                )
                             }
                         }
-                    }
                     }
                 }
             }
@@ -243,14 +262,25 @@ class SendIrAction : ActionCallback {
         parameters: ActionParameters
     ) {
         val index = parameters[KEY_BUTTON_INDEX] ?: 0
+        val initialPrefs = getAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId)
+        val now = System.currentTimeMillis()
+        val lastIndex = initialPrefs[KEY_LAST_PRESS_INDEX] ?: -1
+        val lastPressTime = initialPrefs[KEY_LAST_PRESS_TIME] ?: 0L
+        if (lastIndex == index && now - lastPressTime < DOUBLE_TAP_GUARD_MS) return
+
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
             prefs.toMutablePreferences().apply {
                 this[KEY_ACTIVE_INDEX] = index
+                this[KEY_LAST_PRESS_INDEX] = index
+                this[KEY_LAST_PRESS_TIME] = now
             }
         }
         IrSharkWidget().update(context, glanceId)
 
         val prefs = getAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId)
+        if (prefs[KEY_FEEDBACK_ENABLED] == true) {
+            triggerPressFeedback(context)
+        }
         val buttonCode = prefs[keyButtonCode(index)]
         if (!buttonCode.isNullOrBlank()) {
             withContext(Dispatchers.IO) {
@@ -258,13 +288,39 @@ class SendIrAction : ActionCallback {
             }
         }
 
-        delay(180)
+        delay(PRESSED_INDICATOR_MS)
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
             prefs.toMutablePreferences().apply {
                 this[KEY_ACTIVE_INDEX] = -1
             }
         }
         IrSharkWidget().update(context, glanceId)
+    }
+}
+
+private fun triggerPressFeedback(context: Context) {
+    try {
+        val vibrator = context.getSystemService(VIBRATOR_SERVICE) as? Vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator?.vibrate(VibrationEffect.createOneShot(25L, VibrationEffect.DEFAULT_AMPLITUDE))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator?.vibrate(25L)
+        }
+    } catch (_: Throwable) {
+    }
+
+    try {
+        val audio = context.getSystemService(AUDIO_SERVICE) as? AudioManager
+        if (audio?.ringerMode == AudioManager.RINGER_MODE_NORMAL) {
+            val tone = ToneGenerator(AudioManager.STREAM_SYSTEM, 50)
+            try {
+                tone.startTone(ToneGenerator.TONE_PROP_BEEP, 30)
+            } finally {
+                tone.release()
+            }
+        }
+    } catch (_: Throwable) {
     }
 }
 
