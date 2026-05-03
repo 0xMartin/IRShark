@@ -1,3 +1,19 @@
 <resources>
     <string name="app_name">IRShark</string>
+
+    <!-- Widget -->
+    <string name="widget_setup_prompt">Tap to set up</string>
+    <string name="widget_size_picker_title">Choose widget size</string>
+    <string name="widget_size_1x1">1×1  –  1 button</string>
+    <string name="widget_size_2x1">2×1  –  2 buttons side by side</string>
+    <string name="widget_size_2x2">2×2  –  4 buttons (2 columns, 2 rows)</string>
+    <string name="widget_size_2x3">2×3  –  6 buttons (2 columns, 3 rows)</string>
+    <string name="widget_button_progress">Button %1$d of %2$d</string>
+    <string name="widget_button_progress_remote">Button %1$d of %2$d – %3$s</string>
+    <string name="widget_select_remote">Select remote</string>
+    <string name="widget_select_button">Select button</string>
+    <string name="widget_no_remotes">No saved remotes</string>
+    <string name="widget_no_buttons">No buttons in this remote</string>
+    <string name="widget_buttons_count">%d buttons</string>
+    <string name="widget_back">Back</string>
 </resources>

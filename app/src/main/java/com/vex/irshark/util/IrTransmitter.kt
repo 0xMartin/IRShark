@@ -238,6 +238,8 @@ private fun transmitLocalIrCode(context: Context, codePayload: String): Boolean 
                 protocol == "RC6" -> encodeRc6(address.bytes, command.bytes)
                 protocol == "RC5" -> encodeRc5(address.value, command.value, extended = false)
                 protocol == "RC5X" -> encodeRc5(address.value, command.value, extended = true)
+                protocol == "NEC16" -> encodeNec16(address.value, command.value)
+                protocol == "DENON" -> encodeDenon(address.value, command.value)
                 else -> return false
             }
 
@@ -748,6 +750,55 @@ private fun repeatFrame(frame: IntArray, gapUs: Int, repeats: Int): IntArray {
         }
     }
     return out.toIntArray()
+}
+
+private fun encodeNec16(address: Int, command: Int): IntArray {
+    // NEC16: 9ms lead + 4.5ms space, 16 bits LSB-first (addr8 + cmd8, no inversions), stop mark.
+    val bits = mutableListOf<Int>()
+    bits += 9000
+    bits += 4500
+    fun appendBit(bit: Int) {
+        bits += 563
+        bits += if (bit == 1) 1688 else 563
+    }
+    val addr8 = address and 0xFF
+    val cmd8 = command and 0xFF
+    for (i in 0 until 8) appendBit((addr8 shr i) and 1)
+    for (i in 0 until 8) appendBit((cmd8 shr i) and 1)
+    bits += 563  // stop mark
+    return bits.toIntArray()
+}
+
+private fun encodeDenon(address: Int, command: Int): IntArray {
+    // Denon/Sharp: no header, PDM, 38 kHz carrier.
+    // Mark: 263 µs. Zero-space: 790 µs. One-space: 1895 µs.
+    // Frame = 15 bits MSB-first: addr[4:0] + cmd[9:0] + stop-mark.
+    // After first frame: ~43 ms gap (space), then second frame with inverted command.
+    val markUs = 263
+    val zeroSpaceUs = 790
+    val oneSpaceUs = 1895
+    val gapUs = 43000
+
+    fun buildFrame(addr5: Int, cmd10: Int): List<Int> {
+        val out = mutableListOf<Int>()
+        for (i in 4 downTo 0) {
+            out += markUs
+            out += if (((addr5 shr i) and 1) == 1) oneSpaceUs else zeroSpaceUs
+        }
+        for (i in 9 downTo 0) {
+            out += markUs
+            out += if (((cmd10 shr i) and 1) == 1) oneSpaceUs else zeroSpaceUs
+        }
+        out += markUs  // stop mark
+        return out
+    }
+
+    val addr5 = address and 0x1F
+    val cmd10 = command and 0x3FF
+    val invCmd10 = cmd10.inv() and 0x3FF
+
+    // frame1 ends with stop mark (mark); gap is a space; frame2 follows.
+    return (buildFrame(addr5, cmd10) + gapUs + buildFrame(addr5, invCmd10)).toIntArray()
 }
 
 private fun littleEndianValue(bytes: List<Int>): Int {
