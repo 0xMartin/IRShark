@@ -171,7 +171,7 @@ private fun WidgetContent() {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(style.background))
-            .padding(if (compactMode) 1.dp else 3.dp)
+            .padding(if (compactMode) 4.dp else 6.dp)
     ) {
         repeat(rows) { row ->
             Row(
@@ -196,7 +196,7 @@ private fun WidgetContent() {
                             modifier = GlanceModifier
                                 .fillMaxSize()
                                 .background(ColorProvider(style.buttonBackground))
-                                .cornerRadius(if (compactMode) 10.dp else 14.dp)
+                                .cornerRadius(16.dp)
                                 .clickable(
                                     actionRunCallback<SendIrAction>(
                                         actionParametersOf(KEY_BUTTON_INDEX to index)
@@ -215,35 +215,37 @@ private fun WidgetContent() {
                                             )
                                         )
                                 ) {}
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                Box(
                                     modifier = GlanceModifier
                                         .defaultWeight()
                                         .fillMaxWidth()
-                                        .padding(
-                                            horizontal = if (compactMode) 4.dp else 6.dp,
-                                            vertical = if (compactMode) 3.dp else 8.dp
-                                        )
+                                        .padding(horizontal = if (compactMode) 4.dp else 6.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    if (!compactMode && remoteName.isNotBlank()) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = GlanceModifier.fillMaxWidth()
+                                    ) {
                                         Text(
-                                            text = remoteName,
+                                            text = buttonLabel.ifBlank { "—" },
                                             maxLines = 1,
                                             style = TextStyle(
-                                                color = ColorProvider(style.remoteText),
-                                                fontSize = 10.sp
+                                                color = ColorProvider(style.labelText),
+                                                fontSize = if (compactMode) 13.sp else 15.sp,
+                                                fontWeight = FontWeight.Bold
                                             )
                                         )
+                                        if (remoteName.isNotBlank()) {
+                                            Text(
+                                                text = remoteName,
+                                                maxLines = 1,
+                                                style = TextStyle(
+                                                    color = ColorProvider(style.remoteText),
+                                                    fontSize = 10.sp
+                                                )
+                                            )
+                                        }
                                     }
-                                    Text(
-                                        text = buttonLabel.ifBlank { "—" },
-                                        maxLines = 1,
-                                        style = TextStyle(
-                                            color = ColorProvider(style.labelText),
-                                            fontSize = if (compactMode) 13.sp else 15.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    )
                                 }
                             }
                         }
