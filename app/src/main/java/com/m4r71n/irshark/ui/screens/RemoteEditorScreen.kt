@@ -24,8 +24,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.OpenWith
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
+import kotlin.math.roundToInt
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -72,14 +83,16 @@ fun RemoteEditorScreen(
     onIconChange: (String?) -> Unit,
     onAddButton: () -> Unit,
     onEditButton: (Int) -> Unit,
-    onMoveButtonUp: (Int) -> Unit,
-    onMoveButtonDown: (Int) -> Unit,
+    onMoveButton: (from: Int, to: Int) -> Unit,
     onDeleteButton: (Int) -> Unit,
     onBack: () -> Unit,
     onSave: () -> Unit,
     canSave: Boolean
 ) {
     val violet = MaterialTheme.colorScheme.primary
+    var draggedIndex by remember { mutableIntStateOf(-1) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var itemHeightPx by remember { mutableFloatStateOf(0f) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -198,17 +211,61 @@ fun RemoteEditorScreen(
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             buttons.forEachIndexed { index, button ->
+                                val isDragging = draggedIndex == index
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .zIndex(if (isDragging) 1f else 0f)
+                                        .offset { IntOffset(0, if (isDragging) dragOffsetY.roundToInt() else 0) }
+                                        .onSizeChanged { size ->
+                                            if (itemHeightPx == 0f) itemHeightPx = size.height.toFloat()
+                                        }
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(Color(0xFF181327))
-                                        .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                                        .background(if (isDragging) Color(0xFF251B45) else Color(0xFF181327))
+                                        .border(
+                                            1.dp,
+                                            if (isDragging) Color(0xFF9B6DFF).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.10f),
+                                            RoundedCornerShape(10.dp)
+                                        )
                                         .padding(10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Icon(
+                                        imageVector = Icons.Filled.OpenWith,
+                                        contentDescription = "Drag to reorder",
+                                        tint = if (isDragging) Color(0xFF9B6DFF) else Color(0xFF6A5F8A),
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .pointerInput(Unit) {
+                                                detectDragGestures(
+                                                    onDragStart = {
+                                                        draggedIndex = index
+                                                        dragOffsetY = 0f
+                                                    },
+                                                    onDragEnd = {
+                                                        val steps = if (itemHeightPx > 0f)
+                                                            (dragOffsetY / itemHeightPx).roundToInt()
+                                                        else 0
+                                                        val from = draggedIndex
+                                                        val to = (from + steps).coerceIn(0, buttons.lastIndex)
+                                                        draggedIndex = -1
+                                                        dragOffsetY = 0f
+                                                        if (from != to) onMoveButton(from, to)
+                                                    },
+                                                    onDragCancel = {
+                                                        draggedIndex = -1
+                                                        dragOffsetY = 0f
+                                                    },
+                                                    onDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        dragOffsetY += dragAmount.y
+                                                    }
+                                                )
+                                            }
+                                    )
+
+                                    Column(modifier = Modifier.weight(1f).padding(start = 6.dp)) {
                                         Text(button.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                         Text(
                                             if (button.code.isBlank()) "No code" else button.code.take(56),
@@ -225,22 +282,6 @@ fun RemoteEditorScreen(
                                             tint = Color(0xFF9B6DFF),
                                             modifier = Modifier.size(18.dp).clickable { onEditButton(index) }
                                         )
-                                        if (index > 0) {
-                                            Icon(
-                                                imageVector = Icons.Filled.KeyboardArrowUp,
-                                                contentDescription = "Move up",
-                                                tint = Color(0xFF8A8899),
-                                                modifier = Modifier.size(18.dp).clickable { onMoveButtonUp(index) }
-                                            )
-                                        }
-                                        if (index < buttons.lastIndex) {
-                                            Icon(
-                                                imageVector = Icons.Filled.KeyboardArrowDown,
-                                                contentDescription = "Move down",
-                                                tint = Color(0xFF8A8899),
-                                                modifier = Modifier.size(18.dp).clickable { onMoveButtonDown(index) }
-                                            )
-                                        }
                                         Icon(
                                             imageVector = Icons.Filled.Delete,
                                             contentDescription = "Delete",

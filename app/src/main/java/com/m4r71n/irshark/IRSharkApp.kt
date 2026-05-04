@@ -1668,20 +1668,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             onEditButton = { idx ->
                                 startButtonEditor(idx)
                             },
-                            onMoveButtonUp = { idx ->
-                                if (idx <= 0 || idx >= editorRemoteButtons.size) return@RemoteEditorScreen
-                                editorRemoteButtons = editorRemoteButtons.toMutableList().also {
-                                    val tmp = it[idx - 1]
-                                    it[idx - 1] = it[idx]
-                                    it[idx] = tmp
-                                }
-                            },
-                            onMoveButtonDown = { idx ->
-                                if (idx < 0 || idx >= editorRemoteButtons.lastIndex) return@RemoteEditorScreen
-                                editorRemoteButtons = editorRemoteButtons.toMutableList().also {
-                                    val tmp = it[idx + 1]
-                                    it[idx + 1] = it[idx]
-                                    it[idx] = tmp
+                            onMoveButton = { from, to ->
+                                if (from in editorRemoteButtons.indices && to in editorRemoteButtons.indices) {
+                                    editorRemoteButtons = editorRemoteButtons.toMutableList().also { list ->
+                                        val item = list.removeAt(from)
+                                        list.add(to, item)
+                                    }
                                 }
                             },
                             onDeleteButton = { idx ->
