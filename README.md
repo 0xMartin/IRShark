@@ -84,6 +84,14 @@ Main sections in the app:
   <img src="doc/img/macro_editor.jpg" alt="Macro Editor" width="30%" />
 </p>
 
+### Widget Preview
+
+IRShark also includes a home screen widget for quick access to saved IR actions without opening the full app.
+
+<p align="center">
+  <img src="doc/img/widgets.png" alt="IRShark widgets" width="35%" />
+</p>
+
 ## 🛠️ Tech Stack
 
 - Kotlin + Jetpack Compose
