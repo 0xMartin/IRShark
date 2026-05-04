@@ -43,6 +43,7 @@ import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
+import androidx.glance.layout.width
 import androidx.glance.LocalContext
 import androidx.glance.state.GlanceStateDefinition
 import androidx.glance.state.PreferencesGlanceStateDefinition
@@ -73,6 +74,7 @@ internal enum class WidgetStyle(
     val background: Color,
     val setupText: Color,
     val buttonBackground: Color,
+    val indicatorIdle: Color,
     val remoteText: Color,
     val labelText: Color
 ) {
@@ -81,6 +83,7 @@ internal enum class WidgetStyle(
         background = Color(0xFF0D0618),
         setupText = Color(0x88BBAAFF),
         buttonBackground = Color(0xFF2C1558),
+        indicatorIdle = Color(0xFF53327F),
         remoteText = Color(0xFF9977CC),
         labelText = Color.White
     ),
@@ -89,6 +92,7 @@ internal enum class WidgetStyle(
         background = Color(0xFF121212),
         setupText = Color(0xFF9E9E9E),
         buttonBackground = Color(0xFF2A2A2A),
+        indicatorIdle = Color(0xFF555555),
         remoteText = Color(0xFFB0B0B0),
         labelText = Color(0xFFF2F2F2)
     ),
@@ -97,6 +101,7 @@ internal enum class WidgetStyle(
         background = Color(0xFFF3F5F8),
         setupText = Color(0xFF5D6778),
         buttonBackground = Color(0xFFFFFFFF),
+        indicatorIdle = Color(0xFFD5DCE8),
         remoteText = Color(0xFF4E5D75),
         labelText = Color(0xFF1E2430)
     ),
@@ -105,6 +110,7 @@ internal enum class WidgetStyle(
         background = Color(0xFF2A1220),
         setupText = Color(0xFFF8B08A),
         buttonBackground = Color(0xFFC64F7A),
+        indicatorIdle = Color(0xFFE07E9F),
         remoteText = Color(0xFFFFD1B5),
         labelText = Color(0xFFFFF5EE)
     ),
@@ -113,6 +119,7 @@ internal enum class WidgetStyle(
         background = Color(0xFF0A1F30),
         setupText = Color(0xFF89D2E8),
         buttonBackground = Color(0xFF145374),
+        indicatorIdle = Color(0xFF2E789F),
         remoteText = Color(0xFF9BD8E8),
         labelText = Color(0xFFE8F7FF)
     );
@@ -195,8 +202,15 @@ private fun WidgetContent() {
                         Box(
                             modifier = GlanceModifier
                                 .fillMaxSize()
-                                .background(ColorProvider(style.buttonBackground))
+                                .background(ColorProvider(Color(0x1AFFFFFF)))
                                 .cornerRadius(16.dp)
+                        ) {}
+                        Box(
+                            modifier = GlanceModifier
+                                .fillMaxSize()
+                                .padding(1.dp)
+                                .background(ColorProvider(style.buttonBackground))
+                                .cornerRadius(15.dp)
                                 .clickable(
                                     actionRunCallback<SendIrAction>(
                                         actionParametersOf(KEY_BUTTON_INDEX to index)
@@ -204,28 +218,34 @@ private fun WidgetContent() {
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(modifier = GlanceModifier.fillMaxSize()) {
+                            Box(
+                                modifier = GlanceModifier.fillMaxSize()
+                            ) {
                                 Box(
                                     modifier = GlanceModifier
-                                        .fillMaxWidth()
-                                        .height(if (compactMode) 3.dp else 4.dp)
-                                        .background(
-                                            ColorProvider(
-                                                if (isPressed) Color(0xFFE53935) else Color(0x33FFFFFF)
-                                            )
-                                        )
-                                ) {}
-                                Box(
-                                    modifier = GlanceModifier
-                                        .defaultWeight()
-                                        .fillMaxWidth()
-                                        .padding(horizontal = if (compactMode) 4.dp else 6.dp),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxSize()
+                                        .padding(top = if (compactMode) 6.dp else 8.dp),
+                                    contentAlignment = Alignment.TopCenter
                                 ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = GlanceModifier.fillMaxWidth()
-                                    ) {
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .width(if (compactMode) 20.dp else 28.dp)
+                                            .height(if (compactMode) 4.dp else 5.dp)
+                                            .cornerRadius(999.dp)
+                                            .background(
+                                                ColorProvider(
+                                                    if (isPressed) Color(0xFFFF4D4D) else style.indicatorIdle
+                                                )
+                                            )
+                                    ) {}
+                                }
+                                Column(
+                                    modifier = GlanceModifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = if (compactMode) 4.dp else 6.dp, vertical = if (compactMode) 6.dp else 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                         Text(
                                             text = buttonLabel.ifBlank { "—" },
                                             maxLines = 1,
@@ -244,7 +264,6 @@ private fun WidgetContent() {
                                                     fontSize = 10.sp
                                                 )
                                             )
-                                        }
                                     }
                                 }
                             }
