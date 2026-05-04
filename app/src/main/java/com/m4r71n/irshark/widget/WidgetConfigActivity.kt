@@ -42,28 +42,23 @@ import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.lifecycle.lifecycleScope
 import com.m4r71n.irshark.data.SavedRemote
 import com.m4r71n.irshark.data.SavedRemoteButton
+import com.m4r71n.irshark.data.loadRemoteHistory
 import com.m4r71n.irshark.data.loadSavedRemotes
 import com.m4r71n.irshark.ui.theme.IRSharkTheme
 import com.m4r71n.irshark.R
 import kotlinx.coroutines.launch
 
-private data class WidgetSize(
-    val columns: Int,
-    val rows: Int,
-    val labelRes: Int,
-    val receiverClassName: String
-)
+private data class WidgetSize(val columns: Int, val rows: Int, val labelRes: Int)
 private data class WidgetVisualStyle(val style: WidgetStyle, val labelRes: Int)
 
 private val WIDGET_SIZES = listOf(
-    WidgetSize(1, 1, R.string.widget_size_1x1, IrSharkWidgetReceiver::class.java.name),
-    WidgetSize(1, 2, R.string.widget_size_1x2, IrSharkWidget1x2Receiver::class.java.name),
-    WidgetSize(1, 4, R.string.widget_size_1x4, IrSharkWidget1x4Receiver::class.java.name),
-    WidgetSize(2, 1, R.string.widget_size_2x1, IrSharkWidget2x1Receiver::class.java.name),
-    WidgetSize(4, 1, R.string.widget_size_4x1, IrSharkWidget4x1Receiver::class.java.name),
-    WidgetSize(2, 2, R.string.widget_size_2x2, IrSharkWidget2x2Receiver::class.java.name),
-    WidgetSize(4, 2, R.string.widget_size_4x2, IrSharkWidget4x2Receiver::class.java.name),
-    WidgetSize(3, 3, R.string.widget_size_3x3, IrSharkWidget3x3Receiver::class.java.name)
+    WidgetSize(1, 1, R.string.widget_size_1x1),
+    WidgetSize(2, 1, R.string.widget_size_2x1),
+    WidgetSize(3, 1, R.string.widget_size_3x1),
+    WidgetSize(4, 1, R.string.widget_size_4x1),
+    WidgetSize(1, 2, R.string.widget_size_1x2),
+    WidgetSize(1, 3, R.string.widget_size_1x3),
+    WidgetSize(1, 4, R.string.widget_size_1x4)
 )
 
 private val WIDGET_STYLES = listOf(
@@ -80,6 +75,7 @@ private const val MAX_WIDGET_BUTTON_SLOTS = 12
 
 private sealed class WizardScreen {
     object StylePicker : WizardScreen()
+    object SizePicker : WizardScreen()
     object FeedbackPicker : WizardScreen()
     data class RemotePicker(val slotIndex: Int, val totalSlots: Int) : WizardScreen()
     data class ButtonPicker(
@@ -105,20 +101,35 @@ class WidgetConfigActivity : ComponentActivity() {
             return
         }
 
-        val fixedSize = resolveWidgetSize(appWidgetId)
-
         // Return CANCELED if the user backs out without selecting
         setResult(RESULT_CANCELED, Intent().apply {
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
         })
 
-        val remotes = loadSavedRemotes(this)
+        val savedRemotes = loadSavedRemotes(this)
+        val remotes = savedRemotes
+            .filter { it.buttons.isNotEmpty() }
+            .ifEmpty {
+                loadRemoteHistory(this)
+                    .mapNotNull { entry ->
+                        val buttons = entry.buttons.filter { it.label.isNotBlank() }
+                        if (buttons.isEmpty()) return@mapNotNull null
+                        SavedRemote(
+                            name = entry.name,
+                            profilePath = entry.profilePath,
+                            commands = buttons.map { it.label },
+                            buttons = buttons,
+                            iconName = entry.iconName,
+                            sourceProfilePath = entry.sourceProfilePath,
+                            favorite = false
+                        )
+                    }
+            }
 
         setContent {
             IRSharkTheme {
                 WidgetConfigWizard(
                     remotes = remotes,
-                    fixedSize = fixedSize,
                     onComplete = { style, columns, rows, feedbackEnabled, buttons ->
                         saveAndFinish(appWidgetId, style, columns, rows, feedbackEnabled, buttons)
                     }
@@ -164,25 +175,16 @@ class WidgetConfigActivity : ComponentActivity() {
         }
     }
 
-    private fun resolveWidgetSize(appWidgetId: Int): WidgetSize {
-        val providerClassName = AppWidgetManager.getInstance(this)
-            .getAppWidgetInfo(appWidgetId)
-            ?.provider
-            ?.className
-        return WIDGET_SIZES.firstOrNull { it.receiverClassName == providerClassName }
-            ?: WIDGET_SIZES.first()
-    }
 }
 
 @Composable
 private fun WidgetConfigWizard(
     remotes: List<SavedRemote>,
-    fixedSize: WidgetSize,
     onComplete: (WidgetStyle, Int, Int, Boolean, List<ButtonConfig>) -> Unit
 ) {
     var screen by remember { mutableStateOf<WizardScreen>(WizardScreen.StylePicker) }
     var selectedStyle by remember { mutableStateOf(WidgetStyle.DEFAULT) }
-    val selectedSize = fixedSize
+    var selectedSize by remember { mutableStateOf<WidgetSize?>(null) }
     var feedbackEnabled by remember { mutableStateOf(true) }
     val configuredButtons = remember { mutableStateListOf<ButtonConfig>() }
 
@@ -191,6 +193,15 @@ private fun WidgetConfigWizard(
             StylePickerScreen(
                 onStyleSelected = { style ->
                     selectedStyle = style
+                    screen = WizardScreen.SizePicker
+                }
+            )
+        }
+        is WizardScreen.SizePicker -> {
+            SizePickerScreen(
+                onBack = { screen = WizardScreen.StylePicker },
+                onSizeSelected = { size ->
+                    selectedSize = size
                     configuredButtons.clear()
                     screen = WizardScreen.FeedbackPicker
                 }
@@ -200,11 +211,12 @@ private fun WidgetConfigWizard(
             FeedbackPickerScreen(
                 feedbackEnabled = feedbackEnabled,
                 onFeedbackEnabledChanged = { feedbackEnabled = it },
-                onBack = { screen = WizardScreen.StylePicker },
+                onBack = { screen = WizardScreen.SizePicker },
                 onContinue = {
+                    val size = selectedSize ?: return@FeedbackPickerScreen
                     screen = WizardScreen.RemotePicker(
                         slotIndex = 0,
-                        totalSlots = selectedSize.columns * selectedSize.rows
+                        totalSlots = size.columns * size.rows
                     )
                 }
             )
@@ -243,8 +255,8 @@ private fun WidgetConfigWizard(
                     if (nextIndex >= s.totalSlots) {
                         onComplete(
                             selectedStyle,
-                            selectedSize.columns,
-                            selectedSize.rows,
+                            selectedSize!!.columns,
+                            selectedSize!!.rows,
                             feedbackEnabled,
                             configuredButtons.toList()
                         )
