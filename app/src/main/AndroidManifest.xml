@@ -37,16 +37,101 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Home screen widget -->
+        <!-- Home screen widgets -->
         <receiver
             android:name=".widget.IrSharkWidgetReceiver"
-            android:exported="true">
+            android:exported="true"
+            android:label="@string/widget_provider_1x1">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/ir_shark_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.IrSharkWidget1x2Receiver"
+            android:exported="true"
+            android:label="@string/widget_provider_1x2">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ir_shark_widget_1x2_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.IrSharkWidget1x4Receiver"
+            android:exported="true"
+            android:label="@string/widget_provider_1x4">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ir_shark_widget_1x4_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.IrSharkWidget2x1Receiver"
+            android:exported="true"
+            android:label="@string/widget_provider_2x1">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ir_shark_widget_2x1_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.IrSharkWidget4x1Receiver"
+            android:exported="true"
+            android:label="@string/widget_provider_4x1">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ir_shark_widget_4x1_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.IrSharkWidget2x2Receiver"
+            android:exported="true"
+            android:label="@string/widget_provider_2x2">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ir_shark_widget_2x2_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.IrSharkWidget4x2Receiver"
+            android:exported="true"
+            android:label="@string/widget_provider_4x2">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ir_shark_widget_4x2_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.IrSharkWidget3x3Receiver"
+            android:exported="true"
+            android:label="@string/widget_provider_3x3">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ir_shark_widget_3x3_info" />
         </receiver>
 
         <activity

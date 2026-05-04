@@ -4,17 +4,17 @@ plugins {
 }
 
 android {
-    namespace = "com.vex.irshark"
+    namespace = "com.m4r71n.irshark"
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "com.vex.irshark"
+        applicationId = "com.m4r71n.irshark"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0.1"
+        versionName = "1.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
