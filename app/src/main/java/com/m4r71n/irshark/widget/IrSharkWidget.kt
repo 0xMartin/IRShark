@@ -61,8 +61,6 @@ internal val KEY_COLUMNS = intPreferencesKey("columns")
 internal val KEY_ROWS = intPreferencesKey("rows")
 internal val KEY_STYLE = stringPreferencesKey("widget_style")
 internal val KEY_FEEDBACK_ENABLED = booleanPreferencesKey("feedback_enabled")
-internal val KEY_LAST_PRESS_INDEX = intPreferencesKey("last_press_index")
-internal val KEY_LAST_PRESS_TIME = longPreferencesKey("last_press_time")
 internal val KEY_ACTIVE_INDEX = intPreferencesKey("active_button_index")
 internal fun keyButtonLabel(index: Int) = stringPreferencesKey("button_label_$index")
 internal fun keyButtonCode(index: Int) = stringPreferencesKey("button_code_$index")
@@ -131,7 +129,6 @@ internal enum class WidgetStyle(
     }
 }
 
-private const val DOUBLE_TAP_GUARD_MS = 250L
 private const val PRESSED_INDICATOR_MS = 180L
 
 class IrSharkWidget : GlanceAppWidget() {
@@ -283,17 +280,10 @@ class SendIrAction : ActionCallback {
         parameters: ActionParameters
     ) {
         val index = parameters[KEY_BUTTON_INDEX] ?: 0
-        val initialPrefs = getAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId)
-        val now = System.currentTimeMillis()
-        val lastIndex = initialPrefs[KEY_LAST_PRESS_INDEX] ?: -1
-        val lastPressTime = initialPrefs[KEY_LAST_PRESS_TIME] ?: 0L
-        if (lastIndex == index && now - lastPressTime < DOUBLE_TAP_GUARD_MS) return
 
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
             prefs.toMutablePreferences().apply {
                 this[KEY_ACTIVE_INDEX] = index
-                this[KEY_LAST_PRESS_INDEX] = index
-                this[KEY_LAST_PRESS_TIME] = now
             }
         }
         IrSharkWidget().update(context, glanceId)
