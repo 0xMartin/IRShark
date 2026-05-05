@@ -52,9 +52,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // ── Top bar back/home arrow button ───────────────────────────────────────────
 
@@ -203,6 +210,8 @@ fun RemoteCommandButton(
     protocol: String = "",
     isActive: Boolean,
     onClick: () -> Unit,
+    onLongPressRepeat: (() -> Unit)? = null,
+    onLongPressRepeatStateChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val violet = MaterialTheme.colorScheme.primary
@@ -223,7 +232,45 @@ fun RemoteCommandButton(
                 violet.copy(alpha = 0.22f),
                 RoundedCornerShape(16.dp)
             )
-            .clickable(onClick = onClick)
+            .then(
+                if (onLongPressRepeat != null) {
+                    // Long-press repeat: after 1000 ms of holding, emit the IR signal
+                    // continuously with a 100 ms pause between sends.
+                    // A normal short tap still calls onClick.
+                    Modifier.pointerInput(onClick, onLongPressRepeat) {
+                        // coroutineScope {} creates a child CoroutineScope so we can
+                        // launch the repeat job while still inside awaitPointerEventScope.
+                        coroutineScope {
+                            val repeatScope = this
+                            awaitPointerEventScope {
+                                while (true) {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    var repeating = false
+                                    val job = repeatScope.launch {
+                                        delay(1_000L)
+                                        repeating = true
+                                        onLongPressRepeatStateChange?.invoke(true)
+                                        while (true) {
+                                            onLongPressRepeat()
+                                            delay(100L)
+                                        }
+                                    }
+                                    waitForUpOrCancellation()
+                                    val wasRepeating = repeating
+                                    job.cancel()
+                                    if (wasRepeating) {
+                                        onLongPressRepeatStateChange?.invoke(false)
+                                    } else {
+                                        onClick()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Column(
