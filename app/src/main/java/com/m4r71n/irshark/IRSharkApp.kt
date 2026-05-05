@@ -495,6 +495,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var controlTxCount by rememberSaveable { mutableIntStateOf(0) }
     var controlReturnScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var controlHistoryEntry by remember { mutableStateOf<RemoteHistoryEntry?>(null) }
+    var controlColumnCount by rememberSaveable { mutableIntStateOf(2) }
     var remoteHistory by remember { mutableStateOf(listOf<RemoteHistoryEntry>()) }
     var historyLoaded by remember { mutableStateOf(false) }
 
@@ -504,9 +505,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var editorRemoteName by remember { mutableStateOf("") }
     var editorRemoteButtons by remember { mutableStateOf(listOf<SavedRemoteButton>()) }
     var editorRemoteIconName by remember { mutableStateOf<String?>(null) }
+    var editorRemoteColumnCount by remember { mutableIntStateOf(2) }
     var editorOriginalName by remember { mutableStateOf<String?>(null) }
     var editorOriginalButtons by remember { mutableStateOf(listOf<SavedRemoteButton>()) }
     var editorOriginalIconName by remember { mutableStateOf<String?>(null) }
+    var editorOriginalColumnCount by remember { mutableIntStateOf(2) }
     var editingButtonIndex by remember { mutableStateOf(-1) }
     var editorButtonLabel by remember { mutableStateOf("") }
     var editorButtonCode by remember { mutableStateOf("") }
@@ -597,9 +600,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         editorRemoteName = existing?.name.orEmpty()
         editorRemoteButtons = existing?.buttons.orEmpty()
         editorRemoteIconName = existing?.iconName
+        editorRemoteColumnCount = existing?.columnCount ?: 2
         editorOriginalName = existing?.name
         editorOriginalButtons = existing?.buttons.orEmpty()
         editorOriginalIconName = existing?.iconName
+        editorOriginalColumnCount = existing?.columnCount ?: 2
         editingButtonIndex = -1
         screen = Screen.REMOTE_EDITOR
     }
@@ -613,7 +618,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     fun isRemoteEditorDirty(): Boolean {
         return editorRemoteName != editorOriginalName.orEmpty() ||
             editorRemoteButtons != editorOriginalButtons ||
-            editorRemoteIconName != editorOriginalIconName
+            editorRemoteIconName != editorOriginalIconName ||
+            editorRemoteColumnCount != editorOriginalColumnCount
     }
 
     fun isButtonEditorDirty(): Boolean {
@@ -753,7 +759,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 commands = normalizedButtons.map { it.label },
                 buttons = normalizedButtons,
                 iconName = editorRemoteIconName,
-                sourceProfilePath = if (detachFromDb) null else previous.sourceProfilePath
+                sourceProfilePath = if (detachFromDb) null else previous.sourceProfilePath,
+                columnCount = editorRemoteColumnCount
             )
 
             savedRemotes = savedRemotes.toMutableList().also { it[editingRemoteIndex!!] = updated }
@@ -771,7 +778,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 commands = normalizedButtons.map { it.label },
                 buttons = normalizedButtons,
                 iconName = editorRemoteIconName,
-                sourceProfilePath = null
+                sourceProfilePath = null,
+                columnCount = editorRemoteColumnCount
             )
             toastController.show("Remote created")
         }
@@ -1632,6 +1640,16 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             showEditButton = controlSource == ControlSource.MY_REMOTES,
                             saveButtonLabel = if (isRemoteAlreadyAdded) "Added" else "Add",
                             saveButtonEnabled = !isRemoteAlreadyAdded,
+                            columnCount = activeSavedRemote?.columnCount ?: controlColumnCount,
+                            onColumnCountChange = { cols ->
+                                if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
+                                    savedRemotes = savedRemotes.toMutableList().also { list ->
+                                        list[controlRemoteIndex] = list[controlRemoteIndex].copy(columnCount = cols)
+                                    }
+                                } else {
+                                    controlColumnCount = cols
+                                }
+                            },
                             onShare = if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
                                 {
                                     val remote = savedRemotes[controlRemoteIndex]
@@ -1659,9 +1677,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             remoteName = editorRemoteName,
                             iconName = editorRemoteIconName,
                             buttons = editorRemoteButtons,
+                            columnCount = editorRemoteColumnCount,
                             duplicateName = duplicateName,
                             onNameChange = { editorRemoteName = it },
                             onIconChange = { editorRemoteIconName = it },
+                            onColumnCountChange = { editorRemoteColumnCount = it },
                             onAddButton = {
                                 startButtonEditor(-1)
                             },
