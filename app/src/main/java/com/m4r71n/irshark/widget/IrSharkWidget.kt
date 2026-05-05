@@ -177,7 +177,7 @@ private fun WidgetContent() {
         modifier = GlanceModifier
             .fillMaxSize()
             .background(ColorProvider(style.background))
-            .padding(if (compactMode) 4.dp else 6.dp)
+            .padding(6.dp)
     ) {
         repeat(rows) { row ->
             Row(
@@ -200,7 +200,7 @@ private fun WidgetContent() {
                         modifier = GlanceModifier
                             .defaultWeight()
                             .fillMaxHeight()
-                            .padding(if (compactMode) 1.dp else 3.dp),
+                            .padding(3.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Box(
