@@ -52,9 +52,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // ── Top bar back/home arrow button ───────────────────────────────────────────
 
@@ -203,6 +214,8 @@ fun RemoteCommandButton(
     protocol: String = "",
     isActive: Boolean,
     onClick: () -> Unit,
+    onLongPressRepeat: (() -> Unit)? = null,
+    onLongPressRepeatStateChange: ((Boolean) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val violet = MaterialTheme.colorScheme.primary
@@ -223,7 +236,85 @@ fun RemoteCommandButton(
                 violet.copy(alpha = 0.22f),
                 RoundedCornerShape(16.dp)
             )
-            .clickable(onClick = onClick)
+            .then(
+                if (onLongPressRepeat != null) {
+                    // Press behavior for Remote UI:
+                    // 1) Send one IR signal only after a short stable hold.
+                    // 2) After another 1000 ms of holding, start continuous repeat.
+                    // 3) If the finger movement looks like scroll, cancel everything.
+                    Modifier.pointerInput(onClick, onLongPressRepeat) {
+                        coroutineScope {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val shortPressDelayMs = 140L
+                                val repeatStartDelayMs = 1_000L
+                                val repeatIntervalMs = 100L
+                                val touchSlopPx = viewConfiguration.touchSlop
+                                val startPos = down.position
+
+                                var pointerIsDown = true
+                                var canceledByScroll = false
+                                var singleSent = false
+                                var repeating = false
+
+                                val singleJob = launch {
+                                    delay(shortPressDelayMs)
+                                    if (pointerIsDown && !canceledByScroll) {
+                                        onClick()
+                                        singleSent = true
+                                    }
+                                }
+
+                                val repeatJob = launch {
+                                    delay(shortPressDelayMs + repeatStartDelayMs)
+                                    if (pointerIsDown && !canceledByScroll) {
+                                        repeating = true
+                                        onLongPressRepeatStateChange?.invoke(true)
+                                        while (pointerIsDown && !canceledByScroll) {
+                                            onLongPressRepeat()
+                                            delay(repeatIntervalMs)
+                                        }
+                                    }
+                                }
+
+                                while (pointerIsDown) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                        ?: event.changes.firstOrNull()
+                                        ?: break
+
+                                    val movedTooMuch =
+                                        (change.position - startPos).getDistance() > touchSlopPx
+                                    if (movedTooMuch) {
+                                        canceledByScroll = true
+                                        pointerIsDown = false
+                                        break
+                                    }
+
+                                    if (change.changedToUpIgnoreConsumed() || !change.pressed) {
+                                        pointerIsDown = false
+                                        break
+                                    }
+                                }
+
+                                singleJob.cancel()
+                                repeatJob.cancel()
+
+                                if (repeating) {
+                                    onLongPressRepeatStateChange?.invoke(false)
+                                }
+
+                                // Quick tap should still trigger one send (unless it became scroll).
+                                if (!canceledByScroll && !singleSent) {
+                                    onClick()
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Modifier.clickable(onClick = onClick)
+                }
+            )
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
         Column(
@@ -395,7 +486,17 @@ fun AppHeader(txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean, screenT
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFF0A0814))
-            .border(1.dp, violet.copy(alpha = 0.14f))
+            .drawBehind {
+                val strokeWidthPx = 4.dp.toPx()
+                val y = size.height - strokeWidthPx / 2
+
+                drawLine(
+                    color = lerp(violet, Color.Black, 0.6f),
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = strokeWidthPx
+                )
+            }
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row(

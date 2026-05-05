@@ -493,6 +493,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var controlSource by rememberSaveable { mutableStateOf(ControlSource.REMOTE_DB) }
     var controlSelectedCommand by rememberSaveable { mutableStateOf<String?>(null) }
     var controlTxCount by rememberSaveable { mutableIntStateOf(0) }
+    var controlRepeatSending by remember { mutableStateOf(false) }
     var controlReturnScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var controlHistoryEntry by remember { mutableStateOf<RemoteHistoryEntry?>(null) }
     var controlColumnCount by rememberSaveable { mutableIntStateOf(2) }
@@ -566,6 +567,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             irFinderBreadcrumb = null
             irFinderOnBack = null
             irFinderOnUndo = null
+        }
+        if (screen != Screen.REMOTE_CONTROL) {
+            controlRepeatSending = false
         }
     }
 
@@ -1141,9 +1145,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 Screen.IR_FINDER -> "IR Finder"
             }
             AppHeader(
-                txActive = txPulseActive || universalAutoSend,
+                txActive = txPulseActive || universalAutoSend || controlRepeatSending,
                 showTxLed = showTxLed,
-                fastBlink = universalAutoSend,
+                fastBlink = universalAutoSend || controlRepeatSending,
                 screenTitle = screenTitle
             )
             if (screen == Screen.REMOTE_CONTROL) {
@@ -1592,10 +1596,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             txCount = controlTxCount,
                             hapticEnabled = hapticFeedback,
                             onBack = {
+                                controlRepeatSending = false
                                 controlRemoteIndex = -1
                                 screen = controlReturnScreen
                             },
                             onCommandClick = { cmdLabel ->
+                                controlRepeatSending = false
                                 controlSelectedCommand = null
                                 controlTxCount += 1
                                 emitTxPulse()
@@ -1616,6 +1622,29 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                         }
                                     }
                                 }
+                            },
+                            onRepeatCommandClick = { cmdLabel ->
+                                controlSelectedCommand = null
+                                controlTxCount += 1
+                                val button = controlButtons.firstOrNull { it.label.equals(cmdLabel, ignoreCase = true) }
+                                if (button != null && button.code.isNotBlank()) {
+                                    scope.launch(Dispatchers.IO) {
+                                        val txResult = transmitIrCodeResult(
+                                            context,
+                                            button.code,
+                                            modeRaw = txModeRaw,
+                                            bridgeEndpointRaw = bridgeEndpoint
+                                        )
+                                        if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                                            withContext(Dispatchers.Main) {
+                                                toastController.show("No IR output found. Internal IR or live bridge not available.")
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            onRepeatStateChange = { repeating ->
+                                controlRepeatSending = repeating
                             },
                             onEdit = {
                                 if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {

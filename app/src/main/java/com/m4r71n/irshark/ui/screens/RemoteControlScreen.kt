@@ -58,6 +58,8 @@ fun RemoteControlScreen(
     txCount: Int,
     onBack: () -> Unit,
     onCommandClick: (String) -> Unit,
+    onRepeatCommandClick: ((String) -> Unit)? = null,
+    onRepeatStateChange: ((Boolean) -> Unit)? = null,
     onEdit: () -> Unit,
     onSave: () -> Unit,
     showSaveButton: Boolean,
@@ -205,6 +207,18 @@ fun RemoteControlScreen(
                                 flashedCommand = cmd
                                 scope.launch { delay(220); flashedCommand = null }
                                 onCommandClick(cmd)
+                            },
+                            onLongPressRepeat = {
+                                flashedCommand = cmd
+                                (onRepeatCommandClick ?: onCommandClick)(cmd)
+                            },
+                            onLongPressRepeatStateChange = { repeating ->
+                                if (repeating) {
+                                    flashedCommand = cmd
+                                } else if (flashedCommand == cmd) {
+                                    flashedCommand = null
+                                }
+                                onRepeatStateChange?.invoke(repeating)
                             },
                             modifier = Modifier
                                 .weight(1f)

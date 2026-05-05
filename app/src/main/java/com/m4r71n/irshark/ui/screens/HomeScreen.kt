@@ -117,7 +117,7 @@ private fun HomeGridCard(
             .height(118.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF100D1C))
-            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(18.dp))
+            .border(3.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(18.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
