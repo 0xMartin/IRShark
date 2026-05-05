@@ -56,6 +56,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -234,35 +235,75 @@ fun RemoteCommandButton(
             )
             .then(
                 if (onLongPressRepeat != null) {
-                    // Long-press repeat: after 1000 ms of holding, emit the IR signal
-                    // continuously with a 100 ms pause between sends.
-                    // A normal short tap still calls onClick.
+                    // Press behavior for Remote UI:
+                    // 1) Send one IR signal only after a short stable hold.
+                    // 2) After another 1000 ms of holding, start continuous repeat.
+                    // 3) If the finger movement looks like scroll, cancel everything.
                     Modifier.pointerInput(onClick, onLongPressRepeat) {
-                        // coroutineScope {} creates a child CoroutineScope so we can
-                        // launch the repeat job while still inside awaitPointerEventScope.
                         coroutineScope {
-                            val repeatScope = this
-                            awaitPointerEventScope {
-                                while (true) {
-                                    awaitFirstDown(requireUnconsumed = false)
-                                    var repeating = false
-                                    val job = repeatScope.launch {
-                                        delay(1_000L)
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val shortPressDelayMs = 140L
+                                val repeatStartDelayMs = 1_000L
+                                val repeatIntervalMs = 100L
+                                val touchSlopPx = viewConfiguration.touchSlop
+                                val startPos = down.position
+
+                                var pointerIsDown = true
+                                var canceledByScroll = false
+                                var singleSent = false
+                                var repeating = false
+
+                                val singleJob = launch {
+                                    delay(shortPressDelayMs)
+                                    if (pointerIsDown && !canceledByScroll) {
+                                        onClick()
+                                        singleSent = true
+                                    }
+                                }
+
+                                val repeatJob = launch {
+                                    delay(shortPressDelayMs + repeatStartDelayMs)
+                                    if (pointerIsDown && !canceledByScroll) {
                                         repeating = true
                                         onLongPressRepeatStateChange?.invoke(true)
-                                        while (true) {
+                                        while (pointerIsDown && !canceledByScroll) {
                                             onLongPressRepeat()
-                                            delay(100L)
+                                            delay(repeatIntervalMs)
                                         }
                                     }
-                                    waitForUpOrCancellation()
-                                    val wasRepeating = repeating
-                                    job.cancel()
-                                    if (wasRepeating) {
-                                        onLongPressRepeatStateChange?.invoke(false)
-                                    } else {
-                                        onClick()
+                                }
+
+                                while (pointerIsDown) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                        ?: event.changes.firstOrNull()
+                                        ?: break
+
+                                    val movedTooMuch =
+                                        (change.position - startPos).getDistance() > touchSlopPx
+                                    if (movedTooMuch) {
+                                        canceledByScroll = true
+                                        pointerIsDown = false
+                                        break
                                     }
+
+                                    if (change.changedToUpIgnoreConsumed() || !change.pressed) {
+                                        pointerIsDown = false
+                                        break
+                                    }
+                                }
+
+                                singleJob.cancel()
+                                repeatJob.cancel()
+
+                                if (repeating) {
+                                    onLongPressRepeatStateChange?.invoke(false)
+                                }
+
+                                // Quick tap should still trigger one send (unless it became scroll).
+                                if (!canceledByScroll && !singleSent) {
+                                    onClick()
                                 }
                             }
                         }
