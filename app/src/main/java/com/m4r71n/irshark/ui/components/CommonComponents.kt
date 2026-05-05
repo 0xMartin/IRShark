@@ -55,6 +55,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.unit.Dp
@@ -483,7 +486,17 @@ fun AppHeader(txActive: Boolean, showTxLed: Boolean, fastBlink: Boolean, screenT
         modifier = Modifier
             .fillMaxWidth()
             .background(Color(0xFF0A0814))
-            .border(1.dp, violet.copy(alpha = 0.14f))
+            .drawBehind {
+                val strokeWidthPx = 4.dp.toPx()
+                val y = size.height - strokeWidthPx / 2
+
+                drawLine(
+                    color = lerp(violet, Color.Black, 0.6f),
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = strokeWidthPx
+                )
+            }
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         Row(
