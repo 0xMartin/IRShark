@@ -26,11 +26,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import android.view.HapticFeedbackConstants
 import kotlinx.coroutines.delay
@@ -39,7 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,18 +63,14 @@ fun RemoteControlScreen(
     showSaveButton: Boolean,
     showEditButton: Boolean,
     hapticEnabled: Boolean = true,
+    columnCount: Int = 2,
+    onColumnCountChange: (Int) -> Unit = {},
     onShare: (() -> Unit)? = null,
     saveButtonLabel: String = "Add",
     saveButtonEnabled: Boolean = true
 ) {
     val violet = MaterialTheme.colorScheme.primary
     var flashedCommand by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
-    var columnCount by rememberSaveable {
-        val saved = context.getSharedPreferences("irshark_prefs", android.content.Context.MODE_PRIVATE)
-            .getInt("remote_column_count", 2)
-        mutableIntStateOf(saved)
-    }
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val commands = buttons.map { it.label }.filter { it.isNotBlank() }
@@ -178,11 +171,7 @@ fun RemoteControlScreen(
                                 .size(28.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(if (columnCount == cols) violet.copy(alpha = 0.18f) else Color.Transparent)
-                                .clickable {
-                                    columnCount = cols
-                                    context.getSharedPreferences("irshark_prefs", android.content.Context.MODE_PRIVATE)
-                                        .edit().putInt("remote_column_count", cols).apply()
-                                },
+                                .clickable { onColumnCountChange(cols) },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(

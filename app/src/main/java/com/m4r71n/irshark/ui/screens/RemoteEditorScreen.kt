@@ -26,17 +26,24 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.OpenWith
+import androidx.compose.material.icons.filled.ViewList
+import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -78,9 +85,11 @@ fun RemoteEditorScreen(
     remoteName: String,
     iconName: String?,
     buttons: List<SavedRemoteButton>,
+    columnCount: Int,
     duplicateName: Boolean,
     onNameChange: (String) -> Unit,
     onIconChange: (String?) -> Unit,
+    onColumnCountChange: (Int) -> Unit,
     onAddButton: () -> Unit,
     onEditButton: (Int) -> Unit,
     onMoveButton: (from: Int, to: Int) -> Unit,
@@ -90,9 +99,20 @@ fun RemoteEditorScreen(
     canSave: Boolean
 ) {
     val violet = MaterialTheme.colorScheme.primary
+    val scope = rememberCoroutineScope()
     var draggedIndex by remember { mutableIntStateOf(-1) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
     var itemHeightPx by remember { mutableFloatStateOf(0f) }
+    var dropTargetIndex by remember { mutableIntStateOf(-1) }
+    var recentlyMovedIndex by remember { mutableIntStateOf(-1) }
+
+    // Clear highlight after short delay whenever it changes
+    LaunchedEffect(recentlyMovedIndex) {
+        if (recentlyMovedIndex >= 0) {
+            delay(700)
+            recentlyMovedIndex = -1
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -190,6 +210,62 @@ fun RemoteEditorScreen(
                     .padding(12.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Button layout", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(
+                            1 to Icons.Filled.ViewList,
+                            2 to Icons.Filled.GridView,
+                            3 to Icons.Filled.ViewModule
+                        ).forEach { (cols, icon) ->
+                            val selected = columnCount == cols
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(44.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
+                                    .border(
+                                        1.dp,
+                                        if (selected) Color(0xFF9B6DFF) else Color.White.copy(alpha = 0.10f),
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { onColumnCountChange(cols) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        tint = if (selected) Color(0xFF9B6DFF) else Color(0xFF6A5F8A),
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "$cols col",
+                                        color = if (selected) Color(0xFFE4D7FF) else Color(0xFF8A8899),
+                                        fontSize = 12.sp,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF0F0D1A))
+                    .border(1.dp, violet.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -209,22 +285,48 @@ fun RemoteEditorScreen(
                     if (buttons.isEmpty()) {
                         EmptyCard("Add at least one button.")
                     } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                             buttons.forEachIndexed { index, button ->
                                 val isDragging = draggedIndex == index
+                                val isRecentlyMoved = recentlyMovedIndex == index
+                                val isDroppingHere = draggedIndex != -1 && dropTargetIndex == index && index != draggedIndex
+
+                                // Drop indicator ABOVE – when item will land here from below
+                                if (isDroppingHere && dropTargetIndex < draggedIndex) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 1.dp)
+                                            .height(2.dp)
+                                            .clip(RoundedCornerShape(1.dp))
+                                            .background(Color(0xFF9B6DFF))
+                                    )
+                                }
+
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .padding(vertical = 3.dp)
                                         .zIndex(if (isDragging) 1f else 0f)
                                         .offset { IntOffset(0, if (isDragging) dragOffsetY.roundToInt() else 0) }
                                         .onSizeChanged { size ->
                                             if (itemHeightPx == 0f) itemHeightPx = size.height.toFloat()
                                         }
                                         .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isDragging) Color(0xFF251B45) else Color(0xFF181327))
+                                        .background(
+                                            when {
+                                                isDragging -> Color(0xFF251B45)
+                                                isRecentlyMoved -> Color(0xFF1E2E1E)
+                                                else -> Color(0xFF181327)
+                                            }
+                                        )
                                         .border(
                                             1.dp,
-                                            if (isDragging) Color(0xFF9B6DFF).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.10f),
+                                            when {
+                                                isDragging -> Color(0xFF9B6DFF).copy(alpha = 0.6f)
+                                                isRecentlyMoved -> Color(0xFF4CAF50).copy(alpha = 0.6f)
+                                                else -> Color.White.copy(alpha = 0.10f)
+                                            },
                                             RoundedCornerShape(10.dp)
                                         )
                                         .padding(10.dp),
@@ -237,11 +339,12 @@ fun RemoteEditorScreen(
                                         tint = if (isDragging) Color(0xFF9B6DFF) else Color(0xFF6A5F8A),
                                         modifier = Modifier
                                             .size(22.dp)
-                                            .pointerInput(Unit) {
+                                            .pointerInput(index) {
                                                 detectDragGestures(
                                                     onDragStart = {
                                                         draggedIndex = index
                                                         dragOffsetY = 0f
+                                                        dropTargetIndex = index
                                                     },
                                                     onDragEnd = {
                                                         val steps = if (itemHeightPx > 0f)
@@ -251,15 +354,24 @@ fun RemoteEditorScreen(
                                                         val to = (from + steps).coerceIn(0, buttons.lastIndex)
                                                         draggedIndex = -1
                                                         dragOffsetY = 0f
-                                                        if (from != to) onMoveButton(from, to)
+                                                        dropTargetIndex = -1
+                                                        if (from != to) {
+                                                            recentlyMovedIndex = to
+                                                            scope.launch { onMoveButton(from, to) }
+                                                        }
                                                     },
                                                     onDragCancel = {
                                                         draggedIndex = -1
                                                         dragOffsetY = 0f
+                                                        dropTargetIndex = -1
                                                     },
                                                     onDrag = { change, dragAmount ->
                                                         change.consume()
                                                         dragOffsetY += dragAmount.y
+                                                        dropTargetIndex = if (itemHeightPx > 0f) {
+                                                            (draggedIndex + (dragOffsetY / itemHeightPx).roundToInt())
+                                                                .coerceIn(0, buttons.lastIndex)
+                                                        } else draggedIndex
                                                     }
                                                 )
                                             }
@@ -289,6 +401,18 @@ fun RemoteEditorScreen(
                                             modifier = Modifier.size(18.dp).clickable { onDeleteButton(index) }
                                         )
                                     }
+                                }
+
+                                // Drop indicator BELOW – when item will land here from above
+                                if (isDroppingHere && dropTargetIndex > draggedIndex) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 1.dp)
+                                            .height(2.dp)
+                                            .clip(RoundedCornerShape(1.dp))
+                                            .background(Color(0xFF9B6DFF))
+                                    )
                                 }
                             }
                         }
