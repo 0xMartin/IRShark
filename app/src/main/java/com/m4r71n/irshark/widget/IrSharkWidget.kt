@@ -149,7 +149,9 @@ private fun WidgetContent() {
     val rows = prefs[KEY_ROWS] ?: 0
     val style = WidgetStyle.fromCode(prefs[KEY_STYLE])
     val activeIndex = prefs[KEY_ACTIVE_INDEX] ?: -1
-    val compactMode = (columns == 1 && rows == 1) || (columns == 2 && rows == 1)
+    // Keep compact mode only for the smallest single-tile widget.
+    // 2x1 should use regular spacing so horizontal gaps stay consistent.
+    val compactMode = (columns == 1 && rows == 1)
     val isConfigured = columns > 0 && rows > 0 && prefs[keyButtonLabel(0)]?.isNotBlank() == true
 
     if (!isConfigured) {
@@ -187,6 +189,11 @@ private fun WidgetContent() {
                     val index = row * columns + col
                     val remoteName = prefs[keyButtonRemote(index)].orEmpty()
                     val buttonLabel = prefs[keyButtonLabel(index)].orEmpty()
+                    val labelFontSize = calculateWidgetLabelFontSize(
+                        label = buttonLabel,
+                        columns = columns,
+                        compactMode = compactMode
+                    )
                     val isPressed = activeIndex == index
 
                     Box(
@@ -248,7 +255,7 @@ private fun WidgetContent() {
                                             maxLines = 1,
                                             style = TextStyle(
                                                 color = ColorProvider(style.labelText),
-                                                fontSize = if (compactMode) 13.sp else 15.sp,
+                                                fontSize = labelFontSize.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         )
@@ -270,6 +277,27 @@ private fun WidgetContent() {
             }
         }
     }
+}
+
+private fun calculateWidgetLabelFontSize(
+    label: String,
+    columns: Int,
+    compactMode: Boolean
+): Int {
+    val base = if (compactMode) 13 else 15
+    val min = if (compactMode) 8 else 9
+    val length = label.trim().length
+    if (length <= 6) return base
+
+    // Denser layouts need stronger down-scaling for long labels.
+    val penaltyPerStep = when {
+        columns >= 4 -> 1
+        columns == 3 -> 1
+        else -> 2
+    }
+    val overflow = length - 6
+    val steps = (overflow + 2) / 3
+    return (base - steps * penaltyPerStep).coerceAtLeast(min)
 }
 
 
