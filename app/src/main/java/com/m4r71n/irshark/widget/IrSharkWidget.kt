@@ -152,6 +152,8 @@ private fun WidgetContent() {
     // Keep compact mode only for the smallest single-tile widget.
     // 2x1 should use regular spacing so horizontal gaps stay consistent.
     val compactMode = (columns == 1 && rows == 1)
+    // Read the system font scale so we can compensate in sp calculations.
+    val fontScale = LocalContext.current.resources.configuration.fontScale.coerceAtLeast(1f)
     val isConfigured = columns > 0 && rows > 0 && prefs[keyButtonLabel(0)]?.isNotBlank() == true
 
     if (!isConfigured) {
@@ -192,7 +194,8 @@ private fun WidgetContent() {
                     val labelFontSize = calculateWidgetLabelFontSize(
                         label = buttonLabel,
                         columns = columns,
-                        compactMode = compactMode
+                        compactMode = compactMode,
+                        fontScale = fontScale
                     )
                     val isPressed = activeIndex == index
 
@@ -279,25 +282,38 @@ private fun WidgetContent() {
     }
 }
 
+/**
+ * Calculates the label font size (in sp) for a widget button.
+ *
+ * Two adjustments are applied:
+ * 1. Length-based reduction  — longer labels get a smaller font so they fit horizontally.
+ * 2. FontScale compensation  — dividing by the system font scale keeps the physical
+ *    rendered size stable even when the user has chosen a larger accessibility font.
+ *    Without this, sp values grow proportionally with fontScale and overflow the button.
+ */
 private fun calculateWidgetLabelFontSize(
     label: String,
     columns: Int,
-    compactMode: Boolean
-): Int {
-    val base = if (compactMode) 13 else 15
-    val min = if (compactMode) 8 else 9
+    compactMode: Boolean,
+    fontScale: Float = 1f
+): Float {
+    val base = if (compactMode) 13f else 15f
+    val min  = if (compactMode) 8f  else 9f
     val length = label.trim().length
-    if (length <= 6) return base
 
-    // Denser layouts need stronger down-scaling for long labels.
-    val penaltyPerStep = when {
-        columns >= 4 -> 1
-        columns == 3 -> 1
-        else -> 2
+    // Desired rendered size before fontScale correction.
+    val targetSp = if (length <= 5) {
+        base
+    } else {
+        // Reduce 1.5 sp for every 2 extra characters; more aggressive for wider grids.
+        val reductionPer2Chars = if (columns >= 3) 1.5f else 1f
+        val steps = (length - 5 + 1) / 2
+        (base - steps * reductionPer2Chars).coerceAtLeast(min)
     }
-    val overflow = length - 6
-    val steps = (overflow + 2) / 3
-    return (base - steps * penaltyPerStep).coerceAtLeast(min)
+
+    // Divide by fontScale so Android's scaling brings the result back to targetSp.
+    // This prevents text from overflowing on devices with large system font size.
+    return (targetSp / fontScale).coerceAtLeast(min / fontScale)
 }
 
 
