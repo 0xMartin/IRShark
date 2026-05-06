@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
   <img src="https://img.shields.io/badge/minSdk-26-2E7D32" alt="minSdk 26" />
   <img src="https://img.shields.io/badge/IR-Parsed%20%2B%20Raw-0A0A0A" alt="IR parsed and raw" />
-  <img src="https://img.shields.io/github/downloads/0xMartin/IRShark/total?label=Downloads&color=1565C0" alt="Total Downloads" />
+  <img alt="GitHub all releases" src="https://img.shields.io/github/downloads/0xMartin/IRShark/total">
 </p>
 
 ## 📱 About
