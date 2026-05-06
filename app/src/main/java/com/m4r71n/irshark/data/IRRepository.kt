@@ -15,6 +15,8 @@ private const val IR_PLUS_ROOT = "$DB_ROOT/_Converted_/IR_Plus"
 private const val IR_PLUS_PARENT_PATH = "$DB_ROOT/Other/IR Plus"
 private const val PRONTO_ROOT = "$DB_ROOT/_Converted_/Pronto"
 private const val PRONTO_PARENT_PATH = "$DB_ROOT/Other/Pronto"
+private const val CSV_ROOT = "$DB_ROOT/_Converted_/CSV"
+private const val CSV_PARENT_PATH = "$DB_ROOT/Other/CSV"
 private const val PREFS_NAME = "irshark_prefs"
 private const val KEY_SAVED_REMOTES = "saved_remotes"
 private const val KEY_REMOTE_HISTORY = "remote_history"
@@ -42,6 +44,11 @@ private val CONVERTED_DB_SOURCES = listOf(
         rootPath = PRONTO_ROOT,
         parentPath = PRONTO_PARENT_PATH,
         rootName = "Pronto"
+    ),
+    ConvertedDbSource(
+        rootPath = CSV_ROOT,
+        parentPath = CSV_PARENT_PATH,
+        rootName = "CSV"
     )
 )
 
