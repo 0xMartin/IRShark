@@ -59,26 +59,27 @@ fun HomeScreen(
     val sharkColor = Color(0xFF9B6DFF)
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Decorative shark textures
+        // Decorative shark — centered at bottom, slightly cut off, symmetric
         Image(
             painter = painterResource(id = R.drawable.shark),
             contentDescription = null,
             colorFilter = ColorFilter.tint(sharkColor, BlendMode.SrcIn),
             modifier = Modifier
-                .size(260.dp)
-                .align(Alignment.BottomEnd)
-                .offset(x = 40.dp, y = (-20).dp)
-                .rotate(-35f)
-                .alpha(0.06f)
+                .size(280.dp)
+                .align(Alignment.BottomCenter)
+                .offset(y = 60.dp)
+                .rotate(10f)
+                .alpha(0.07f)
         )
+        // Small accent shark top-right corner
         Image(
             painter = painterResource(id = R.drawable.shark),
             contentDescription = null,
             colorFilter = ColorFilter.tint(sharkColor, BlendMode.SrcIn),
             modifier = Modifier
-                .size(110.dp)
-                .align(Alignment.TopStart)
-                .rotate(165f)
+                .size(90.dp)
+                .align(Alignment.TopEnd)
+                .rotate(200f)
                 .alpha(0.04f)
         )
 
