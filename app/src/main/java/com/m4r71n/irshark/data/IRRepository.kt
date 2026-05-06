@@ -15,6 +15,8 @@ private const val IR_PLUS_ROOT = "$DB_ROOT/_Converted_/IR_Plus"
 private const val IR_PLUS_PARENT_PATH = "$DB_ROOT/Other/IR Plus"
 private const val PRONTO_ROOT = "$DB_ROOT/_Converted_/Pronto"
 private const val PRONTO_PARENT_PATH = "$DB_ROOT/Other/Pronto"
+private const val CSV_ROOT = "$DB_ROOT/_Converted_/CSV"
+private const val CSV_PARENT_PATH = "$DB_ROOT/Other/CSV"
 private const val PREFS_NAME = "irshark_prefs"
 private const val KEY_SAVED_REMOTES = "saved_remotes"
 private const val KEY_REMOTE_HISTORY = "remote_history"
@@ -29,7 +31,8 @@ private const val UNSORTED_DISPLAY_NAME = "Unsorted"
 private data class ConvertedDbSource(
     val rootPath: String,
     val parentPath: String,
-    val rootName: String
+    val rootName: String,
+    val displayNameFn: ((assetPath: String) -> String)? = null
 )
 
 private val CONVERTED_DB_SOURCES = listOf(
@@ -42,6 +45,12 @@ private val CONVERTED_DB_SOURCES = listOf(
         rootPath = PRONTO_ROOT,
         parentPath = PRONTO_PARENT_PATH,
         rootName = "Pronto"
+    ),
+    ConvertedDbSource(
+        rootPath = CSV_ROOT,
+        parentPath = CSV_PARENT_PATH,
+        rootName = "CSV",
+        displayNameFn = ::csvDisplayName
     )
 )
 
@@ -1094,6 +1103,20 @@ private fun parseIrCodeBlocks(context: Context, assetPath: String): List<ParsedI
     return parsedBlocks
 }
 
+// CSV structure: .../CSV/Letter/Brand/DeviceType/FileName.ir
+// FileName is a meaningless numeric index — use Brand + DeviceType instead.
+private fun csvDisplayName(assetPath: String): String {
+    val parts = assetPath.split('/')
+    val n = parts.size
+    if (n < 3) return assetPath.substringAfterLast('/').removeSuffix(".ir").replace('_', ' ').trim()
+    val brand = parts[n - 3].replace('_', ' ').trim()
+    val deviceType = parts[n - 2]
+        .removePrefix("Unknown_")
+        .replace('_', ' ')
+        .trim()
+    return "$brand $deviceType".replace(Regex("\\s+"), " ").trim()
+}
+
 private fun convertedDisplayName(assetPath: String, rootName: String): String {
     val fileName = assetPath.substringAfterLast('/').removeSuffix(".ir").replace('_', ' ').trim()
     val folderName = assetPath.substringBeforeLast('/', "")
@@ -1143,7 +1166,8 @@ private fun collectDbLayout(context: Context): DbLayoutSnapshot {
                 descriptors += DbProfileDescriptor(
                     path = childPath,
                     parentPath = source.parentPath,
-                    displayName = convertedDisplayName(childPath, source.rootName),
+                    displayName = source.displayNameFn?.invoke(childPath)
+                        ?: convertedDisplayName(childPath, source.rootName),
                     signature = fileSignature(context, childPath)
                 )
             } else if (isDbDirectory(context, childPath)) {

@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Folder
@@ -32,6 +36,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -50,55 +55,158 @@ fun HomeScreen(
     onMacros:    () -> Unit = {},
     onIrFinder: () -> Unit = {}
 ) {
+    val violet = MaterialTheme.colorScheme.primary
     val sharkColor = Color(0xFF9B6DFF)
+
     Box(modifier = Modifier.fillMaxSize()) {
-        // Decorative shark textures
+        // Decorative shark — centered at bottom, slightly cut off, symmetric
         Image(
             painter = painterResource(id = R.drawable.shark),
             contentDescription = null,
             colorFilter = ColorFilter.tint(sharkColor, BlendMode.SrcIn),
             modifier = Modifier
-                .size(232.dp)
+                .size(280.dp)
                 .align(Alignment.BottomCenter)
-                .offset(y = (-40).dp)
-                .rotate(-20f)
+                .offset(y = 60.dp)
+                .rotate(10f)
                 .alpha(0.07f)
         )
+        // Small accent shark top-right corner
         Image(
             painter = painterResource(id = R.drawable.shark),
             contentDescription = null,
             colorFilter = ColorFilter.tint(sharkColor, BlendMode.SrcIn),
             modifier = Modifier
-                .size(120.dp)
-                .align(Alignment.TopStart)
-                .rotate(165f)
+                .size(90.dp)
+                .align(Alignment.TopEnd)
+                .rotate(200f)
                 .alpha(0.04f)
         )
 
         Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // ── Hero card — Universal Remote ──────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(130.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(
+                        Brush.linearGradient(
+                            0f to Color(0xFF1E1535),
+                            0.55f to Color(0xFF13102A),
+                            1f to Color(0xFF0D0B1A)
+                        )
+                    )
+                    .border(
+                        1.8.dp,
+                        Brush.linearGradient(
+                            0f to violet.copy(alpha = 0.7f),
+                            1f to violet.copy(alpha = 0.15f)
+                        ),
+                        RoundedCornerShape(22.dp)
+                    )
+                    .clickable(onClick = onUniversal),
+            ) {
+                // Glow blob behind icon
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .align(Alignment.CenterEnd)
+                        .offset(x = (-20).dp)
+                        .background(
+                            Brush.radialGradient(listOf(violet.copy(alpha = 0.18f), Color.Transparent)),
+                            RoundedCornerShape(50)
+                        )
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = "Universal Remote",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            letterSpacing = (-0.3).sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Send IR signals to any device",
+                            color = violet.copy(alpha = 0.75f),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(62.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(violet.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.SettingsRemote,
+                            contentDescription = null,
+                            tint = violet,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── 2×2 grid ─────────────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                HomeGridCard("Universal Remote", Icons.Filled.SettingsRemote, onUniversal, Modifier.weight(1f))
-                HomeGridCard("My Remotes", Icons.Filled.Folder, onMyRemotes, Modifier.weight(1f))
+                HomeGridCard("My Remotes",  Icons.Filled.Folder,    "Saved custom remotes",  onMyRemotes, Modifier.weight(1f))
+                HomeGridCard("Remote DB",   Icons.Filled.Storage,   "Browse IR database",    onRemoteDb,  Modifier.weight(1f))
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                HomeGridCard("Remote DB", Icons.Filled.Storage, onRemoteDb, Modifier.weight(1f))
-                HomeGridCard("IR Finder", Icons.Filled.FindInPage, onIrFinder, Modifier.weight(1f))
+                HomeGridCard("IR Finder",   Icons.Filled.FindInPage, "Find signal in DB",    onIrFinder,  Modifier.weight(1f))
+                HomeGridCard("Macros",      Icons.Filled.AutoAwesome,"Automate IR sequences", onMacros,   Modifier.weight(1f))
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+
+            // ── Settings — slim bar ───────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF100D1C))
+                    .border(1.4.dp, violet.copy(alpha = 0.14f), RoundedCornerShape(16.dp))
+                    .clickable(onClick = onSettings),
+                contentAlignment = Alignment.Center
             ) {
-                HomeGridCard("Macros", Icons.Filled.AutoAwesome, onMacros, Modifier.weight(1f))
-                HomeGridCard("Settings", Icons.Filled.Settings, onSettings, Modifier.weight(1f))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Settings,
+                        contentDescription = null,
+                        tint = violet.copy(alpha = 0.7f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "Settings",
+                        color = Color(0xFFB7B3CC),
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp
+                    )
+                }
             }
         }
     }
@@ -108,6 +216,7 @@ fun HomeScreen(
 private fun HomeGridCard(
     title: String,
     icon: ImageVector,
+    subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -116,36 +225,51 @@ private fun HomeGridCard(
         modifier = modifier
             .height(118.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF100D1C))
-            .border(3.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
+            .background(
+                Brush.linearGradient(
+                    0f to Color(0xFF151124),
+                    1f to Color(0xFF0E0B1A)
+                )
+            )
+            .border(1.4.dp, violet.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
             Box(
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(violet.copy(alpha = 0.12f)),
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(violet.copy(alpha = 0.13f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = violet,
-                    modifier = Modifier.size(34.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = title,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
-            )
+            Column {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp
+                )
+                Text(
+                    text = subtitle,
+                    color = Color(0xFF7A7490),
+                    fontSize = 10.sp,
+                    lineHeight = 13.sp
+                )
+            }
         }
     }
 }
+

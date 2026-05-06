@@ -23,6 +23,9 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -105,30 +108,43 @@ fun UniversalRemoteScreen(
     val unsortedLabel = "Unsorted"
     val isOtherRoot = currentPath == otherPath
 
-    val folders = remember(dbIndex, currentPath, includeUnsortedRemotes) {
-        when {
-            isOtherRoot -> convertedManufacturersForUniversal(dbIndex).map { "$otherPath/$it" }
-            currentPath == root -> {
-                val base = dbIndex.folders[root].orEmpty()
-                    .filter { !it.substringAfterLast('/').startsWith("_") }
-                    .filterNot { it == otherPath }
-                    .sortedBy { prettyName(it) }
-                if (includeUnsortedRemotes) base + otherPath else base
+    // For the Unsorted/Other root, folder list requires scanning 3000+ profiles — do it off main thread.
+    var folders by remember(dbIndex.totalProfiles, currentPath, includeUnsortedRemotes) {
+        mutableStateOf(
+            when {
+                isOtherRoot -> emptyList() // filled async below
+                currentPath == root -> {
+                    val base = dbIndex.folders[root].orEmpty()
+                        .filter { !it.substringAfterLast('/').startsWith("_") }
+                        .filterNot { it == otherPath }
+                        .sortedBy { prettyName(it) }
+                    if (includeUnsortedRemotes) base + otherPath else base
+                }
+                else -> dbIndex.folders[currentPath].orEmpty().sortedBy { prettyName(it) }
             }
-            else -> dbIndex.folders[currentPath].orEmpty().sortedBy { prettyName(it) }
+        )
+    }
+    LaunchedEffect(dbIndex.totalProfiles, currentPath) {
+        if (!isOtherRoot) return@LaunchedEffect
+        folders = withContext(Dispatchers.Default) {
+            convertedManufacturersForUniversal(dbIndex).map { "$otherPath/$it" }
         }
     }
 
-    // Initially show raw profile counts; replaced by deduplicated counts once IO is done.
-    val resolvedCommands = remember(currentPath, includeUnsortedRemotes, dbIndex.totalProfiles) {
-        resolveUniversalCommandsForPath(
-            dbIndex = dbIndex,
-            folderPath = currentPath,
-            includeConverted = includeUnsortedRemotes
-        )
-    }
+    // resolvedCommands can be expensive for large paths — compute off main thread.
+    var resolvedCommands by remember(currentPath) { mutableStateOf(emptyList<UniversalCommandItem>()) }
     var dedupedCommands by remember(currentPath) { mutableStateOf<List<UniversalCommandItem>?>(null) }
     LaunchedEffect(currentPath, includeUnsortedRemotes, dbIndex.totalProfiles) {
+        resolvedCommands = emptyList()
+        dedupedCommands = null
+        val resolved = withContext(Dispatchers.Default) {
+            resolveUniversalCommandsForPath(
+                dbIndex = dbIndex,
+                folderPath = currentPath,
+                includeConverted = includeUnsortedRemotes
+            )
+        }
+        resolvedCommands = resolved
         dedupedCommands = withContext(Dispatchers.IO) {
             resolveUniversalCommandsWithDedup(
                 context = context,
@@ -143,6 +159,7 @@ fun UniversalRemoteScreen(
     val violet = MaterialTheme.colorScheme.primary
 
     var folderSearchQuery by remember { mutableStateOf("") }
+    var showUnsortedWarningDialog by remember { mutableStateOf(false) }
     var flashedCommand by remember { mutableStateOf<String?>(null) }
     var selectedTab by rememberSaveable { mutableStateOf(UniversalTab.Categories) }
     val categoryGridState = rememberLazyGridState()
@@ -216,6 +233,34 @@ fun UniversalRemoteScreen(
                         .coerceAtMost(matchingFolderEntries.size)
                 }
             }
+    }
+
+    if (showUnsortedWarningDialog) {
+        AlertDialog(
+            onDismissRequest = { showUnsortedWarningDialog = false },
+            title = { Text("Extended database") },
+            text = {
+                Text(
+                    "Enabling unsorted remotes adds thousands of extra profiles. " +
+                    "Browsing this section may require more processing power and can be slower on older devices.\n\n" +
+                    "The extra remotes appear under the \"Unsorted\" category. " +
+                    "You can also search for them directly from the Remote DB screen."
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showUnsortedWarningDialog = false
+                    onIncludeUnsortedRemotesChange(true)
+                }) {
+                    Text("Enable")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showUnsortedWarningDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -299,7 +344,10 @@ fun UniversalRemoteScreen(
                             )
                             Switch(
                                 checked = includeUnsortedRemotes,
-                                onCheckedChange = onIncludeUnsortedRemotesChange
+                                onCheckedChange = { enabled ->
+                                    if (enabled) showUnsortedWarningDialog = true
+                                    else onIncludeUnsortedRemotesChange(false)
+                                }
                             )
                         }
 
