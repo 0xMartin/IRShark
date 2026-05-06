@@ -10,12 +10,12 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.1.6-00C853" alt="Version 1.1.6" />
-  <img src="https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-E65100" alt="PolyForm Noncommercial 1.0.0" />
   <img src="https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white" alt="Android" />
   <img src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
   <img src="https://img.shields.io/badge/minSdk-26-2E7D32" alt="minSdk 26" />
   <img src="https://img.shields.io/badge/IR-Parsed%20%2B%20Raw-0A0A0A" alt="IR parsed and raw" />
+  <img src="https://img.shields.io/github/downloads/0xMartin/IRShark/total?label=Downloads&color=1565C0" alt="Total Downloads" />
 </p>
 
 ## 📱 About
