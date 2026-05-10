@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,6 +48,124 @@ import com.m4r71n.irshark.ui.components.Badge
 import com.m4r71n.irshark.ui.components.CategorySvgIcon
 import com.m4r71n.irshark.ui.components.RemoteCommandButton
 import com.m4r71n.irshark.util.extractProtocolFromPayload
+
+private data class ButtonGroup(
+    val category: String,
+    val buttons: List<SavedRemoteButton>
+)
+
+private fun normalizeCommandToken(raw: String): String {
+    return raw.trim()
+        .lowercase()
+        .replace(' ', '_')
+        .replace('-', '_')
+        .replace('/', '_')
+        .replace(Regex("_+"), "_")
+        .trim('_')
+}
+
+private data class CategoryRule(
+    val category: String,
+    val matchers: List<(String) -> Boolean>
+)
+
+private fun groupButtonsByCategory(buttons: List<SavedRemoteButton>): List<ButtonGroup> {
+    // Rules are aligned with Flipper IRDB naming guidance + .fff-ir-lint.json groups.
+    val categoryRules = listOf(
+        CategoryRule(
+            category = "Power",
+            matchers = listOf(
+                { t -> Regex("^((power|pwr)_*)?(toggle)?$").matches(t) },
+                { t -> Regex("^((power|pwr)_*)?((on_off)|(off_on)|toggle)$").matches(t) },
+                { t -> Regex("^(turn_*)?((on_off)|(off_on))$").matches(t) },
+                { t -> Regex("^((power|pwr)_*)?off$").matches(t) },
+                { t -> Regex("^(turn_*)?off$").matches(t) },
+                { t -> Regex("^((power|pwr)_*)?on$").matches(t) },
+                { t -> Regex("^(turn_*)?on$").matches(t) },
+                { t -> t == "standby" }
+            )
+        ),
+        CategoryRule(
+            category = "Volume",
+            matchers = listOf(
+                { t -> Regex("^vol(ume)?_*(up|[\\^+])$").matches(t) },
+                { t -> Regex("^vol(ume)?_*(d(o?w)?n|[v\\-])$").matches(t) },
+                { t -> t == "mute" || t == "mte" || t.startsWith("mute") }
+            )
+        ),
+        CategoryRule(
+            category = "Channel",
+            matchers = listOf(
+                { t -> Regex("^ch(an(nel)?)?_*(up|[\\^+]|next)$").matches(t) },
+                { t -> Regex("^ch(an(nel)?)?_*(d(o?w)?n|[v\\-]|prev(ious)?)$").matches(t) },
+                { t -> t == "ch_next" || t == "ch_prev" }
+            )
+        ),
+        CategoryRule(
+            category = "Navigation",
+            matchers = listOf(
+                { t -> t in setOf("ok", "enter", "up", "down", "left", "right", "back", "menu", "guide", "home", "exit") }
+            )
+        ),
+        CategoryRule(
+            category = "Playback",
+            matchers = listOf(
+                { t -> t in setOf("play", "pause", "play_pause", "stop", "next", "prev", "previous", "rewind", "forward", "sleep") }
+            )
+        ),
+        CategoryRule(
+            category = "Input",
+            matchers = listOf(
+                { t -> t.contains("input") || t.contains("source") || t.startsWith("hdmi") || t == "av" }
+            )
+        ),
+        CategoryRule(
+            category = "Climate",
+            matchers = listOf(
+                { t -> t in setOf("off", "dh", "cool_hi", "cool_lo", "heat_hi", "heat_lo") || t.startsWith("temp") || t.startsWith("fan") }
+            )
+        ),
+        CategoryRule(
+            category = "Lighting",
+            matchers = listOf(
+                { t -> t in setOf("power_off", "power_on", "brightness_up", "brightness_dn", "red", "green", "blue", "white", "yellow") },
+                { t -> t.contains("brightness") || t in setOf("r", "g", "b", "w") }
+            )
+        ),
+        CategoryRule(
+            category = "Apps",
+            matchers = listOf(
+                { t -> t.contains("netflix") || t.contains("youtube") || t.contains("prime") || t.contains("app") }
+            )
+        ),
+        CategoryRule(
+            category = "Numbers",
+            matchers = listOf(
+                { t -> Regex("^(num_*)?[0-9]+$").matches(t) }
+            )
+        )
+    )
+
+    val grouped = mutableMapOf<String, MutableList<SavedRemoteButton>>()
+    val uncategorized = mutableListOf<SavedRemoteButton>()
+
+    buttons.forEach { btn ->
+        val token = normalizeCommandToken(btn.label)
+        var found = false
+        for (rule in categoryRules) {
+            if (rule.matchers.any { it(token) }) {
+                grouped.getOrPut(rule.category) { mutableListOf() }.add(btn)
+                found = true
+                break
+            }
+        }
+        if (!found) uncategorized.add(btn)
+    }
+
+    return (grouped.toList().sortedBy { it.first } + Pair("Other", uncategorized))
+        .filter { it.second.isNotEmpty() }
+        .map { (cat, btns) -> ButtonGroup(cat, btns) }
+}
 
 @Composable
 fun RemoteControlScreen(
@@ -73,9 +193,11 @@ fun RemoteControlScreen(
 ) {
     val violet = MaterialTheme.colorScheme.primary
     var flashedCommand by remember { mutableStateOf<String?>(null) }
+    var groupByCategory by remember { mutableStateOf(true) }
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val commands = buttons.map { it.label }.filter { it.isNotBlank() }
+    val buttonGroups = if (groupByCategory) groupButtonsByCategory(buttons) else listOf(ButtonGroup("All", buttons))
 
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
@@ -157,15 +279,26 @@ fun RemoteControlScreen(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
                     "Controls",
                     color = violet,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp,
-                    modifier = Modifier.weight(1f)
+                    fontSize = 13.sp
                 )
+                Text(
+                    "Group",
+                    color = Color(0xFF8A8899),
+                    fontSize = 10.sp
+                )
+                Switch(
+                    checked = groupByCategory,
+                    onCheckedChange = { groupByCategory = it },
+                    modifier = Modifier.size(40.dp)
+                )
+                Spacer(modifier = Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     listOf(1 to Icons.Filled.ViewList, 2 to Icons.Filled.GridView, 3 to Icons.Filled.ViewModule).forEach { (cols, icon) ->
                         Box(
@@ -186,47 +319,61 @@ fun RemoteControlScreen(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Command buttons grid
-            commands.chunked(columnCount).forEach { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    row.forEach { cmd ->
-                        val isFlashed = flashedCommand == cmd
-                        val button = buttons.firstOrNull { it.label == cmd }
-                        val protocol = button?.let { extractProtocolFromPayload(it.code) }.orEmpty()
-                        RemoteCommandButton(
-                            label = cmd,
-                            protocol = protocol,
-                            isActive = isFlashed,
-                            onClick = {
-                                if (hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                                flashedCommand = cmd
-                                scope.launch { delay(220); flashedCommand = null }
-                                onCommandClick(cmd)
-                            },
-                            onLongPressRepeat = {
-                                flashedCommand = cmd
-                                (onRepeatCommandClick ?: onCommandClick)(cmd)
-                            },
-                            onLongPressRepeatStateChange = { repeating ->
-                                if (repeating) {
-                                    flashedCommand = cmd
-                                } else if (flashedCommand == cmd) {
-                                    flashedCommand = null
-                                }
-                                onRepeatStateChange?.invoke(repeating)
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                        )
-                    }
-                    repeat(columnCount - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+            // Command buttons grouped by category
+            buttonGroups.forEach { group ->
+                if (groupByCategory && group.category != "All") {
+                    Text(
+                        text = group.category,
+                        color = violet.copy(alpha = 0.7f),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.sp,
+                        modifier = Modifier
+                            .padding(start = 4.dp, bottom = 6.dp, top = 4.dp)
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                group.buttons.chunked(columnCount).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row.forEach { btn ->
+                            val cmd = btn.label
+                            val isFlashed = flashedCommand == cmd
+                            val protocol = (extractProtocolFromPayload(btn.code) ?: "").ifBlank { "" }
+                            RemoteCommandButton(
+                                label = cmd,
+                                protocol = protocol,
+                                isActive = isFlashed,
+                                onClick = {
+                                    if (hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                    flashedCommand = cmd
+                                    scope.launch { delay(220); flashedCommand = null }
+                                    onCommandClick(cmd)
+                                },
+                                onLongPressRepeat = {
+                                    flashedCommand = cmd
+                                    (onRepeatCommandClick ?: onCommandClick)(cmd)
+                                },
+                                onLongPressRepeatStateChange = { repeating ->
+                                    if (repeating) {
+                                        flashedCommand = cmd
+                                    } else if (flashedCommand == cmd) {
+                                        flashedCommand = null
+                                    }
+                                    onRepeatStateChange?.invoke(repeating)
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        repeat(columnCount - row.size) { Spacer(modifier = Modifier.weight(1f)) }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                if (groupByCategory && group.category != "All") {
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
