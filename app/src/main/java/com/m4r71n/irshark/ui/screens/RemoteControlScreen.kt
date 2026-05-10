@@ -58,7 +58,6 @@ private fun normalizeCommandToken(raw: String): String {
     return raw.trim()
         .lowercase()
         .replace(' ', '_')
-        .replace('-', '_')
         .replace('/', '_')
         .replace(Regex("_+"), "_")
         .trim('_')
@@ -88,16 +87,16 @@ private fun groupButtonsByCategory(buttons: List<SavedRemoteButton>): List<Butto
         CategoryRule(
             category = "Volume",
             matchers = listOf(
-                { t -> Regex("^vol(ume)?_*(up|[\\^+])$").matches(t) },
-                { t -> Regex("^vol(ume)?_*(d(o?w)?n|[v\\-])$").matches(t) },
+                { t -> Regex("^vol(ume)?(_*(up|[\\^+]))?$").matches(t) },
+                { t -> Regex("^vol(ume)?(_*(d(o?w)?n|[\\-]))?$").matches(t) },
                 { t -> t == "mute" || t == "mte" || t.startsWith("mute") }
             )
         ),
         CategoryRule(
             category = "Channel",
             matchers = listOf(
-                { t -> Regex("^ch(an(nel)?)?_*(up|[\\^+]|next)$").matches(t) },
-                { t -> Regex("^ch(an(nel)?)?_*(d(o?w)?n|[v\\-]|prev(ious)?)$").matches(t) },
+                { t -> Regex("^ch(an(nel)?)?(_*(up|[\\^+]|next))?$").matches(t) },
+                { t -> Regex("^ch(an(nel)?)?(_*(d(o?w)?n|[\\-]|prev(ious)?))?$").matches(t) },
                 { t -> t == "ch_next" || t == "ch_prev" }
             )
         ),
