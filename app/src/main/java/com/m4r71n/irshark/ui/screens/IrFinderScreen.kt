@@ -620,7 +620,18 @@ fun IrFinderScreen(
                         deferredRejectedButtonIds = deferredRejectedButtonIds.filterNot { rejectedId ->
                             finderButtons.firstOrNull { it.id == rejectedId }?.labelKey == labelKey
                         }.toSet()
-                        if (selectedButtonIdx < 0) {
+                        val firstRestoredButtonId = finderButtons.firstOrNull { button ->
+                            button.labelKey == labelKey &&
+                                !button.isConfirmed &&
+                                !button.isRejected &&
+                                !button.isIgnored &&
+                                (matchingProfilePaths.isEmpty() || button.profilePath in matchingProfilePaths)
+                        }?.id
+                        if (firstRestoredButtonId != null) {
+                            // Let the existing selection sync effect resolve the proper visible index.
+                            selectedButtonId = firstRestoredButtonId
+                            selectedButtonIdx = -1
+                        } else if (selectedButtonIdx < 0) {
                             val nextIdx = findNextUsableIndex(-1, 1)
                             if (nextIdx >= 0) {
                                 selectedButtonIdx = nextIdx
