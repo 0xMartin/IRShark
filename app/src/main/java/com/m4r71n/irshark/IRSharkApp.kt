@@ -1029,7 +1029,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 folderPath = universalPath,
                 command = cmd.actualCommand,
                 includeConverted = universalIncludeUnsorted
-            )
+            ).shuffled()
         }
     }
     val universalCoverage = universalUniquePayloads.size
