@@ -162,8 +162,28 @@ private fun groupButtonsByCategory(buttons: List<SavedRemoteButton>): List<Butto
         if (!found) uncategorized.add(btn)
     }
 
-    return (grouped.toList().sortedBy { it.first } + Pair("Other", uncategorized))
+    val preferredOrder = listOf(
+        "Power",
+        "Volume",
+        "Channel",
+        "Navigation",
+        "Playback",
+        "Input",
+        "Climate",
+        "Lighting",
+        "Apps",
+        "Numbers",
+        "Other"
+    )
+
+    return (grouped.toList() + Pair("Other", uncategorized))
         .filter { it.second.isNotEmpty() }
+        .sortedWith(
+            compareBy<Pair<String, List<SavedRemoteButton>>>(
+                { preferredOrder.indexOf(it.first).let { idx -> if (idx >= 0) idx else Int.MAX_VALUE } },
+                { it.first }
+            )
+        )
         .map { (cat, btns) -> ButtonGroup(cat, btns) }
 }
 
