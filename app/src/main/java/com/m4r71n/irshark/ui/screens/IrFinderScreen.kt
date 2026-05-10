@@ -880,8 +880,8 @@ private fun TestButtonsStep(
     val allChips = remember(confirmedButtons, ignoredButtons) {
         (confirmedButtons.map { ChipItem.ConfirmedChip(it) } + ignoredButtons.map { (labelKey, rawLabel) -> ChipItem.IgnoredChip(labelKey, rawLabel) })
     }
-    val chipsToShow = if (showAllChips) allChips else allChips.take(6)
-    val hasMoreChips = allChips.size > 6
+    val chipsToShow = if (showAllChips) allChips else allChips.take(9)
+    val hasMoreChips = allChips.size > 9
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Confirmed + ignored chips (expandable 3-row grid, default 9 items)
