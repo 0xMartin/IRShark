@@ -296,14 +296,14 @@ fun RemoteControlScreen(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        "Group",
+                        "Auto Sort",
                         color = Color(0xFFB7B3CC),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(end = 2.dp)
+                        modifier = Modifier.padding(end = 12.dp)
                     )
                     Switch(
                         checked = groupByCategory,
@@ -313,18 +313,23 @@ fun RemoteControlScreen(
                     Spacer(modifier = Modifier.weight(1f))
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(Color(0xFF131022))
-                            .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(999.dp))
-                            .padding(horizontal = 4.dp, vertical = 3.dp)
+                            .height(30.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(violet.copy(alpha = 0.14f))
+                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 4.dp)
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             listOf(1 to Icons.Filled.ViewList, 2 to Icons.Filled.GridView, 3 to Icons.Filled.ViewModule).forEach { (cols, icon) ->
                                 Box(
                                     modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (columnCount == cols) violet.copy(alpha = 0.18f) else Color.Transparent)
+                                        .size(22.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (columnCount == cols) violet.copy(alpha = 0.24f) else Color.Transparent)
                                         .clickable { onColumnCountChange(cols) },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -332,7 +337,7 @@ fun RemoteControlScreen(
                                         icon,
                                         contentDescription = null,
                                         tint = if (columnCount == cols) violet else Color(0xFF8A8899),
-                                        modifier = Modifier.size(17.dp)
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
