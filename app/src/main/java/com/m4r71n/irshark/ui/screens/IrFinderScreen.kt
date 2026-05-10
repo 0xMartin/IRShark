@@ -882,6 +882,9 @@ private fun TestButtonsStep(
     }
     val chipsToShow = if (showAllChips) allChips else allChips.take(9)
     val hasMoreChips = allChips.size > 9
+    val previewRows = ((chipsToShow.size + 2) / 3).coerceIn(1, 3)
+    val expandedRows = ((allChips.size + 2) / 3).coerceAtMost(10)
+    val chipGridHeight = if (showAllChips) (expandedRows * 42).dp else (previewRows * 42).dp
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Confirmed + ignored chips (expandable 3-row grid, default 9 items)
@@ -893,7 +896,7 @@ private fun TestButtonsStep(
                 contentPadding = PaddingValues(bottom = 12.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(if (showAllChips) (((allChips.size + 2) / 3).coerceAtMost(10) * 42).dp else 126.dp)
+                    .height(chipGridHeight)
             ) {
                 items(chipsToShow) { chip ->
                     when (chip) {
