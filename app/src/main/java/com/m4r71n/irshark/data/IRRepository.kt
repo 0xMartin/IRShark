@@ -116,7 +116,8 @@ data class SavedRemote(
     val iconName: String? = null,
     val sourceProfilePath: String? = null,
     val favorite: Boolean = false,
-    val columnCount: Int = 2
+    val columnCount: Int = 2,
+    val groupByCategory: Boolean = true
 )
 
 @Immutable
@@ -915,6 +916,7 @@ fun serializeSavedRemotesJson(remotes: List<SavedRemote>): String {
                     put("sourceProfilePath", remote.sourceProfilePath ?: "")
                     put("favorite", remote.favorite)
                     put("columnCount", remote.columnCount)
+                    put("groupByCategory", remote.groupByCategory)
                     put(
                         "commands",
                         JSONArray().apply {
@@ -1000,7 +1002,8 @@ fun parseSavedRemotesJson(raw: String): List<SavedRemote>? {
                         iconName = iconName,
                         sourceProfilePath = sourceProfilePath,
                         favorite = obj.optBoolean("favorite", false),
-                        columnCount = obj.optInt("columnCount", 2).coerceIn(1, 3)
+                        columnCount = obj.optInt("columnCount", 2).coerceIn(1, 3),
+                        groupByCategory = obj.optBoolean("groupByCategory", true)
                     )
                 )
             }
