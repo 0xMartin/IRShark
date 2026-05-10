@@ -24,6 +24,9 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -147,6 +150,11 @@ private sealed class FinderStep {
     object PickCategory : FinderStep()
     object PickBrand    : FinderStep()
     object TestButtons  : FinderStep()
+}
+
+private sealed class ChipItem {
+    data class ConfirmedChip(val btn: FinderButton) : ChipItem()
+    data class IgnoredChip(val labelKey: String, val rawLabel: String) : ChipItem()
 }
 
 // ── Helper functions for finder state persistence ──────────────────────────
@@ -866,87 +874,145 @@ private fun TestButtonsStep(
         .distinctBy { it.labelKey }
         .map { it.labelKey to it.label }
     val view = LocalView.current
+    var showAllChips by remember { mutableStateOf(false) }
+
+    // Combine confirmed and ignored buttons for display
+    val allChips = remember(confirmedButtons, ignoredButtons) {
+        (confirmedButtons.map { ChipItem.ConfirmedChip(it) } + ignoredButtons.map { (labelKey, rawLabel) -> ChipItem.IgnoredChip(labelKey, rawLabel) })
+    }
+    val chipsToShow = if (showAllChips) allChips else allChips.take(6)
+    val hasMoreChips = allChips.size > 6
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Text(
-            text = "Test buttons",
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = 26.sp,
-            modifier = Modifier.padding(bottom = 10.dp)
-        )
-
-        // Confirmed + ignored chips
-        if (confirmedButtons.isNotEmpty() || ignoredButtons.isNotEmpty()) {
-            androidx.compose.foundation.lazy.LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 12.dp)
+        // Confirmed + ignored chips (expandable 3-row grid, default 9 items)
+        if (allChips.isNotEmpty()) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(bottom = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (showAllChips) (((allChips.size + 2) / 3).coerceAtMost(10) * 42).dp else 126.dp)
             ) {
-                items(confirmedButtons.size) { idx ->
-                    val btn = confirmedButtons[idx]
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .height(36.dp)
-                            .clickable {
-                                if (hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                                onSendConfirmed(btn.id)
+                items(chipsToShow) { chip ->
+                    when (chip) {
+                        is ChipItem.ConfirmedChip -> {
+                            val btn = chip.btn
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(green.copy(alpha = 0.16f))
+                                    .border(1.dp, green.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        if (hapticEnabled) view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                        onSendConfirmed(btn.id)
+                                    }
+                                    .padding(start = 10.dp, end = 8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Send,
+                                    contentDescription = null,
+                                    tint = green,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = prettyButtonLabel(btn.label),
+                                    color = green,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(green.copy(alpha = 0.25f))
+                                        .clickable { onRemoveConfirmed(btn.id) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Remove",
+                                        tint = green,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
                             }
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(green.copy(alpha = 0.16f))
-                            .border(1.dp, green.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
-                            .padding(start = 12.dp, end = 6.dp)
-                    ) {
-                        Text(
-                            text = prettyButtonLabel(btn.label),
-                            color = green,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        IconButton(
-                            onClick = { onRemoveConfirmed(btn.id) },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Text(
-                                text = "x",
-                                color = green,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                        }
+                        is ChipItem.IgnoredChip -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xFFFF8A65).copy(alpha = 0.16f))
+                                    .border(1.dp, Color(0xFFFF8A65), RoundedCornerShape(10.dp))
+                                    .padding(start = 10.dp, end = 8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Warning,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFF8A65),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = prettyButtonLabel(chip.rawLabel),
+                                    color = Color(0xFFFF8A65),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFFFF8A65).copy(alpha = 0.25f))
+                                        .clickable { onUnignoreLabel(chip.labelKey) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Remove",
+                                        tint = Color(0xFFFF8A65),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-                items(ignoredButtons.size) { idx ->
-                    val (labelKey, rawLabel) = ignoredButtons[idx]
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .height(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFFF8A65).copy(alpha = 0.16f))
-                            .border(1.dp, Color(0xFFFF8A65), RoundedCornerShape(10.dp))
-                            .padding(start = 12.dp, end = 6.dp)
-                    ) {
-                        Text(
-                            text = "${prettyButtonLabel(rawLabel)} (ignored)",
-                            color = Color(0xFFFF8A65),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        IconButton(
-                            onClick = { onUnignoreLabel(labelKey) },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Text(
-                                text = "x",
-                                color = Color(0xFFFF8A65),
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
+            }
+            
+            // "View all" button if there are more chips
+            if (hasMoreChips) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(violet.copy(alpha = 0.08f))
+                        .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                        .clickable { showAllChips = !showAllChips }
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (showAllChips) "Show less" else "Show all (${allChips.size})",
+                        color = violet,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
         }
