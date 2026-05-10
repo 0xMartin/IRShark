@@ -620,9 +620,14 @@ suspend fun getUniquePayloadsForCommand(
             uniquePayloadCache[cacheKey]?.let { return@withContext it }
         }
 
-        val payloads = profilesForCommand(dbIndex, folderPath, command, includeConverted)
+        val payloadsByKey = linkedMapOf<String, String>()
+        profilesForCommand(dbIndex, folderPath, command, includeConverted)
             .mapNotNull { getIrCodePayload(context, it.path, command) }
-            .distinctBy { it.trim() }
+            .forEach { payload ->
+                val canonical = canonicalPayloadKey(payload)
+                payloadsByKey.putIfAbsent(canonical, payload.trim())
+            }
+        val payloads = payloadsByKey.values.toList()
 
         synchronized(uniquePayloadCacheLock) {
             uniquePayloadCache[cacheKey] = payloads
@@ -686,7 +691,7 @@ suspend fun resolveUniversalCommandsWithDedup(
             wantedTargets.forEach { target ->
                 val key = targetNormalized[target] ?: return@forEach
                 val payload = payloadByName[key] ?: return@forEach
-                uniquePayloads[target]?.add(payload)
+                uniquePayloads[target]?.add(canonicalPayloadKey(payload))
             }
         }
 
@@ -718,6 +723,25 @@ private fun getIrCodePayload(context: android.content.Context, profilePath: Stri
 
 private fun serializeIrPayload(fields: Map<String, String>): String {
     return fields.entries.joinToString("; ") { (k, v) -> "$k=$v" }
+}
+
+private fun canonicalPayloadKey(payload: String): String {
+    val parts = payload
+        .split(';')
+        .mapNotNull { segment ->
+            val idx = segment.indexOf('=')
+            if (idx <= 0) return@mapNotNull null
+            val key = segment.substring(0, idx).trim().lowercase()
+            val value = segment.substring(idx + 1).trim().replace(Regex("\\s+"), " ")
+            if (key.isBlank()) null else key to value
+        }
+        .sortedBy { it.first }
+
+    if (parts.isEmpty()) {
+        return payload.trim().replace(Regex("\\s+"), " ")
+    }
+
+    return parts.joinToString(";") { (k, v) -> "$k=$v" }
 }
 
 fun parentPath(path: String): String? {
