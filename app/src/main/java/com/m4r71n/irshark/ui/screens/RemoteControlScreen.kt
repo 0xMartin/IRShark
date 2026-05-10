@@ -207,16 +207,16 @@ fun RemoteControlScreen(
     hapticEnabled: Boolean = true,
     columnCount: Int = 2,
     onColumnCountChange: (Int) -> Unit = {},
+    groupByCategory: Boolean = true,
+    onGroupByCategoryChange: (Boolean) -> Unit = {},
     onShare: (() -> Unit)? = null,
     saveButtonLabel: String = "Add",
     saveButtonEnabled: Boolean = true
 ) {
     val violet = MaterialTheme.colorScheme.primary
     var flashedCommand by remember { mutableStateOf<String?>(null) }
-    var groupByCategory by remember { mutableStateOf(true) }
     val view = LocalView.current
     val scope = rememberCoroutineScope()
-    val commands = buttons.map { it.label }.filter { it.isNotBlank() }
     val buttonGroups = if (groupByCategory) groupButtonsByCategory(buttons) else listOf(ButtonGroup("All", buttons))
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -228,11 +228,15 @@ fun RemoteControlScreen(
                 .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
                 .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                 Badge(typeBadge)
                 Badge(countBadge)
                 Spacer(modifier = Modifier.weight(1f))
@@ -287,6 +291,45 @@ fun RemoteControlScreen(
                         )
                     }
                 }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        "Group",
+                        color = Color(0xFF8A8899),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Switch(
+                        checked = groupByCategory,
+                        onCheckedChange = onGroupByCategoryChange,
+                        modifier = Modifier.size(34.dp)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        listOf(1 to Icons.Filled.ViewList, 2 to Icons.Filled.GridView, 3 to Icons.Filled.ViewModule).forEach { (cols, icon) ->
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (columnCount == cols) violet.copy(alpha = 0.18f) else Color.Transparent)
+                                    .clickable { onColumnCountChange(cols) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    icon,
+                                    contentDescription = null,
+                                    tint = if (columnCount == cols) violet else Color(0xFF8A8899),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -297,49 +340,7 @@ fun RemoteControlScreen(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    "Controls",
-                    color = violet,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 13.sp
-                )
-                Text(
-                    "Group",
-                    color = Color(0xFF8A8899),
-                    fontSize = 10.sp
-                )
-                Switch(
-                    checked = groupByCategory,
-                    onCheckedChange = { groupByCategory = it },
-                    modifier = Modifier.size(40.dp)
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    listOf(1 to Icons.Filled.ViewList, 2 to Icons.Filled.GridView, 3 to Icons.Filled.ViewModule).forEach { (cols, icon) ->
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(if (columnCount == cols) violet.copy(alpha = 0.18f) else Color.Transparent)
-                                .clickable { onColumnCountChange(cols) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                icon,
-                                contentDescription = null,
-                                tint = if (columnCount == cols) violet else Color(0xFF8A8899),
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Command buttons grouped by category
             buttonGroups.forEach { group ->

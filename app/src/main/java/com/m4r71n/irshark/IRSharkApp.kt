@@ -497,6 +497,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var controlReturnScreen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var controlHistoryEntry by remember { mutableStateOf<RemoteHistoryEntry?>(null) }
     var controlColumnCount by rememberSaveable { mutableIntStateOf(2) }
+    var controlGroupByCategory by rememberSaveable { mutableStateOf(true) }
     var remoteHistory by remember { mutableStateOf(listOf<RemoteHistoryEntry>()) }
     var historyLoaded by remember { mutableStateOf(false) }
 
@@ -1661,7 +1662,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                         commands = commands,
                                         buttons = controlButtons,
                                         iconName = activeSavedRemote?.iconName ?: historyEntry?.iconName ?: categorySeedFromPath(currentProfile?.parentPath ?: addProfilePath),
-                                        sourceProfilePath = addProfilePath
+                                        sourceProfilePath = addProfilePath,
+                                        groupByCategory = controlGroupByCategory
                                     )
                                 }
                             },
@@ -1670,6 +1672,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             saveButtonLabel = if (isRemoteAlreadyAdded) "Added" else "Add",
                             saveButtonEnabled = !isRemoteAlreadyAdded,
                             columnCount = activeSavedRemote?.columnCount ?: controlColumnCount,
+                            groupByCategory = activeSavedRemote?.groupByCategory ?: controlGroupByCategory,
                             onColumnCountChange = { cols ->
                                 if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
                                     savedRemotes = savedRemotes.toMutableList().also { list ->
@@ -1677,6 +1680,15 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     }
                                 } else {
                                     controlColumnCount = cols
+                                }
+                            },
+                            onGroupByCategoryChange = { grouped ->
+                                if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
+                                    savedRemotes = savedRemotes.toMutableList().also { list ->
+                                        list[controlRemoteIndex] = list[controlRemoteIndex].copy(groupByCategory = grouped)
+                                    }
+                                } else {
+                                    controlGroupByCategory = grouped
                                 }
                             },
                             onShare = if (controlSource == ControlSource.MY_REMOTES && controlRemoteIndex in savedRemotes.indices) {
