@@ -252,10 +252,11 @@ private fun remoteDbManufacturer(profile: FlipperProfile): String {
 }
 
 private fun remoteDbManufacturerDeviceBadge(profile: FlipperProfile): String {
+    val deviceType = remoteDbCategory(profile)
     val manufacturer = remoteDbManufacturer(profile)
-    val device = prettyName(profile.name)
-    if (manufacturer.isBlank()) return device
-    return if (device.contains(manufacturer, ignoreCase = true)) device else "$manufacturer $device".trim()
+    if (deviceType.isBlank()) return manufacturer
+    if (manufacturer.isBlank()) return deviceType
+    return "$deviceType $manufacturer".trim()
 }
 
 private fun extractProtocolFromCodePayload(code: String): String? {
@@ -1956,9 +1957,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     val profile = filtered[idx]
                                     val protocols = remoteDbTopProtocolsByPath[profile.path].orEmpty()
                                     val protocolBadge = if (protocols.isEmpty()) {
-                                        "Protocols: Unknown"
+                                        "Unknown"
                                     } else {
-                                        "Protocols: ${protocols.joinToString(", ")}"
+                                        protocols.joinToString(", ")
                                     }
                                     listOf(
                                         remoteDbManufacturerDeviceBadge(profile),

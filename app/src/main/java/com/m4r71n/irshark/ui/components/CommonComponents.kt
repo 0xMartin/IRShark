@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -426,24 +427,26 @@ fun ListRow(
                 if (badgeTexts.isNotEmpty()) {
                     val primary = badgeTexts.firstOrNull()?.trim().orEmpty()
                     val secondary = badgeTexts.drop(1).map { it.trim() }.filter { it.isNotBlank() }
-                    Row(
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(top = 4.dp)
                     ) {
-                        if (primary.isNotBlank()) {
-                            Badge(
-                                text = primary,
-                                marquee = true,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .widthIn(min = 0.dp)
-                            )
-                        }
-                        secondary.forEach { badgeText ->
-                            Badge(text = badgeText)
+                        val maxPrimaryWidth = maxWidth * 0.62f
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (primary.isNotBlank()) {
+                                Badge(
+                                    text = primary,
+                                    marquee = true,
+                                    modifier = Modifier.widthIn(max = maxPrimaryWidth)
+                                )
+                            }
+                            secondary.forEach { badgeText ->
+                                Badge(text = badgeText)
+                            }
                         }
                     }
                 } else {
@@ -616,8 +619,8 @@ fun Badge(
             .clip(pillShape)
             .background(violet.copy(alpha = 0.15f))
             .border(1.dp, violet.copy(alpha = 0.35f), pillShape)
-            .padding(horizontal = 10.dp)
-            .then(if (marquee) Modifier.fillMaxWidth() else Modifier)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.CenterStart
     ) {
         Text(
             text = text,
@@ -629,7 +632,6 @@ fun Badge(
             softWrap = false,
             modifier = if (marquee) {
                 Modifier
-                    .fillMaxWidth()
                     .wrapContentHeight(Alignment.CenterVertically)
                     .basicMarquee(iterations = Int.MAX_VALUE)
             } else {
