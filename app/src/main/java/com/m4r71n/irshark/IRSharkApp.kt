@@ -251,6 +251,13 @@ private fun remoteDbManufacturer(profile: FlipperProfile): String {
     return prettyName(manufacturerSegment)
 }
 
+private fun remoteDbManufacturerDeviceBadge(profile: FlipperProfile): String {
+    val manufacturer = remoteDbManufacturer(profile)
+    val device = prettyName(profile.name)
+    if (manufacturer.isBlank()) return device
+    return if (device.contains(manufacturer, ignoreCase = true)) device else "$manufacturer $device".trim()
+}
+
 private fun extractProtocolFromCodePayload(code: String): String? {
     val match = Regex("""protocol\s*=\s*([^;\s]+)""", RegexOption.IGNORE_CASE).find(code)
     return match?.groupValues?.getOrNull(1)?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
@@ -1943,14 +1950,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             RemotesListScreen(
                                 emptyText = "No matching remotes in database.",
                                 items = filtered.map { profile ->
-                                    val categoryLabel = prettyPathWithChevron(profile.parentPath)
-                                    val topProtocols = remoteDbTopProtocolsByPath[profile.path].orEmpty()
-                                    val protocolSummary = if (topProtocols.isEmpty()) {
-                                        ""
+                                    profile.name to prettyPathWithChevron(profile.parentPath)
+                                },
+                                badgeTextsForItem = { idx ->
+                                    val profile = filtered[idx]
+                                    val protocols = remoteDbTopProtocolsByPath[profile.path].orEmpty()
+                                    val protocolBadge = if (protocols.isEmpty()) {
+                                        "Protocols: Unknown"
                                     } else {
-                                        " | ${topProtocols.joinToString(", ")}"
+                                        "Protocols: ${protocols.joinToString(", ")}"
                                     }
-                                    profile.name to "$categoryLabel$protocolSummary"
+                                    listOf(
+                                        remoteDbManufacturerDeviceBadge(profile),
+                                        protocolBadge
+                                    )
                                 },
                                 iconNameForItem = { idx ->
                                     categorySeedFromPath(filtered[idx].parentPath)

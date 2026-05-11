@@ -36,6 +36,7 @@ import androidx.compose.runtime.snapshotFlow
 fun RemotesListScreen(
     emptyText: String,
     items: List<Pair<String, String>>,
+    badgeTextsForItem: ((Int) -> List<String>)? = null,
     onOpen: (Int) -> Unit,
     onSecondaryAction: (Int) -> Unit,
     secondaryActionLabel: String,
@@ -98,6 +99,7 @@ fun RemotesListScreen(
                     ListRow(
                         title = item.first,
                         subtitle = item.second,
+                        badgeTexts = badgeTextsForItem?.invoke(index).orEmpty(),
                         actionLabel = secondaryActionLabelForItem?.invoke(index) ?: secondaryActionLabel,
                         actionEnabled = secondaryActionEnabledForItem?.invoke(index) ?: true,
                         actionIcon = secondaryActionIcon,

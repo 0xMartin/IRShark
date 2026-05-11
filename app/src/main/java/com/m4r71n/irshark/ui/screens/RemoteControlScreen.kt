@@ -1,7 +1,6 @@
 package com.m4r71n.irshark.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -191,43 +190,6 @@ private fun groupButtonsByCategory(buttons: List<SavedRemoteButton>): List<Butto
 }
 
 @Composable
-private fun HeroMarqueeBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-    marquee: Boolean = false
-) {
-    val violet = MaterialTheme.colorScheme.primary
-    val pillShape = RoundedCornerShape(50)
-    Box(
-        modifier = modifier
-            .height(24.dp)
-            .clip(pillShape)
-            .background(violet.copy(alpha = 0.15f))
-            .border(1.dp, violet.copy(alpha = 0.35f), pillShape)
-            .padding(horizontal = 10.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = text,
-            color = violet,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-            softWrap = false,
-            modifier = if (marquee) {
-                Modifier
-                    .fillMaxWidth()
-                    .wrapContentHeight(Alignment.CenterVertically)
-                    .basicMarquee(iterations = Int.MAX_VALUE)
-            } else {
-                Modifier.wrapContentHeight(Alignment.CenterVertically)
-            }
-        )
-    }
-}
-
-@Composable
 fun RemoteControlScreen(
     title: String,
     deviceIconName: String?,
@@ -289,14 +251,14 @@ fun RemoteControlScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        HeroMarqueeBadge(
+                        Badge(
                             text = typeBadge,
                             marquee = true,
                             modifier = Modifier
                                 .weight(1f)
                                 .widthIn(min = 0.dp)
                         )
-                        HeroMarqueeBadge(text = countBadge)
+                        Badge(text = countBadge)
                     }
 
                     if (showSaveButton) {
