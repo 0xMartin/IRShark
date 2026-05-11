@@ -21,17 +21,18 @@ class DenonProtocol : IrProtocolEncoder {
         )
 
         val markUs = 263
-        val zeroSpaceUs = 790
-        val oneSpaceUs = 1895
-        val gapUs = 43000
+        val zeroSpaceUs = 780
+        val oneSpaceUs = 1820
+        val gapUs = 45000
 
         fun buildFrame(addr5: Int, cmd10: Int): List<Int> {
             val out = mutableListOf<Int>()
-            for (i in 4 downTo 0) {
+            // LSB first
+            for (i in 0 until 5) {
                 out += markUs
                 out += if (((addr5 shr i) and 1) == 1) oneSpaceUs else zeroSpaceUs
             }
-            for (i in 9 downTo 0) {
+            for (i in 0 until 10) {
                 out += markUs
                 out += if (((cmd10 shr i) and 1) == 1) oneSpaceUs else zeroSpaceUs
             }
