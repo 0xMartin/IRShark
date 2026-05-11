@@ -12,12 +12,12 @@ class PioneerProtocol : IrProtocolEncoder {
         val address = IrProtocolUtils.parseHexValue(
             params["address"] as? String ?: throw IllegalArgumentException("address is required"),
             minDigits = 1,
-            maxDigits = 2
+            maxDigits = 8
         )
         val command = IrProtocolUtils.parseHexValue(
             params["command"] as? String ?: throw IllegalArgumentException("command is required"),
             minDigits = 1,
-            maxDigits = 2
+            maxDigits = 8
         )
 
         val addr = address and 0xFF

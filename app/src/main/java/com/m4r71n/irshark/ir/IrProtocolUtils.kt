@@ -26,8 +26,13 @@ object IrProtocolUtils {
             throw IllegalArgumentException("Hex value too long: '$hex' (max $maxDigits digits)")
         }
         
+        // Reverse byte order: database uses little-endian (LSB first), 
+        // we need big-endian representation for IR protocols
+        // Example: "20000000" (DB) → ["20","00","00","00"] → reversed → ["00","00","00","20"] → 0x00000020
+        val reversed = cleaned.chunked(2).reversed().joinToString("")
+        
         return try {
-            cleaned.toInt(16)
+            reversed.toInt(16)
         } catch (e: NumberFormatException) {
             throw IllegalArgumentException("Invalid hex format: '$hex'", e)
         }

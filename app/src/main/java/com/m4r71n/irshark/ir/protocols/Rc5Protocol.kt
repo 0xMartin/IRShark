@@ -36,8 +36,8 @@ class Rc5Protocol(private val extended: Boolean = false) : IrProtocolEncoder {
         val commandStr = params["command"] as? String
             ?: throw IllegalArgumentException("command is required")
 
-        val address = IrProtocolUtils.parseHexValue(addressStr, minDigits = 1, maxDigits = 2) and 0x1F
-        val command = IrProtocolUtils.parseHexValue(commandStr, minDigits = 1, maxDigits = 2) and 0x7F
+        val address = IrProtocolUtils.parseHexValue(addressStr, minDigits = 1, maxDigits = 8) and 0x1F
+        val command = IrProtocolUtils.parseHexValue(commandStr, minDigits = 1, maxDigits = 8) and 0x7F
 
         val toggle = synchronized(rc5Lock) {
             val current = rc5ToggleBit

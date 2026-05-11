@@ -46,8 +46,8 @@ class SonyProtocol(private val totalBits: Int = 12) : IrProtocolEncoder {
         val commandStr = params["command"] as? String
             ?: throw IllegalArgumentException("command is required")
 
-        val address = IrProtocolUtils.parseHexValue(addressStr, minDigits = 1, maxDigits = 4)
-        val command = IrProtocolUtils.parseHexValue(commandStr, minDigits = 1, maxDigits = 2)
+        val address = IrProtocolUtils.parseHexValue(addressStr, minDigits = 1, maxDigits = 8)
+        val command = IrProtocolUtils.parseHexValue(commandStr, minDigits = 1, maxDigits = 8)
 
         // Mask address and command based on total bits
         val (addrMask, cmdMask) = when (totalBits) {

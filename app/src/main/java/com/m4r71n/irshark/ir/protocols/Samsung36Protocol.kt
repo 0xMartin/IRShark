@@ -12,12 +12,12 @@ class Samsung36Protocol : IrProtocolEncoder {
         val address = IrProtocolUtils.parseHexValue(
             params["address"] as? String ?: throw IllegalArgumentException("address is required"),
             minDigits = 1,
-            maxDigits = 4
+            maxDigits = 8
         ) and 0xFFFF
         val command = IrProtocolUtils.parseHexValue(
             params["command"] as? String ?: throw IllegalArgumentException("command is required"),
             minDigits = 1,
-            maxDigits = 5
+            maxDigits = 8
         ) and 0xFFFFF
 
         val bits = mutableListOf<Int>()
