@@ -52,7 +52,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.m4r71n.irshark.R
-import com.m4r71n.irshark.ir.transmitIrCode
+import com.m4r71n.irshark.ir.IrTransmissionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -340,7 +340,7 @@ class SendIrAction : ActionCallback {
         val buttonCode = prefs[keyButtonCode(index)]
         if (!buttonCode.isNullOrBlank()) {
             withContext(Dispatchers.IO) {
-                transmitIrCode(context, buttonCode)
+                IrTransmissionManager(context).transmitPayload(buttonCode)
             }
         }
 

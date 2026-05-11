@@ -528,7 +528,7 @@ suspend fun resolveUniversalCommandsWithDedup(
 
 /**
  * Reads a specific profile asset and returns the raw key=value payload string
- * for the given [commandName], ready to pass to [transmitIrCode].
+ * for the given [commandName], ready to pass to [IrTransmissionManager.transmitPayload].
  */
 private fun getIrCodePayload(context: android.content.Context, profilePath: String, commandName: String): String? {
     val normalized = normalizeDisplayName(commandName)

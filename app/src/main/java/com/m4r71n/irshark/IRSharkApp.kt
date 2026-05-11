@@ -86,11 +86,8 @@ import com.m4r71n.irshark.data.saveSavedMacros
 import com.m4r71n.irshark.data.SavedMacro
 import com.m4r71n.irshark.data.recordRemoteHistory
 import com.m4r71n.irshark.data.resolveEffectiveDbSource
-import com.m4r71n.irshark.ir.transmitIrCode
 import com.m4r71n.irshark.ir.IrTransmitStatus
-import com.m4r71n.irshark.ir.transmitIrCodeResult
 import com.m4r71n.irshark.ir.IrTransmissionManager
-import com.m4r71n.irshark.ir.getIrCompatibilityReport
 import com.m4r71n.irshark.data.loadDbIrCodeOptions
 import com.m4r71n.irshark.data.loadFlipperDbIndex
 import com.m4r71n.irshark.data.loadSavedRemotes
@@ -915,8 +912,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         }
         emitTxPulse()
         scope.launch(Dispatchers.IO) {
-            val txResult = transmitIrCodeResult(
-                context,
+            val txResult = IrTransmissionManager(context).transmitPayload(
                 payload,
                 modeRaw = txModeRaw,
                 bridgeEndpointRaw = bridgeEndpoint
@@ -1288,7 +1284,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                 val idx = (universalCodeStep - 1).coerceIn(0, payloads.size - 1)
                 val payload = payloads[idx]
                 val txResult = withContext(Dispatchers.IO) {
-                    transmitIrCodeResult(context, payload, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                    IrTransmissionManager(context).transmitPayload(payload, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
                 }
                 val transmitOk = txResult.success
                 universalProcessedCount = (universalProcessedCount + 1).coerceAtMost(universalCoverage)
@@ -2111,8 +2107,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 val button = controlButtons.firstOrNull { it.label.equals(cmdLabel, ignoreCase = true) }
                                 if (button != null && button.code.isNotBlank()) {
                                     scope.launch(Dispatchers.IO) {
-                                        val txResult = transmitIrCodeResult(
-                                            context,
+                                        val txResult = IrTransmissionManager(context).transmitPayload(
                                             button.code,
                                             modeRaw = txModeRaw,
                                             bridgeEndpointRaw = bridgeEndpoint
@@ -2131,8 +2126,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 val button = controlButtons.firstOrNull { it.label.equals(cmdLabel, ignoreCase = true) }
                                 if (button != null && button.code.isNotBlank()) {
                                     scope.launch(Dispatchers.IO) {
-                                        val txResult = transmitIrCodeResult(
-                                            context,
+                                        val txResult = IrTransmissionManager(context).transmitPayload(
                                             button.code,
                                             modeRaw = txModeRaw,
                                             bridgeEndpointRaw = bridgeEndpoint
@@ -2296,7 +2290,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             hapticFeedback = hapticFeedback,
                             txModeRaw = txModeRaw,
                             bridgeEndpoint = bridgeEndpoint,
-                            compatibilityReport = getIrCompatibilityReport(context, txModeRaw, bridgeEndpoint),
+                            compatibilityReport = IrTransmissionManager(context).getCompatibilityReport(txModeRaw, bridgeEndpoint),
                             useDownloadedDb = preferDownloadedDb,
                             downloadedDbAvailable = downloadedDbAvailable,
                             bundledDbVersion = bundledDbVersionLabel(),
