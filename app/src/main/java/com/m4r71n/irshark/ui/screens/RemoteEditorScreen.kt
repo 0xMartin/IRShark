@@ -3,6 +3,7 @@ package com.m4r71n.irshark.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -380,10 +381,11 @@ fun RemoteEditorScreen(
                                     Column(modifier = Modifier.weight(1f).padding(start = 6.dp)) {
                                         Text(button.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                         Text(
-                                            if (button.code.isBlank()) "No code" else button.code.take(56),
+                                            if (button.code.isBlank()) "No code" else button.code,
                                             color = Color(0xFF8A8899),
                                             fontSize = 10.sp,
-                                            maxLines = 1
+                                            maxLines = 1,
+                                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                                         )
                                     }
 

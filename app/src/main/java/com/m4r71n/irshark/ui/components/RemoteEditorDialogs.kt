@@ -1,10 +1,12 @@
 package com.m4r71n.irshark.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -50,8 +53,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -59,6 +69,84 @@ import com.m4r71n.irshark.data.DbIrCodeOption
 import com.m4r71n.irshark.data.FlipperProfile
 import com.m4r71n.irshark.data.SavedRemoteButton
 import com.m4r71n.irshark.data.loadDbIrCodeOptions
+
+private fun upsertIrField(payload: String, key: String, value: String): String {
+    val parts = payload
+        .split(';', '\n')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toMutableList()
+
+    var replaced = false
+    val updated = parts.map { part ->
+        val idx = part.indexOf('=')
+        if (idx <= 0) return@map part
+        val k = part.substring(0, idx).trim()
+        if (k.equals(key, ignoreCase = true)) {
+            replaced = true
+            "$key=$value"
+        } else {
+            part
+        }
+    }.toMutableList()
+
+    if (!replaced) updated.add("$key=$value")
+    return updated.joinToString("; ")
+}
+
+private object IrPayloadSyntaxHighlight : VisualTransformation {
+    private val keyStyle = SpanStyle(color = Color(0xFF8AB4F8), fontWeight = FontWeight.SemiBold)
+    private val protocolValueStyle = SpanStyle(color = Color(0xFFFFB86C), fontWeight = FontWeight.Medium)
+    private val hexValueStyle = SpanStyle(color = Color(0xFF6EE7B7))
+    private val numValueStyle = SpanStyle(color = Color(0xFF93C5FD))
+    private val symbolStyle = SpanStyle(color = Color(0xFF8A8899))
+
+    override fun filter(text: AnnotatedString): TransformedText {
+        val source = text.text
+        val out = buildAnnotatedString {
+            var i = 0
+            while (i < source.length) {
+                val ch = source[i]
+                if (ch == ';' || ch == '\n') {
+                    withStyle(symbolStyle) { append(ch) }
+                    i++
+                    continue
+                }
+
+                val eq = source.indexOf('=', i)
+                if (eq == -1) {
+                    append(source.substring(i))
+                    break
+                }
+
+                val nextSepSemi = source.indexOf(';', eq + 1)
+                val nextSepNl = source.indexOf('\n', eq + 1)
+                val end = listOf(nextSepSemi, nextSepNl)
+                    .filter { it >= 0 }
+                    .minOrNull() ?: source.length
+
+                val key = source.substring(i, eq)
+                val value = source.substring(eq + 1, end)
+
+                withStyle(keyStyle) { append(key) }
+                withStyle(symbolStyle) { append('=') }
+
+                val trimmedKey = key.trim().lowercase()
+                val trimmedValue = value.trim()
+                val valueStyle = when {
+                    trimmedKey == "protocol" -> protocolValueStyle
+                    trimmedValue.matches(Regex("""(0x)?[0-9a-fA-F ]+""")) -> hexValueStyle
+                    trimmedValue.matches(Regex("""-?\d+(\s+-?\d+)*""")) -> numValueStyle
+                    else -> SpanStyle(color = Color(0xFFE4D7FF))
+                }
+                withStyle(valueStyle) { append(value) }
+
+                i = end
+            }
+        }
+        return TransformedText(out, OffsetMapping.Identity)
+    }
+}
 
 @Composable
 fun RemoteEditorDialog(
@@ -255,8 +343,14 @@ fun RemoteEditorDialog(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(button.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                    val codePreview = if (button.code.isBlank()) "No code" else button.code.take(42)
-                                    Text(codePreview, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
+                                    val codePreview = if (button.code.isBlank()) "No code" else button.code
+                                    Text(
+                                        codePreview,
+                                        color = Color(0xFF8A8899),
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                                    )
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Icon(
@@ -388,7 +482,6 @@ private fun IrButtonEditorDialog(
     }
 
     val canSave = label.trim().isNotBlank() && code.trim().isNotBlank()
-    var codeError by remember { mutableStateOf<String?>(null) }
 
     // Validates IR payload formats used by the app:
     // 1) key=value pairs (semicolon/newline separated), including DB-generated
@@ -435,6 +528,8 @@ private fun IrButtonEditorDialog(
         return null
     }
 
+    val codeError = remember(code) { validateIrCode(code) }
+
     Dialog(onDismissRequest = onDismiss) {
         Box(
             modifier = Modifier
@@ -470,19 +565,63 @@ private fun IrButtonEditorDialog(
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
                 )
 
-                OutlinedTextField(
-                    value = code,
-                    onValueChange = { code = it; codeError = null },
+                Text("Quick insert", color = Color(0xFFB699FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(82.dp),
-                    label = { Text("IR code payload") },
-                    isError = codeError != null
-                )
+                        .heightIn(max = 120.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val suggestions = listOf(
+                        "RAW template" to "type=raw; frequency=38000; data=9000 4500 560 560",
+                        "Parsed template" to "type=parsed; protocol=NEC; address=00 FF; command=20 DF",
+                        "NEC" to "NEC",
+                        "NECEXT" to "NECEXT",
+                        "RC5" to "RC5",
+                        "RC5X" to "RC5X",
+                        "RC6" to "RC6",
+                        "SAMSUNG" to "SAMSUNG",
+                        "KASEIKYO" to "KASEIKYO"
+                    )
+                    items(suggestions) { (name, payload) ->
+                        AssistChip(
+                            onClick = {
+                                code = when (name) {
+                                    "RAW template", "Parsed template" -> payload
+                                    else -> upsertIrField(code, "protocol", payload)
+                                }
+                            },
+                            label = { Text(name, fontSize = 10.sp) }
+                        )
+                    }
+                }
+
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val editorHeight = maxHeight * 0.5f
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = editorHeight),
+                        label = { Text("IR code payload") },
+                        isError = codeError != null,
+                        visualTransformation = IrPayloadSyntaxHighlight,
+                        singleLine = false
+                    )
+                }
                 if (codeError != null) {
                     Text(
-                        text = codeError!!,
+                        text = codeError,
                         color = Color(0xFFFF8A80),
+                        fontSize = 11.sp
+                    )
+                } else {
+                    Text(
+                        text = "Syntax looks valid.",
+                        color = Color(0xFF81C995),
                         fontSize = 11.sp
                     )
                 }
@@ -559,7 +698,13 @@ private fun IrButtonEditorDialog(
                                 ) {
                                     Column {
                                         Text(item.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                        Text(item.code.take(70), color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
+                                        Text(
+                                            item.code,
+                                            color = Color(0xFF8A8899),
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                                        )
                                     }
                                 }
                             }
@@ -581,7 +726,7 @@ private fun IrButtonEditorDialog(
                         onClick = {
                             val err = validateIrCode(code)
                             if (err != null) {
-                                codeError = err
+                                // keep dialog open, error is shown realtime above
                             } else {
                                 onSave(
                                     SavedRemoteButton(
