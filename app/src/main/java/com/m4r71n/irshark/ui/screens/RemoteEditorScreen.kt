@@ -696,14 +696,25 @@ fun RemoteButtonEditorScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         val suggestions: List<Pair<String, String>> = listOf(
-                            "RAW" to "RAW",
                             "NEC" to "NEC",
+                            "NECext" to "NECext",
+                            "NEC16" to "NEC16",
+                            "NEC42" to "NEC42",
+                            "Samsung" to "Samsung",
+                            "Samsung32" to "Samsung32",
+                            "Samsung36" to "Samsung36",
                             "RC5" to "RC5",
                             "RC5X" to "RC5X",
                             "RC6" to "RC6",
-                            "SAMSUNG" to "SAMSUNG",
-                            "KASEIKYO" to "KASEIKYO",
-                            "SIRC20" to "SIRC20"
+                            "SIRC12" to "SIRC12",
+                            "SIRC15" to "SIRC15",
+                            "SIRC20" to "SIRC20",
+                            "Kaseikyo" to "Kaseikyo",
+                            "RCA" to "RCA",
+                            "Pioneer" to "Pioneer",
+                            "Denon" to "Denon",
+                            "JVC" to "JVC",
+                            "RAW" to "RAW"
                         )
                         this.items(suggestions) { (title, selection) ->
                             AssistChip(
