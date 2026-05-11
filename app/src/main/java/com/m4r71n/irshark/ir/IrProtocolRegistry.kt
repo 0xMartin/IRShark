@@ -11,7 +11,7 @@ object IrProtocolRegistry {
      * Register a new protocol encoder.
      */
     fun register(encoder: IrProtocolEncoder) {
-        encoders[encoder.protocolId] = encoder
+        encoders[encoder.protocolId.lowercase()] = encoder
     }
 
     /**
@@ -19,14 +19,14 @@ object IrProtocolRegistry {
      * @return encoder or null if not found
      */
     fun getEncoder(protocolId: String): IrProtocolEncoder? {
-        return encoders[protocolId]
+        return encoders[protocolId.lowercase()]
     }
 
     /**
      * Check if protocol is supported.
      */
     fun isSupported(protocolId: String): Boolean {
-        return encoders.containsKey(protocolId)
+        return encoders.containsKey(protocolId.lowercase())
     }
 
     /**

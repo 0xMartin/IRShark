@@ -153,7 +153,7 @@ private fun validateEditorButtonCode(code: String): String? {
         "Samsung", "Samsung32", "Samsung36",
         "SIRC12", "SIRC15", "SIRC20",
         "Kaseikyo", "RCA", "Pioneer", "Denon", "JVC"
-    )
+    ).map { it.lowercase() }.toSet()
 
     val pairs = code
         .split(';', '\n')
@@ -193,7 +193,7 @@ private fun validateEditorButtonCode(code: String): String? {
         }
         "parsed" -> {
             if (!fields.containsKey("protocol")) return "Parsed code must contain 'protocol=...'."
-            val protocol = fields["protocol"]!!
+            val protocol = fields["protocol"]!!.lowercase()
             if (!supportedProtocols.contains(protocol)) {
                 return "Protocol '$protocol' not supported. Use: ${supportedProtocols.joinToString(", ")}."
             }

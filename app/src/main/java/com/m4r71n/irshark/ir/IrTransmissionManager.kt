@@ -111,7 +111,7 @@ class IrTransmissionManager(private val context: Context) {
         modeRaw: String = "",
         bridgeEndpointRaw: String = ""
     ): IrTransmitResult {
-        val encoder = IrProtocolRegistry.getEncoder(protocolId)
+        val encoder = IrProtocolRegistry.getEncoder(protocolId.lowercase())
             ?: return IrTransmitResult(
                 IrTransmitStatus.FAILED,
                 "Protocol not supported: $protocolId"
