@@ -25,33 +25,107 @@ fun transmitIrCode(context: Context, codePayload: String, modeRaw: String, bridg
     return transmitIrCodeResult(context, codePayload, modeRaw, bridgeEndpointRaw).success
 }
 
+private fun parsePayloadFields(payload: String): Map<String, String> {
+    return payload
+        .split(';')
+        .mapNotNull { segment ->
+            val idx = segment.indexOf('=')
+            if (idx <= 0) return@mapNotNull null
+            val key = segment.substring(0, idx).trim().lowercase()
+            val value = segment.substring(idx + 1).trim()
+            if (key.isBlank() || value.isBlank()) null else key to value
+        }
+        .toMap()
+}
+
+private fun toProtocolId(protocolRaw: String): String {
+    return when (protocolRaw.uppercase()) {
+        "NEC" -> "nec"
+        "NECEXT" -> "necext"
+        "SAMSUNG" -> "samsung"
+        "SAMSUNG32" -> "samsung32"
+        "SAMSUNG36" -> "samsung36"
+        "SIRC" -> "sirc"
+        "SIRC15" -> "sirc15"
+        "SIRC20" -> "sirc20"
+        "KASEIKYO" -> "kaseikyo"
+        "RCA" -> "rca"
+        "PIONEER" -> "pioneer"
+        "NEC42" -> "nec42"
+        "RC6" -> "rc6"
+        "RC5" -> "rc5"
+        "RC5X" -> "rc5x"
+        "NEC16" -> "nec16"
+        "DENON" -> "denon"
+        "JVC" -> "jvc"
+        "RAW" -> "raw"
+        else -> protocolRaw.lowercase()
+    }
+}
+
+private fun isRawNumericPayload(payload: String): Boolean {
+    val tokens = payload.trim().split(Regex("\\s+|,|;"))
+        .filter { it.isNotBlank() }
+    if (tokens.isEmpty()) return false
+    return tokens.all { token ->
+        token.toIntOrNull() != null ||
+            (token.startsWith("0x") || token.startsWith("0X"))
+    }
+}
+
 fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String, bridgeEndpointRaw: String): IrTransmitResult {
     val manager = IrTransmissionManager(context)
-    
-    // Pokud je to raw payload (space-separated integers)
-    val trimmedPayload = codePayload.trim()
-    val isRaw = trimmedPayload.split(Regex("\\s+")).all { token ->
-        token.toIntOrNull() != null || token.startsWith("0x") || token.startsWith("0X")
-    }
-    
-    return if (isRaw) {
-        // Transmit raw
-        try {
-            val parts = trimmedPayload.split(Regex("\\s+"))
-                .mapNotNull { token ->
-                    when {
-                        token.startsWith("0x") || token.startsWith("0X") -> token.substring(2).toIntOrNull(16)
-                        else -> token.toIntOrNull()
-                    }
-                }
-                .toIntArray()
-            manager.transmitRaw(parts, 38000)
-        } catch (e: Exception) {
-            IrTransmitResult(IrTransmitStatus.FAILED, "Raw signal parsing failed: ${e.message}")
+
+    val payload = codePayload.trim()
+    val fields = parsePayloadFields(payload)
+
+    if (fields.isNotEmpty()) {
+        val explicitType = fields["type"]?.lowercase().orEmpty()
+
+        val rawData = fields["data"].orEmpty()
+        if (explicitType == "raw" || rawData.isNotBlank()) {
+            val rawParams = mutableMapOf<String, Any>(
+                "pattern" to rawData
+            )
+            fields["frequency"]?.takeIf { it.isNotBlank() }?.let {
+                rawParams["frequency"] = it
+            }
+            return manager.transmitCode(
+                protocolId = "raw",
+                params = rawParams,
+                modeRaw = modeRaw,
+                bridgeEndpointRaw = bridgeEndpointRaw
+            )
         }
-    } else {
-        // Transmit via old-style payload (fallback)
-        // Pro teď jen vrať FAILED, později toto bude parsovat protokol z payloadu
-        IrTransmitResult(IrTransmitStatus.FAILED, "Legacy payload format - use new IR API")
+
+        val protocol = fields["protocol"].orEmpty()
+        if (explicitType == "parsed" || protocol.isNotBlank()) {
+            val address = fields["address"].orEmpty()
+            val command = fields["command"].orEmpty()
+            if (address.isBlank() || command.isBlank()) {
+                return IrTransmitResult(IrTransmitStatus.FAILED, "Parsed payload requires address and command")
+            }
+
+            return manager.transmitCode(
+                protocolId = toProtocolId(protocol),
+                params = mapOf(
+                    "address" to address,
+                    "command" to command
+                ),
+                modeRaw = modeRaw,
+                bridgeEndpointRaw = bridgeEndpointRaw
+            )
+        }
     }
+
+    if (isRawNumericPayload(payload)) {
+        return manager.transmitCode(
+            protocolId = "raw",
+            params = mapOf("pattern" to payload),
+            modeRaw = modeRaw,
+            bridgeEndpointRaw = bridgeEndpointRaw
+        )
+    }
+
+    return IrTransmitResult(IrTransmitStatus.FAILED, "Unsupported payload format")
 }
