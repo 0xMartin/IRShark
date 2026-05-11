@@ -2239,7 +2239,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             },
                             onCodeChange = {
                                 editorButtonCode = it
-                                editorButtonCodeError = null
+                                editorButtonCodeError = validateEditorButtonCode(it)
                             },
                             onProfileSearchChange = {
                                 editorButtonProfileSearch = it
@@ -2252,7 +2252,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 editorButtonSelectedCodeIdx = idx
                                 editorButtonLabel = hit.label
                                 editorButtonCode = hit.code
-                                editorButtonCodeError = null
+                                editorButtonCodeError = validateEditorButtonCode(hit.code)
                             },
                             onBack = { requestEditorExit(Screen.REMOTE_EDITOR) },
                             onApply = { saveButtonEditor() },
