@@ -9,13 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import com.m4r71n.irshark.ui.theme.IRSharkTheme
-import com.m4r71n.irshark.ir.initializeIrProtocolRegistry
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Initialize IR protocol encoders
-        initializeIrProtocolRegistry()
         enableEdgeToEdge()
         setContent {
             IRSharkTheme(darkTheme = true, dynamicColor = false) {
