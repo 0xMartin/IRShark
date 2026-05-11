@@ -1,10 +1,12 @@
 package com.m4r71n.irshark.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -361,6 +366,7 @@ fun RemoteCommandButton(
 fun ListRow(
     title: String,
     subtitle: String,
+    badgeTexts: List<String> = emptyList(),
     actionLabel: String,
     actionEnabled: Boolean = true,
     actionIcon: ImageVector? = null,
@@ -418,7 +424,34 @@ fun ListRow(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                Text(subtitle, color = Color(0xFF8A8899), fontSize = 11.sp, maxLines = 1)
+                if (badgeTexts.isNotEmpty()) {
+                    val primary = badgeTexts.firstOrNull()?.trim().orEmpty()
+                    val secondary = badgeTexts.drop(1).map { it.trim() }.filter { it.isNotBlank() }
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                    ) {
+                        val maxPrimaryWidth = maxWidth * 0.62f
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (primary.isNotBlank()) {
+                                Badge(
+                                    text = primary,
+                                    marquee = true,
+                                    modifier = Modifier.widthIn(max = maxPrimaryWidth)
+                                )
+                            }
+                            secondary.forEach { badgeText ->
+                                Badge(text = badgeText)
+                            }
+                        }
+                    }
+                } else {
+                    Text(subtitle, color = Color(0xFF8A8899), fontSize = 11.sp, maxLines = 1)
+                }
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -573,21 +606,37 @@ private fun TxLedIndicator(active: Boolean, fastBlink: Boolean) {
 // ── Badge (compact info display) ──────────────────────────────────────────────
 
 @Composable
-fun Badge(text: String, modifier: Modifier = Modifier) {
+fun Badge(
+    text: String,
+    modifier: Modifier = Modifier,
+    marquee: Boolean = false
+) {
     val violet = MaterialTheme.colorScheme.primary
     val pillShape = RoundedCornerShape(50)
     Box(
         modifier = modifier
+            .height(24.dp)
             .clip(pillShape)
             .background(violet.copy(alpha = 0.15f))
             .border(1.dp, violet.copy(alpha = 0.35f), pillShape)
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.CenterStart
     ) {
         Text(
             text = text,
             color = violet,
             fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            softWrap = false,
+            modifier = if (marquee) {
+                Modifier
+                    .wrapContentHeight(Alignment.CenterVertically)
+                    .basicMarquee(iterations = Int.MAX_VALUE)
+            } else {
+                Modifier.wrapContentHeight(Alignment.CenterVertically)
+            }
         )
     }
 }

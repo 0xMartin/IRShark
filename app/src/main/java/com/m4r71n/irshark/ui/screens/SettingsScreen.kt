@@ -44,8 +44,8 @@ import com.m4r71n.irshark.BuildConfig
 import com.m4r71n.irshark.R
 import com.m4r71n.irshark.data.RemoteHistoryEntry
 import com.m4r71n.irshark.ui.components.ListRow
-import com.m4r71n.irshark.util.IrCompatibilityReport
-import com.m4r71n.irshark.util.IrTxMode
+import com.m4r71n.irshark.ir.IrCompatibilityReport
+import com.m4r71n.irshark.ir.IrTxMode
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

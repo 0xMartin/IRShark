@@ -66,10 +66,11 @@ import com.m4r71n.irshark.data.prettyName
 import com.m4r71n.irshark.data.prettyPath
 import com.m4r71n.irshark.data.profilesUnderPath
 import com.m4r71n.irshark.ui.components.CategorySvgIcon
-import com.m4r71n.irshark.util.transmitIrCode
-import com.m4r71n.irshark.util.extractProtocolFromPayload
-import com.m4r71n.irshark.util.IrTransmitStatus
-import com.m4r71n.irshark.util.transmitIrCodeResult
+import com.m4r71n.irshark.ir.transmitIrCode
+import com.m4r71n.irshark.ir.extractProtocolFromPayload
+import com.m4r71n.irshark.ir.IrTransmitStatus
+import com.m4r71n.irshark.ir.IrTransmitStatus.*
+import com.m4r71n.irshark.ir.transmitIrCodeResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

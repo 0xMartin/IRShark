@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1.8-00C853" alt="Version 1.1.8" />
+  <img src="https://img.shields.io/badge/version-1.2.0-00C853" alt="Version 1.2.0" />
   <img src="https://img.shields.io/badge/Platform-Android-3DDC84?logo=android&logoColor=white" alt="Android" />
   <img src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white" alt="Jetpack Compose" />
@@ -32,24 +32,27 @@ The project is designed as a practical-first tool: fast signal sending, clear pr
 
 ## 📡 Supported IR Protocols
 
-IRShark currently encodes and transmits these parsed protocols:
-
-- NEC
-- NECext
-- NEC42
-- Samsung
-- Samsung32
-- RC5
-- RC5X
-- RC6
-- SIRC (12-bit)
-- SIRC15
-- SIRC20
-- Kaseikyo
-- RCA
-- Pioneer
-
-It also supports RAW timing payloads.
+<p align="left">
+  <img src="https://img.shields.io/badge/NEC-1E88E5" alt="NEC" />
+  <img src="https://img.shields.io/badge/NECext-1E88E5" alt="NECext" />
+  <img src="https://img.shields.io/badge/NEC16-1E88E5" alt="NEC16" />
+  <img src="https://img.shields.io/badge/NEC42-1E88E5" alt="NEC42" />
+  <img src="https://img.shields.io/badge/Samsung-43A047" alt="Samsung" />
+  <img src="https://img.shields.io/badge/Samsung32-43A047" alt="Samsung32" />
+  <img src="https://img.shields.io/badge/Samsung36-43A047" alt="Samsung36" />
+  <img src="https://img.shields.io/badge/RC5-F4511E" alt="RC5" />
+  <img src="https://img.shields.io/badge/RC5X-F4511E" alt="RC5X" />
+  <img src="https://img.shields.io/badge/RC6-F4511E" alt="RC6" />
+  <img src="https://img.shields.io/badge/SIRC12-8E24AA" alt="SIRC12" />
+  <img src="https://img.shields.io/badge/SIRC15-8E24AA" alt="SIRC15" />
+  <img src="https://img.shields.io/badge/SIRC20-8E24AA" alt="SIRC20" />
+  <img src="https://img.shields.io/badge/Kaseikyo-6D4C41" alt="Kaseikyo" />
+  <img src="https://img.shields.io/badge/RCA-00897B" alt="RCA" />
+  <img src="https://img.shields.io/badge/Pioneer-00897B" alt="Pioneer" />
+  <img src="https://img.shields.io/badge/Denon-5E35B1" alt="Denon" />
+  <img src="https://img.shields.io/badge/JVC-5E35B1" alt="JVC" />
+  <img src="https://img.shields.io/badge/RAW-263238" alt="RAW" />
+</p>
 
 ## 🐬 Flipper IR DB
 
@@ -82,6 +85,13 @@ Main sections in the app:
   <img src="doc/img/remote_db.jpg" alt="Remote DB" width="30%" />
   <img src="doc/img/ir_finder.jpg" alt="IR Finder" width="30%" />
   <img src="doc/img/macro_editor.jpg" alt="Macro Editor" width="30%" />
+</p>
+
+Remote Editor supports clear, structured editing of both whole remotes and individual IR payload codes sent by each button.
+
+<p align="center">
+  <img src="doc/img/remote_editor.jpg" alt="Remote Editor" width="30%" />
+  <img src="doc/img/button_editor.jpg" alt="Button Editor" width="30%" />
 </p>
 
 ### Widget Preview

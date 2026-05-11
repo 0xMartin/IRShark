@@ -3,6 +3,7 @@ package com.m4r71n.irshark.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.ViewList
@@ -34,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -49,14 +52,25 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.m4r71n.irshark.data.DbIrCodeOption
@@ -79,6 +93,139 @@ private val editorIconOptions = listOf(
     "Microwaves",
     "Other"
 )
+
+private object IrEditorSyntaxHighlight : VisualTransformation {
+    private val keyStyle = SpanStyle(color = Color(0xFF8AB4F8), fontWeight = FontWeight.SemiBold)
+    private val protocolValueStyle = SpanStyle(color = Color(0xFFFFB86C), fontWeight = FontWeight.Medium)
+    private val hexValueStyle = SpanStyle(color = Color(0xFF6EE7B7))
+    private val numValueStyle = SpanStyle(color = Color(0xFF93C5FD))
+    private val symbolStyle = SpanStyle(color = Color(0xFF8A8899))
+
+    override fun filter(text: AnnotatedString): TransformedText {
+        val source = text.text
+        val out = buildAnnotatedString {
+            var i = 0
+            while (i < source.length) {
+                val ch = source[i]
+                if (ch == ';' || ch == '\n') {
+                    withStyle(symbolStyle) { append(ch) }
+                    i++
+                    continue
+                }
+
+                val eq = source.indexOf('=', i)
+                if (eq == -1) {
+                    append(source.substring(i))
+                    break
+                }
+
+                val nextSepSemi = source.indexOf(';', eq + 1)
+                val nextSepNl = source.indexOf('\n', eq + 1)
+                val end = listOf(nextSepSemi, nextSepNl).filter { it >= 0 }.minOrNull() ?: source.length
+
+                val key = source.substring(i, eq)
+                val value = source.substring(eq + 1, end)
+
+                withStyle(keyStyle) { append(key) }
+                withStyle(symbolStyle) { append('=') }
+
+                val trimmedKey = key.trim().lowercase()
+                val trimmedValue = value.trim()
+                val valueStyle = when {
+                    trimmedKey == "protocol" -> protocolValueStyle
+                    trimmedValue.matches(Regex("""(0x)?[0-9a-fA-F ]+""")) -> hexValueStyle
+                    trimmedValue.matches(Regex("""-?\d+(\s+-?\d+)*""")) -> numValueStyle
+                    else -> SpanStyle(color = Color(0xFFE4D7FF))
+                }
+                withStyle(valueStyle) { append(value) }
+                i = end
+            }
+        }
+        return TransformedText(out, OffsetMapping.Identity)
+    }
+}
+
+private fun validateEditorButtonCode(code: String): String? {
+    if (code.trim().isEmpty()) return "Code cannot be empty."
+
+    val supportedProtocols = setOf(
+        "RC5", "RC5X", "RC6", "NEC", "NECext", "NEC16", "NEC42",
+        "Samsung", "Samsung32", "Samsung36",
+        "SIRC12", "SIRC15", "SIRC20",
+        "Kaseikyo", "RCA", "Pioneer", "Denon", "JVC"
+    )
+
+    val pairs = code
+        .split(';', '\n')
+        .mapNotNull { segment ->
+            val token = segment.trim()
+            if (token.isEmpty()) return@mapNotNull null
+            val idx = token.indexOf('=')
+            if (idx <= 0) return@mapNotNull Triple("invalid", "", token)
+            val k = token.substring(0, idx).trim().lowercase()
+            val v = token.substring(idx + 1).trim()
+            Triple(k, v, token)
+        }
+
+    if (pairs.isEmpty()) return "No key=value pairs found."
+
+    val fields = mutableMapOf<String, String>()
+    for ((k, v, _) in pairs) {
+        if (k == "invalid") return "Invalid syntax: Each line must contain key=value pair."
+        if (v.isEmpty()) return "Value for key '$k' cannot be empty."
+        if (!listOf("type", "protocol", "address", "command", "data", "frequency").contains(k)) {
+            return "Unknown key '$k'. Valid keys: type, protocol, address, command, data, frequency."
+        }
+        fields[k] = v
+    }
+
+    val type = fields["type"]?.lowercase()
+    when (type) {
+        "raw" -> {
+            if (!fields.containsKey("data")) return "RAW code must contain 'data=...'."
+            val data = fields["data"]!!
+            if (!data.matches(Regex("""^-?\d+([\s]+-?\d+)*$"""))) {
+                return "RAW data must contain only integers separated by spaces."
+            }
+            if (!fields.containsKey("frequency")) return "RAW code should contain 'frequency=...'."
+            val freq = fields["frequency"]!!
+            if (!freq.matches(Regex("""^\d+$"""))) return "Frequency must be a number."
+        }
+        "parsed" -> {
+            if (!fields.containsKey("protocol")) return "Parsed code must contain 'protocol=...'."
+            val protocol = fields["protocol"]!!
+            if (!supportedProtocols.contains(protocol)) {
+                return "Protocol '$protocol' not supported. Use: ${supportedProtocols.joinToString(", ")}."
+            }
+            if (!fields.containsKey("address")) return "Parsed code must contain 'address=...'."
+            val addr = fields["address"]!!
+            if (!addr.matches(Regex("""^(?:0x)?[0-9A-Fa-f]+([\s]+(?:0x)?[0-9A-Fa-f]+)*$"""))) {
+                return "Address must be hex values, space-separated."
+            }
+            if (!fields.containsKey("command")) return "Parsed code must contain 'command=...'."
+            val cmd = fields["command"]!!
+            if (!cmd.matches(Regex("""^(?:0x)?[0-9A-Fa-f]+([\s]+(?:0x)?[0-9A-Fa-f]+)*$"""))) {
+                return "Command must be hex values, space-separated."
+            }
+        }
+        else -> return "Type must be 'raw' or 'parsed'."
+    }
+
+    return null
+}
+
+private fun normalizeEditorCodeForSave(input: String): String {
+    return input
+        .split(';', '\n')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .joinToString("; ")
+}
+
+private fun formatEditorCodeForDisplay(input: String): String {
+    val normalized = normalizeEditorCodeForSave(input)
+    return if (normalized.isEmpty()) "" else normalized.replace("; ", ";\n")
+}
 
 @Composable
 fun RemoteEditorScreen(
@@ -380,10 +527,11 @@ fun RemoteEditorScreen(
                                     Column(modifier = Modifier.weight(1f).padding(start = 6.dp)) {
                                         Text(button.label, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                                         Text(
-                                            if (button.code.isBlank()) "No code" else button.code.take(56),
+                                            if (button.code.isBlank()) "No code" else button.code,
                                             color = Color(0xFF8A8899),
                                             fontSize = 10.sp,
-                                            maxLines = 1
+                                            maxLines = 1,
+                                            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                                         )
                                     }
 
@@ -438,13 +586,85 @@ fun RemoteButtonEditorScreen(
     onLabelChange: (String) -> Unit,
     onCodeChange: (String) -> Unit,
     onProfileSearchChange: (String) -> Unit,
-    onSelectProfile: (String) -> Unit,
+    onSelectProfile: (String?) -> Unit,
     onSelectDbCode: (Int) -> Unit,
     onBack: () -> Unit,
     onApply: () -> Unit,
     canApply: Boolean
 ) {
     val violet = MaterialTheme.colorScheme.primary
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val editorHeight = (screenHeight * 0.35f).coerceAtLeast(154.dp)
+    val importListMaxHeight = (screenHeight * 0.5f).coerceAtLeast(200.dp)
+    var pendingQuickInsert by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingDbInsertIdx by remember { mutableIntStateOf(-1) }
+    var editorCode by remember { mutableStateOf(formatEditorCodeForDisplay(buttonCode)) }
+    var localCodeError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(editorCode) {
+        localCodeError = validateEditorButtonCode(normalizeEditorCodeForSave(editorCode))
+    }
+
+    LaunchedEffect(buttonCode) {
+        val display = formatEditorCodeForDisplay(buttonCode)
+        if (display != editorCode) {
+            editorCode = display
+        }
+    }
+
+    fun quickInsertTemplate(selection: String): String {
+        return if (selection == "RAW") {
+            "type=raw; frequency=38000; data=9000 4500 560 560"
+        } else {
+            "type=parsed; protocol=$selection; address=00 FF; command=20 DF"
+        }
+    }
+
+    pendingQuickInsert?.let { (_, selection) ->
+        AlertDialog(
+            onDismissRequest = { pendingQuickInsert = null },
+            title = { Text("Replace current code?") },
+            text = { Text("This will replace your current unsaved IR code changes.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onCodeChange(quickInsertTemplate(selection))
+                        pendingQuickInsert = null
+                    }
+                ) {
+                    Text("Replace")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingQuickInsert = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (pendingDbInsertIdx >= 0) {
+        AlertDialog(
+            onDismissRequest = { pendingDbInsertIdx = -1 },
+            title = { Text("Replace current code?") },
+            text = { Text("This will replace your current unsaved IR code changes.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onSelectDbCode(pendingDbInsertIdx)
+                        pendingDbInsertIdx = -1
+                    }
+                ) {
+                    Text("Replace")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDbInsertIdx = -1 }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -469,17 +689,54 @@ fun RemoteButtonEditorScreen(
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
                     )
 
+                    Text("Quick insert", color = Color(0xFFB699FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val suggestions: List<Pair<String, String>> = listOf(
+                            "RAW" to "RAW",
+                            "NEC" to "NEC",
+                            "RC5" to "RC5",
+                            "RC5X" to "RC5X",
+                            "RC6" to "RC6",
+                            "SAMSUNG" to "SAMSUNG",
+                            "KASEIKYO" to "KASEIKYO",
+                            "SIRC20" to "SIRC20"
+                        )
+                        this.items(suggestions) { (title, selection) ->
+                            AssistChip(
+                                onClick = {
+                                    pendingQuickInsert = title to selection
+                                },
+                                label = { Text(title, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+
                     OutlinedTextField(
-                        value = buttonCode,
-                        onValueChange = onCodeChange,
+                        value = editorCode,
+                        onValueChange = {
+                            val displayValue = formatEditorCodeForDisplay(it)
+                            editorCode = displayValue
+                            onCodeChange(normalizeEditorCodeForSave(displayValue))
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(96.dp),
+                            .height(editorHeight),
                         label = { Text("IR code payload") },
-                        isError = codeError != null
+                        isError = codeError != null,
+                        visualTransformation = IrEditorSyntaxHighlight,
+                        singleLine = false,
+                        keyboardOptions = KeyboardOptions.Default.copy(
+                            capitalization = KeyboardCapitalization.None
+                        )
                     )
-                    if (codeError != null) {
-                        Text(codeError!!, color = Color(0xFFFF8A80), fontSize = 11.sp)
+                    if (localCodeError != null) {
+                        Text(localCodeError!!, color = Color(0xFFFF8A80), fontSize = 11.sp)
+                    } else {
+                        Text("Valid", color = Color(0xFF81C995), fontSize = 11.sp)
                     }
                 }
             }
@@ -505,52 +762,77 @@ fun RemoteButtonEditorScreen(
                         label = { Text("Search remote profile") }
                     )
 
-                    if (filteredProfiles.isEmpty()) {
-                        EmptyCard("No profile matched your query.")
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            filteredProfiles.forEach { profile ->
-                                val selected = selectedProfilePath == profile.path
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
-                                        .border(1.dp, Color.White.copy(alpha = if (selected) 0.24f else 0.10f), RoundedCornerShape(10.dp))
-                                        .clickable { onSelectProfile(profile.path) }
-                                        .padding(8.dp)
-                                ) {
-                                    Column {
-                                        Text(profile.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                        Text(profile.parentPath, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
-                                    }
-                                }
+                    if (selectedProfilePath != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Selected remote", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            TextButton(onClick = { onSelectProfile(null) }) {
+                                Text("Change remote")
                             }
                         }
                     }
 
-                    when {
-                        loadingCodes -> Text("Loading IR codes...", color = Color(0xFF8A8899), fontSize = 11.sp)
-                        selectedProfilePath != null && dbCodes.isEmpty() -> EmptyCard("No IR entries found in selected profile.")
-                        dbCodes.isNotEmpty() -> {
-                            Text("Select button code", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                dbCodes.forEachIndexed { idx, item ->
-                                    val selected = selectedCodeIdx == idx
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = importListMaxHeight),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (selectedProfilePath == null) {
+                            if (filteredProfiles.isEmpty()) {
+                                item { EmptyCard("No profile matched your query.") }
+                            } else {
+                                items(filteredProfiles) { profile ->
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
-                                            .border(1.dp, Color.White.copy(alpha = if (selected) 0.24f else 0.10f), RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                onSelectDbCode(idx)
-                                            }
+                                            .background(Color(0xFF181327))
+                                            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                                            .clickable { onSelectProfile(profile.path) }
                                             .padding(8.dp)
                                     ) {
                                         Column {
-                                            Text(item.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                            Text(item.code.take(74), color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
+                                            Text(profile.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                            Text(profile.parentPath, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            when {
+                                loadingCodes -> item {
+                                    Text("Loading IR codes...", color = Color(0xFF8A8899), fontSize = 11.sp)
+                                }
+                                dbCodes.isEmpty() -> item {
+                                    EmptyCard("No IR entries found in selected profile.")
+                                }
+                                else -> {
+                                    items(dbCodes.size) { idx ->
+                                        val item = dbCodes[idx]
+                                        val selected = selectedCodeIdx == idx
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
+                                                .border(1.dp, Color.White.copy(alpha = if (selected) 0.24f else 0.10f), RoundedCornerShape(10.dp))
+                                                .clickable { pendingDbInsertIdx = idx }
+                                                .padding(8.dp)
+                                        ) {
+                                            Column {
+                                                Text(item.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                                Text(
+                                                    item.code,
+                                                    color = Color(0xFF8A8899),
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                                                )
+                                            }
                                         }
                                     }
                                 }
