@@ -146,22 +146,71 @@ private object IrEditorSyntaxHighlight : VisualTransformation {
 }
 
 private fun validateEditorButtonCode(code: String): String? {
-    val lines = code.split("\n").map { it.trim() }
-    for (line in lines) {
-        if (line.isEmpty()) continue
-        val parts = line.split("=")
-        if (parts.size != 2) {
-            return "Invalid syntax: Each line must contain a key=value pair."
+    if (code.trim().isEmpty()) return "Code cannot be empty."
+
+    val supportedProtocols = setOf(
+        "RC5", "RC5X", "RC6", "NEC", "NECext", "NEC16", "NEC42",
+        "Samsung", "Samsung32", "Samsung36",
+        "SIRC12", "SIRC15", "SIRC20",
+        "Kaseikyo", "RCA", "Pioneer", "Denon", "JVC"
+    )
+
+    val pairs = code
+        .split(';', '\n')
+        .mapNotNull { segment ->
+            val token = segment.trim()
+            if (token.isEmpty()) return@mapNotNull null
+            val idx = token.indexOf('=')
+            if (idx <= 0) return@mapNotNull Triple("invalid", "", token)
+            val k = token.substring(0, idx).trim().lowercase()
+            val v = token.substring(idx + 1).trim()
+            Triple(k, v, token)
         }
-        val key = parts[0].trim()
-        val value = parts[1].trim()
-        if (key.isEmpty() || value.isEmpty()) {
-            return "Invalid syntax: Key or value cannot be empty."
+
+    if (pairs.isEmpty()) return "No key=value pairs found."
+
+    val fields = mutableMapOf<String, String>()
+    for ((k, v, _) in pairs) {
+        if (k == "invalid") return "Invalid syntax: Each line must contain key=value pair."
+        if (v.isEmpty()) return "Value for key '$k' cannot be empty."
+        if (!listOf("type", "protocol", "address", "command", "data", "frequency").contains(k)) {
+            return "Unknown key '$k'. Valid keys: type, protocol, address, command, data, frequency."
         }
-        if (!listOf("type", "protocol", "address", "command", "data", "frequency").contains(key)) {
-            return "Invalid key: $key is not recognized."
-        }
+        fields[k] = v
     }
+
+    val type = fields["type"]?.lowercase()
+    when (type) {
+        "raw" -> {
+            if (!fields.containsKey("data")) return "RAW code must contain 'data=...'."
+            val data = fields["data"]!!
+            if (!data.matches(Regex("""^-?\d+([\s]+-?\d+)*$"""))) {
+                return "RAW data must contain only integers separated by spaces."
+            }
+            if (!fields.containsKey("frequency")) return "RAW code should contain 'frequency=...'."
+            val freq = fields["frequency"]!!
+            if (!freq.matches(Regex("""^\d+$"""))) return "Frequency must be a number."
+        }
+        "parsed" -> {
+            if (!fields.containsKey("protocol")) return "Parsed code must contain 'protocol=...'."
+            val protocol = fields["protocol"]!!
+            if (!supportedProtocols.contains(protocol)) {
+                return "Protocol '$protocol' not supported. Use: ${supportedProtocols.joinToString(", ")}."
+            }
+            if (!fields.containsKey("address")) return "Parsed code must contain 'address=...'."
+            val addr = fields["address"]!!
+            if (!addr.matches(Regex("""^(?:0x)?[0-9A-Fa-f]+([\s]+(?:0x)?[0-9A-Fa-f]+)*$"""))) {
+                return "Address must be hex values, space-separated."
+            }
+            if (!fields.containsKey("command")) return "Parsed code must contain 'command=...'."
+            val cmd = fields["command"]!!
+            if (!cmd.matches(Regex("""^(?:0x)?[0-9A-Fa-f]+([\s]+(?:0x)?[0-9A-Fa-f]+)*$"""))) {
+                return "Command must be hex values, space-separated."
+            }
+        }
+        else -> return "Type must be 'raw' or 'parsed'."
+    }
+
     return null
 }
 
@@ -550,6 +599,11 @@ fun RemoteButtonEditorScreen(
     var pendingQuickInsert by remember { mutableStateOf<Pair<String, String>?>(null) }
     var pendingDbInsertIdx by remember { mutableIntStateOf(-1) }
     var editorCode by remember { mutableStateOf(formatEditorCodeForDisplay(buttonCode)) }
+    var localCodeError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(editorCode) {
+        localCodeError = validateEditorButtonCode(normalizeEditorCodeForSave(editorCode))
+    }
 
     LaunchedEffect(buttonCode) {
         val display = formatEditorCodeForDisplay(buttonCode)
@@ -679,10 +733,10 @@ fun RemoteButtonEditorScreen(
                             capitalization = KeyboardCapitalization.None
                         )
                     )
-                    if (codeError != null) {
-                        Text(codeError!!, color = Color(0xFFFF8A80), fontSize = 11.sp)
+                    if (localCodeError != null) {
+                        Text(localCodeError!!, color = Color(0xFFFF8A80), fontSize = 11.sp)
                     } else {
-                        Text("Syntax looks valid.", color = Color(0xFF81C995), fontSize = 11.sp)
+                        Text("Valid", color = Color(0xFF81C995), fontSize = 11.sp)
                     }
                 }
             }
