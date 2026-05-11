@@ -132,6 +132,18 @@ import java.util.UUID
 import kotlin.math.roundToInt
 
 
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            IRSharkTheme {
+                IRSharkApp()
+            }
+        }
+    }
+}
+
 // ── Navigation state ──────────────────────────────────────────────────────────
 
 private enum class Screen {
