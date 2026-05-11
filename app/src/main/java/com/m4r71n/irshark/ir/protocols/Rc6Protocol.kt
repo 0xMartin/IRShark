@@ -92,7 +92,11 @@ class Rc6Protocol : IrProtocolEncoder {
     }
 
     private fun parseHexBytes(hex: String): List<Int> {
-        val cleaned = hex.trim().removePrefix("0x").removePrefix("0X").uppercase()
+        val cleaned = hex.trim()
+            .replace(" ", "")
+            .removePrefix("0x")
+            .removePrefix("0X")
+            .uppercase()
         val bytes = mutableListOf<Int>()
         for (i in cleaned.indices step 2) {
             val twoChar = if (i + 1 < cleaned.length) {

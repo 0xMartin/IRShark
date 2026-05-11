@@ -73,9 +73,8 @@ class Rc5Protocol(private val extended: Boolean = false) : IrProtocolEncoder {
             }
         }
 
-        // Start preamble for RC5 (equivalent to first start bit handling).
-        appendMark(HALF_BIT_US)
-        appendSpace(HALF_BIT_US)
+        // First RC5 start bit is a fixed leading mark.
+        // The remaining 13 bits (field, toggle, address, command) are encoded below.
         appendMark(HALF_BIT_US)
 
         // RC5 biphase: logical 1 => space+mark, logical 0 => mark+space
