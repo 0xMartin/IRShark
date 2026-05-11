@@ -20,10 +20,12 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,8 +39,18 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -80,7 +92,9 @@ import com.m4r71n.irshark.data.loadDbIrCodeOptions
 import com.m4r71n.irshark.data.loadFlipperDbIndex
 import com.m4r71n.irshark.data.loadSavedRemotes
 import com.m4r71n.irshark.data.parentPath
+import com.m4r71n.irshark.data.prettyName
 import com.m4r71n.irshark.data.prettyPath
+import com.m4r71n.irshark.data.prettyPathWithChevron
 import com.m4r71n.irshark.data.saveAppSettings
 import com.m4r71n.irshark.data.saveRemoteHistory
 import com.m4r71n.irshark.data.saveSavedRemotes
@@ -135,6 +149,12 @@ private enum class Screen {
     IR_FINDER
 }
 
+private enum class RemoteDbFilterType {
+    MANUFACTURER,
+    CATEGORY,
+    PROTOCOL
+}
+
 private enum class ControlSource { MY_REMOTES, REMOTE_DB, HISTORY }
 
 private const val REMOTE_DB_RESULT_LIMIT = 150
@@ -181,6 +201,54 @@ private fun matchesRemoteDbQuery(profile: FlipperProfile, query: String): Boolea
 
     val searchable = normalizeSearchText("${profile.name} ${prettyPath(profile.parentPath)}")
     return tokens.all { token -> searchable.contains(token) }
+}
+
+private fun remoteDbPathSegments(parentPath: String): List<String> {
+    val normalized = parentPath
+        .removePrefix("${dbRootPath()}/")
+        .removePrefix(dbRootPath())
+        .trim('/').trim()
+    if (normalized.isBlank()) return emptyList()
+    return normalized.split('/').filter { it.isNotBlank() }
+}
+
+private fun remoteDbCategory(profile: FlipperProfile): String {
+    val first = remoteDbPathSegments(profile.parentPath).firstOrNull().orEmpty()
+    return if (first.isBlank()) "Root" else prettyName(first)
+}
+
+private fun remoteDbManufacturer(profile: FlipperProfile): String {
+    val segments = remoteDbPathSegments(profile.parentPath)
+    val manufacturerSegment = when {
+        segments.size >= 2 -> segments[1]
+        segments.isNotEmpty() -> segments.last()
+        else -> profile.parentPath.substringAfterLast('/').ifBlank { profile.name }
+    }
+    return prettyName(manufacturerSegment)
+}
+
+private fun extractProtocolFromCodePayload(code: String): String? {
+    val match = Regex("""protocol\s*=\s*([^;\s]+)""", RegexOption.IGNORE_CASE).find(code)
+    return match?.groupValues?.getOrNull(1)?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+}
+
+private suspend fun loadProfileProtocolsSummary(context: android.content.Context, profilePath: String): Pair<Set<String>, List<String>> {
+    val options = loadDbIrCodeOptions(context, profilePath)
+    val counts = linkedMapOf<String, Int>()
+
+    options.forEach { option ->
+        val protocol = extractProtocolFromCodePayload(option.code)
+            ?: if (option.code.contains("type=raw", ignoreCase = true)) "RAW" else null
+        if (!protocol.isNullOrBlank()) {
+            counts[protocol] = (counts[protocol] ?: 0) + 1
+        }
+    }
+
+    val sorted = counts.entries
+        .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+    val all = sorted.map { it.key }.toSet()
+    val top3 = sorted.take(3).map { it.key }
+    return all to top3
 }
 
 // ── Root composable with navigation ──────────────────────────────────────────
@@ -471,19 +539,93 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     // ── List search & filtering ─────────────────────────────────────────────────
     var myRemotesQuery by rememberSaveable { mutableStateOf("") }
     var remoteDbQuery by rememberSaveable { mutableStateOf("") }
+    var remoteDbManufacturerFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var remoteDbCategoryFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var remoteDbProtocolFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var remoteDbShowFilterTypeDialog by remember { mutableStateOf(false) }
+    var remoteDbFilterPickerType by remember { mutableStateOf<RemoteDbFilterType?>(null) }
+    val remoteDbProtocolsByPath = remember { mutableStateMapOf<String, Set<String>>() }
+    val remoteDbTopProtocolsByPath = remember { mutableStateMapOf<String, List<String>>() }
+
+    val remoteDbCategoryOptions = remember(dbIndex.profiles) {
+        dbIndex.profiles
+            .map(::remoteDbCategory)
+            .distinct()
+            .sorted()
+    }
+    val remoteDbManufacturerOptions = remember(dbIndex.profiles) {
+        dbIndex.profiles
+            .map(::remoteDbManufacturer)
+            .distinct()
+            .sorted()
+    }
+    val remoteDbProtocolOptions = remoteDbProtocolsByPath
+        .values
+        .flatten()
+        .distinct()
+        .sorted()
     
     // Remote DB filtering on background thread to avoid UI lag
     var remoteDbFilteredProfiles by remember { mutableStateOf<List<FlipperProfile>>(emptyList()) }
     var remoteDbMatchCount by remember { mutableStateOf(0) }
-    LaunchedEffect(remoteDbQuery, dbIndex.profiles) {
-        // Filter on default dispatcher (non-blocking background thread)
-        val filtered = withContext(Dispatchers.Default) {
-            dbIndex.profiles.filter {
-                matchesRemoteDbQuery(it, remoteDbQuery)
+    LaunchedEffect(
+        remoteDbQuery,
+        dbIndex.profiles,
+        remoteDbManufacturerFilter,
+        remoteDbCategoryFilter,
+        remoteDbProtocolFilter
+    ) {
+        val baseFiltered = withContext(Dispatchers.Default) {
+            dbIndex.profiles.filter { profile ->
+                matchesRemoteDbQuery(profile, remoteDbQuery) &&
+                    (remoteDbCategoryFilter.isNullOrBlank() || remoteDbCategory(profile).equals(remoteDbCategoryFilter, ignoreCase = true)) &&
+                    (remoteDbManufacturerFilter.isNullOrBlank() || remoteDbManufacturer(profile).equals(remoteDbManufacturerFilter, ignoreCase = true))
             }
         }
+
+        val protocolFilter = remoteDbProtocolFilter?.takeIf { it.isNotBlank() }
+        val filtered = if (protocolFilter == null) {
+            baseFiltered
+        } else {
+            val missing = baseFiltered.filter { it.path !in remoteDbProtocolsByPath }
+            if (missing.isNotEmpty()) {
+                val loaded = withContext(Dispatchers.IO) {
+                    missing.associate { profile ->
+                        val (allProtocols, top3) = loadProfileProtocolsSummary(context, profile.path)
+                        profile.path to (allProtocols to top3)
+                    }
+                }
+                loaded.forEach { (path, value) ->
+                    remoteDbProtocolsByPath[path] = value.first
+                    remoteDbTopProtocolsByPath[path] = value.second
+                }
+            }
+
+            baseFiltered.filter { profile ->
+                remoteDbProtocolsByPath[profile.path]?.contains(protocolFilter.uppercase()) == true
+            }
+        }
+
         remoteDbMatchCount = filtered.size
         remoteDbFilteredProfiles = filtered.take(REMOTE_DB_RESULT_LIMIT)
+    }
+
+    LaunchedEffect(remoteDbFilteredProfiles) {
+        val missing = remoteDbFilteredProfiles
+            .take(80)
+            .filter { it.path !in remoteDbTopProtocolsByPath }
+        if (missing.isEmpty()) return@LaunchedEffect
+
+        val loaded = withContext(Dispatchers.IO) {
+            missing.associate { profile ->
+                val (allProtocols, top3) = loadProfileProtocolsSummary(context, profile.path)
+                profile.path to (allProtocols to top3)
+            }
+        }
+        loaded.forEach { (path, value) ->
+            remoteDbProtocolsByPath[path] = value.first
+            remoteDbTopProtocolsByPath[path] = value.second
+        }
     }
 
     // ── Remote Control state ──────────────────────────────────────────────────────
@@ -1249,6 +1391,11 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 screen = Screen.MACRO_EDITOR
                             }
                         )
+                        Screen.REMOTE_DB -> listOf(
+                            Icons.Filled.FilterList to {
+                                remoteDbShowFilterTypeDialog = true
+                            }
+                        )
                         else -> emptyList()
                     }
                 )
@@ -1310,6 +1457,114 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             editorDiscardTarget = null
                         }) {
                             Text("Stay")
+                        }
+                    }
+                )
+            }
+
+            if (remoteDbShowFilterTypeDialog) {
+                AlertDialog(
+                    onDismissRequest = { remoteDbShowFilterTypeDialog = false },
+                    title = { Text("Add filter") },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                remoteDbFilterPickerType = RemoteDbFilterType.MANUFACTURER
+                                remoteDbShowFilterTypeDialog = false
+                            }) {
+                                Text("Manufacturer")
+                            }
+                            TextButton(onClick = {
+                                remoteDbFilterPickerType = RemoteDbFilterType.CATEGORY
+                                remoteDbShowFilterTypeDialog = false
+                            }) {
+                                Text("Device category")
+                            }
+                            TextButton(onClick = {
+                                remoteDbFilterPickerType = RemoteDbFilterType.PROTOCOL
+                                remoteDbShowFilterTypeDialog = false
+                            }) {
+                                Text("Protocol")
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        TextButton(onClick = { remoteDbShowFilterTypeDialog = false }) {
+                            Text("Close")
+                        }
+                    }
+                )
+            }
+
+            remoteDbFilterPickerType?.let { filterType ->
+                val options = when (filterType) {
+                    RemoteDbFilterType.MANUFACTURER -> remoteDbManufacturerOptions
+                    RemoteDbFilterType.CATEGORY -> remoteDbCategoryOptions
+                    RemoteDbFilterType.PROTOCOL -> remoteDbProtocolOptions
+                }
+                val currentValue = when (filterType) {
+                    RemoteDbFilterType.MANUFACTURER -> remoteDbManufacturerFilter
+                    RemoteDbFilterType.CATEGORY -> remoteDbCategoryFilter
+                    RemoteDbFilterType.PROTOCOL -> remoteDbProtocolFilter
+                }
+
+                AlertDialog(
+                    onDismissRequest = { remoteDbFilterPickerType = null },
+                    title = {
+                        Text(
+                            when (filterType) {
+                                RemoteDbFilterType.MANUFACTURER -> "Select manufacturer"
+                                RemoteDbFilterType.CATEGORY -> "Select category"
+                                RemoteDbFilterType.PROTOCOL -> "Select protocol"
+                            }
+                        )
+                    },
+                    text = {
+                        val scroll = rememberScrollState()
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(260.dp)
+                                .verticalScroll(scroll),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            options.forEach { option ->
+                                TextButton(
+                                    onClick = {
+                                        when (filterType) {
+                                            RemoteDbFilterType.MANUFACTURER -> remoteDbManufacturerFilter = option
+                                            RemoteDbFilterType.CATEGORY -> remoteDbCategoryFilter = option
+                                            RemoteDbFilterType.PROTOCOL -> remoteDbProtocolFilter = option
+                                        }
+                                        remoteDbFilterPickerType = null
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    val marker = if (option == currentValue) "* " else ""
+                                    Text("$marker$option")
+                                }
+                            }
+                            if (options.isEmpty()) {
+                                Text("No options yet. Open a few remotes to load protocol metadata.")
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            when (filterType) {
+                                RemoteDbFilterType.MANUFACTURER -> remoteDbManufacturerFilter = null
+                                RemoteDbFilterType.CATEGORY -> remoteDbCategoryFilter = null
+                                RemoteDbFilterType.PROTOCOL -> remoteDbProtocolFilter = null
+                            }
+                            remoteDbFilterPickerType = null
+                        }) {
+                            Text("Clear")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { remoteDbFilterPickerType = null }) {
+                            Text("Close")
                         }
                     }
                 )
@@ -1499,55 +1754,94 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
 
                     Screen.REMOTE_DB -> {
                         val filtered = remoteDbFilteredProfiles
-                        RemotesListScreen(
-                            emptyText = "No matching remotes in database.",
-                            items = filtered.map { it.name to prettyPath(it.parentPath) },
-                            iconNameForItem = { idx ->
-                                categorySeedFromPath(filtered[idx].parentPath)
-                            },
-                            onOpen = { index ->
-                                val profile = filtered[index]
-                                openDatabaseRemote(
-                                    profile = profile,
-                                    source = ControlSource.REMOTE_DB,
-                                    returnScreen = Screen.REMOTE_DB
-                                )
-                            },
-                            onSecondaryAction = { index ->
-                                val profile = filtered[index]
-                                if (savedRemotes.none { it.sourceProfilePath == profile.path }) {
-                                    scope.launch {
-                                        val dbCodes = loadDbIrCodeOptions(context, profile.path)
-                                        val seededButtons = profile.commands.map { cmd ->
-                                            SavedRemoteButton(
-                                                label = cmd,
-                                                code = ""
-                                            )
-                                        }
-                                        val hydratedButtons = hydrateMissingCodesFromDb(seededButtons, dbCodes)
-                                        val resolvedName = uniqueRemoteName(profile.name)
-                                        savedRemotes = savedRemotes + SavedRemote(
-                                            name = resolvedName,
-                                            profilePath = profile.path,
-                                            commands = hydratedButtons.map { it.label },
-                                            buttons = hydratedButtons,
-                                            iconName = categorySeedFromPath(profile.parentPath),
-                                            sourceProfilePath = profile.path
-                                        )
-                                        toastController.show("Added to My Remotes")
+                        val activeFilters = listOfNotNull(
+                            remoteDbManufacturerFilter?.let { "Manufacturer: $it" to { remoteDbManufacturerFilter = null } },
+                            remoteDbCategoryFilter?.let { "Category: $it" to { remoteDbCategoryFilter = null } },
+                            remoteDbProtocolFilter?.let { "Protocol: $it" to { remoteDbProtocolFilter = null } }
+                        )
+
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                TextButton(onClick = { remoteDbShowFilterTypeDialog = true }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.FilterList,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(" Add filter")
+                                }
+                                activeFilters.forEach { (label, clearFilter) ->
+                                    TextButton(onClick = clearFilter) {
+                                        Text("x $label")
                                     }
                                 }
-                            },
-                            secondaryActionLabel = "Add",
-                            secondaryActionLabelForItem = { idx ->
-                                val path = filtered[idx].path
-                                if (savedRemotes.any { it.sourceProfilePath == path }) "Added" else "Add"
-                            },
-                            secondaryActionEnabledForItem = { idx ->
-                                val path = filtered[idx].path
-                                savedRemotes.none { it.sourceProfilePath == path }
                             }
-                        )
+
+                            RemotesListScreen(
+                                emptyText = "No matching remotes in database.",
+                                items = filtered.map { profile ->
+                                    val categoryLabel = prettyPathWithChevron(profile.parentPath)
+                                    val topProtocols = remoteDbTopProtocolsByPath[profile.path].orEmpty()
+                                    val protocolSummary = if (topProtocols.isEmpty()) {
+                                        ""
+                                    } else {
+                                        " | ${topProtocols.joinToString(", ")}"
+                                    }
+                                    profile.name to "$categoryLabel$protocolSummary"
+                                },
+                                iconNameForItem = { idx ->
+                                    categorySeedFromPath(filtered[idx].parentPath)
+                                },
+                                onOpen = { index ->
+                                    val profile = filtered[index]
+                                    openDatabaseRemote(
+                                        profile = profile,
+                                        source = ControlSource.REMOTE_DB,
+                                        returnScreen = Screen.REMOTE_DB
+                                    )
+                                },
+                                onSecondaryAction = { index ->
+                                    val profile = filtered[index]
+                                    if (savedRemotes.none { it.sourceProfilePath == profile.path }) {
+                                        scope.launch {
+                                            val dbCodes = loadDbIrCodeOptions(context, profile.path)
+                                            val seededButtons = profile.commands.map { cmd ->
+                                                SavedRemoteButton(
+                                                    label = cmd,
+                                                    code = ""
+                                                )
+                                            }
+                                            val hydratedButtons = hydrateMissingCodesFromDb(seededButtons, dbCodes)
+                                            val resolvedName = uniqueRemoteName(profile.name)
+                                            savedRemotes = savedRemotes + SavedRemote(
+                                                name = resolvedName,
+                                                profilePath = profile.path,
+                                                commands = hydratedButtons.map { it.label },
+                                                buttons = hydratedButtons,
+                                                iconName = categorySeedFromPath(profile.parentPath),
+                                                sourceProfilePath = profile.path
+                                            )
+                                            toastController.show("Added to My Remotes")
+                                        }
+                                    }
+                                },
+                                secondaryActionLabel = "Add",
+                                secondaryActionLabelForItem = { idx ->
+                                    val path = filtered[idx].path
+                                    if (savedRemotes.any { it.sourceProfilePath == path }) "Added" else "Add"
+                                },
+                                secondaryActionEnabledForItem = { idx ->
+                                    val path = filtered[idx].path
+                                    savedRemotes.none { it.sourceProfilePath == path }
+                                }
+                            )
+                        }
                     }
 
                     Screen.REMOTE_CONTROL -> {
