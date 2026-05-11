@@ -38,31 +38,6 @@ private fun parsePayloadFields(payload: String): Map<String, String> {
         .toMap()
 }
 
-private fun toProtocolId(protocolRaw: String): String {
-    return when (protocolRaw.uppercase()) {
-        "NEC" -> "nec"
-        "NECEXT" -> "necext"
-        "SAMSUNG" -> "samsung"
-        "SAMSUNG32" -> "samsung32"
-        "SAMSUNG36" -> "samsung36"
-        "SIRC", "SIRC12" -> "sirc12"
-        "SIRC15" -> "sirc15"
-        "SIRC20" -> "sirc20"
-        "KASEIKYO" -> "kaseikyo"
-        "RCA" -> "rca"
-        "PIONEER" -> "pioneer"
-        "NEC42" -> "nec42"
-        "RC6" -> "rc6"
-        "RC5" -> "rc5"
-        "RC5X" -> "rc5x"
-        "NEC16" -> "nec16"
-        "DENON" -> "denon"
-        "JVC" -> "jvc"
-        "RAW" -> "raw"
-        else -> protocolRaw.lowercase()
-    }
-}
-
 private fun isRawNumericPayload(payload: String): Boolean {
     val tokens = payload.trim().split(Regex("\\s+|,|;"))
         .filter { it.isNotBlank() }
@@ -90,9 +65,8 @@ fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String,
                 return IrTransmitResult(IrTransmitStatus.FAILED, "Parsed payload requires address and command")
             }
 
-            val protocolId = toProtocolId(protocol)
             return manager.transmitCode(
-                protocolId = protocolId,
+                protocolId = protocol.lowercase(),
                 params = mapOf(
                     "address" to address,
                     "command" to command

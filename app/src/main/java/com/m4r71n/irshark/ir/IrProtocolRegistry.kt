@@ -44,6 +44,15 @@ object IrProtocolRegistry {
     }
 
     /**
+     * Register an alias for an already-registered protocol.
+     * E.g. registerAlias("sirc", "sirc12") makes "SIRC" resolve to the sirc12 encoder.
+     */
+    fun registerAlias(alias: String, targetId: String) {
+        val encoder = encoders[targetId.lowercase()] ?: return
+        encoders[alias.lowercase()] = encoder
+    }
+
+    /**
      * Clear all registered encoders (useful for testing).
      */
     fun clear() {
