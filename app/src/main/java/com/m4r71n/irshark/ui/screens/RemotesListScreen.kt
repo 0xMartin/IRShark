@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.m4r71n.irshark.ui.components.EmptyCard
 import com.m4r71n.irshark.ui.components.ListRow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collect
+import androidx.compose.runtime.snapshotFlow
 
 @Composable
 fun RemotesListScreen(
@@ -42,9 +47,24 @@ fun RemotesListScreen(
     onFavoriteToggleForItem: ((Int) -> Unit)? = null,
     onDuplicateForItem: ((Int) -> Unit)? = null,
     secondaryActionIcon: ImageVector? = null,
-    iconNameForItem: ((Int) -> String?)? = null
+    iconNameForItem: ((Int) -> String?)? = null,
+    onEndReached: (() -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(items.size, onEndReached) {
+        if (onEndReached == null || items.isEmpty()) return@LaunchedEffect
+        snapshotFlow {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            lastVisible >= (items.lastIndex - 3)
+        }
+            .distinctUntilChanged()
+            .collect { reached ->
+                if (reached) onEndReached()
+            }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         if (!topActionLabel.isNullOrBlank() && onTopAction != null) {
             Box(
@@ -67,6 +87,7 @@ fun RemotesListScreen(
             EmptyCard(emptyText)
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),

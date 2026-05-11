@@ -591,7 +591,20 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     val remoteDbProtocolOptions = (REMOTE_DB_PROTOCOL_FILTER_OPTIONS + discoveredProtocolOptions)
         .distinct()
         .sorted()
-    
+
+    var remoteDbVisibleLimit by rememberSaveable { mutableIntStateOf(REMOTE_DB_RESULT_LIMIT) }
+    var remoteDbAllFilteredProfiles by remember { mutableStateOf<List<FlipperProfile>>(emptyList()) }
+
+    LaunchedEffect(
+        remoteDbQuery,
+        dbIndex.profiles,
+        remoteDbManufacturerFilter,
+        remoteDbCategoryFilter,
+        remoteDbProtocolFilter
+    ) {
+        remoteDbVisibleLimit = REMOTE_DB_RESULT_LIMIT
+    }
+
     // Remote DB filtering on background thread to avoid UI lag
     var remoteDbFilteredProfiles by remember { mutableStateOf<List<FlipperProfile>>(emptyList()) }
     var remoteDbMatchCount by remember { mutableStateOf(0) }
@@ -600,7 +613,8 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         dbIndex.profiles,
         remoteDbManufacturerFilter,
         remoteDbCategoryFilter,
-        remoteDbProtocolFilter
+        remoteDbProtocolFilter,
+        remoteDbVisibleLimit
     ) {
         val baseFiltered = withContext(Dispatchers.Default) {
             dbIndex.profiles.filter { profile ->
@@ -649,8 +663,9 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
             }
         }
 
+        remoteDbAllFilteredProfiles = filtered
         remoteDbMatchCount = filtered.size
-        remoteDbFilteredProfiles = filtered.take(REMOTE_DB_RESULT_LIMIT).toList()
+        remoteDbFilteredProfiles = filtered.take(remoteDbVisibleLimit).toList()
     }
 
     LaunchedEffect(remoteDbFilteredProfiles) {
@@ -1898,6 +1913,13 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 secondaryActionEnabledForItem = { idx ->
                                     val path = filtered[idx].path
                                     savedRemotes.none { it.sourceProfilePath == path }
+                                },
+                                onEndReached = {
+                                    if (remoteDbFilteredProfiles.size < remoteDbMatchCount) {
+                                        remoteDbVisibleLimit =
+                                            (remoteDbVisibleLimit + REMOTE_DB_RESULT_LIMIT)
+                                                .coerceAtMost(remoteDbAllFilteredProfiles.size)
+                                    }
                                 }
                             )
                         }
