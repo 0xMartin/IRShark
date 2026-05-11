@@ -17,7 +17,7 @@ object IrProtocolUtils {
      * @throws IllegalArgumentException if format is invalid
      */
     fun parseHexValue(hex: String, minDigits: Int = 1, maxDigits: Int = 8): Int {
-        val cleaned = hex.trim().removePrefix("0x").removePrefix("0X").uppercase()
+        val cleaned = hex.trim().replace(" ", "").removePrefix("0x").removePrefix("0X").uppercase()
         
         if (cleaned.length < minDigits) {
             throw IllegalArgumentException("Hex value too short: '$hex' (need at least $minDigits digits)")

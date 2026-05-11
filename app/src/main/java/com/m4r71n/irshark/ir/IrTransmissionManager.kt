@@ -106,6 +106,7 @@ class IrTransmissionManager(private val context: Context) {
         modeRaw: String = "",
         bridgeEndpointRaw: String = ""
     ): IrTransmitResult {
+        Log.d(TAG, "transmitCode called: protocolId=$protocolId, params=$params")
         val encoder = IrProtocolRegistry.getEncoder(protocolId)
             ?: return IrTransmitResult(
                 IrTransmitStatus.FAILED,
@@ -113,8 +114,12 @@ class IrTransmissionManager(private val context: Context) {
             )
 
         val encodeResult = try {
-            encoder.encode(params)
+            Log.d(TAG, "Encoding protocol=$protocolId with params=$params")
+            val result = encoder.encode(params)
+            Log.d(TAG, "Encoding successful: pattern size=${result.pattern.size}, freq=${result.frequencyHz}")
+            result
         } catch (e: Exception) {
+            Log.e(TAG, "Encoding failed: ${e.message}", e)
             return IrTransmitResult(
                 IrTransmitStatus.FAILED,
                 "Encoding failed: ${e.message}"
@@ -173,7 +178,17 @@ class IrTransmissionManager(private val context: Context) {
             )
         }
 
-        if (!IrProtocolUtils.isTransmitPatternSupported(encodeResult.pattern)) {
+        // Ensure pattern ends with space (even-length)
+        val finalPattern = if (encodeResult.pattern.size % 2 == 1) {
+            Log.d(TAG, "Pattern has odd length (${encodeResult.pattern.size}), adding 45ms trailing space")
+            encodeResult.pattern + intArrayOf(45000)
+        } else {
+            Log.d(TAG, "Pattern has even length (${encodeResult.pattern.size})")
+            encodeResult.pattern
+        }
+        Log.d(TAG, "Final pattern: size=${finalPattern.size}, freq=${encodeResult.frequencyHz}, first 20=${finalPattern.take(20)}")
+
+        if (!IrProtocolUtils.isTransmitPatternSupported(finalPattern)) {
             return IrTransmitResult(
                 IrTransmitStatus.FAILED,
                 "Pattern validation failed (duration or size out of bounds)"
@@ -181,7 +196,9 @@ class IrTransmissionManager(private val context: Context) {
         }
 
         return try {
-            irManager.transmit(encodeResult.frequencyHz, encodeResult.pattern)
+            Log.d(TAG, "Calling irManager.transmit with freq=${encodeResult.frequencyHz}, pattern size=${finalPattern.size}")
+            irManager.transmit(encodeResult.frequencyHz, finalPattern)
+            Log.d(TAG, "IR transmit succeeded")
             IrTransmitResult(IrTransmitStatus.SUCCESS)
         } catch (error: IllegalArgumentException) {
             Log.w(TAG, "IR transmit rejected by platform: ${error.message}")

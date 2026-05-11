@@ -1,6 +1,9 @@
 package com.m4r71n.irshark.ir
 
 import android.content.Context
+import android.util.Log
+
+private const val TAG = "IrCompatLayer"
 
 /**
  * Compatibility layer - přemostění starého API na nový IrTransmissionManager.
@@ -77,13 +80,16 @@ fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String,
     val manager = IrTransmissionManager(context)
 
     val payload = codePayload.trim()
+    Log.d(TAG, "transmitIrCodeResult: payload='$payload'")
     val fields = parsePayloadFields(payload)
+    Log.d(TAG, "Parsed fields: $fields")
 
     if (fields.isNotEmpty()) {
         val explicitType = fields["type"]?.lowercase().orEmpty()
 
         val rawData = fields["data"].orEmpty()
         if (explicitType == "raw" || rawData.isNotBlank()) {
+            Log.d(TAG, "Using RAW protocol")
             val rawParams = mutableMapOf<String, Any>(
                 "pattern" to rawData
             )
@@ -102,12 +108,16 @@ fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String,
         if (explicitType == "parsed" || protocol.isNotBlank()) {
             val address = fields["address"].orEmpty()
             val command = fields["command"].orEmpty()
+            Log.d(TAG, "Using protocol=$protocol, address=$address, command=$command")
             if (address.isBlank() || command.isBlank()) {
+                Log.d(TAG, "Missing address or command")
                 return IrTransmitResult(IrTransmitStatus.FAILED, "Parsed payload requires address and command")
             }
 
+            val protocolId = toProtocolId(protocol)
+            Log.d(TAG, "Mapped protocol '$protocol' to protocolId '$protocolId'")
             return manager.transmitCode(
-                protocolId = toProtocolId(protocol),
+                protocolId = protocolId,
                 params = mapOf(
                     "address" to address,
                     "command" to command
@@ -119,6 +129,7 @@ fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String,
     }
 
     if (isRawNumericPayload(payload)) {
+        Log.d(TAG, "Payload looks like raw numeric")
         return manager.transmitCode(
             protocolId = "raw",
             params = mapOf("pattern" to payload),
@@ -127,5 +138,6 @@ fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String,
         )
     }
 
+    Log.d(TAG, "Unsupported payload format: $payload")
     return IrTransmitResult(IrTransmitStatus.FAILED, "Unsupported payload format")
 }
