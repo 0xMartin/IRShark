@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.ViewList
@@ -35,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -51,7 +53,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,30 +93,6 @@ private val editorIconOptions = listOf(
     "Microwaves",
     "Other"
 )
-
-private fun upsertEditorField(payload: String, key: String, value: String): String {
-    val parts = payload
-        .split(';', '\n')
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .toMutableList()
-
-    var replaced = false
-    val updated = parts.map { part ->
-        val idx = part.indexOf('=')
-        if (idx <= 0) return@map part
-        val k = part.substring(0, idx).trim()
-        if (k.equals(key, ignoreCase = true)) {
-            replaced = true
-            "$key=$value"
-        } else {
-            part
-        }
-    }.toMutableList()
-
-    if (!replaced) updated.add("$key=$value")
-    return updated.joinToString("; ")
-}
 
 private object IrEditorSyntaxHighlight : VisualTransformation {
     private val keyStyle = SpanStyle(color = Color(0xFF8AB4F8), fontWeight = FontWeight.SemiBold)
@@ -163,6 +143,39 @@ private object IrEditorSyntaxHighlight : VisualTransformation {
         }
         return TransformedText(out, OffsetMapping.Identity)
     }
+}
+
+private fun validateEditorButtonCode(code: String): String? {
+    val lines = code.split("\n").map { it.trim() }
+    for (line in lines) {
+        if (line.isEmpty()) continue
+        val parts = line.split("=")
+        if (parts.size != 2) {
+            return "Invalid syntax: Each line must contain a key=value pair."
+        }
+        val key = parts[0].trim()
+        val value = parts[1].trim()
+        if (key.isEmpty() || value.isEmpty()) {
+            return "Invalid syntax: Key or value cannot be empty."
+        }
+        if (!listOf("type", "protocol", "address", "command", "data", "frequency").contains(key)) {
+            return "Invalid key: $key is not recognized."
+        }
+    }
+    return null
+}
+
+private fun normalizeEditorCodeForSave(input: String): String {
+    return input
+        .split(';', '\n')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .joinToString("; ")
+}
+
+private fun formatEditorCodeForDisplay(input: String): String {
+    val normalized = normalizeEditorCodeForSave(input)
+    return if (normalized.isEmpty()) "" else normalized.replace("; ", ";\n")
 }
 
 @Composable
@@ -533,6 +546,46 @@ fun RemoteButtonEditorScreen(
     val violet = MaterialTheme.colorScheme.primary
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val editorHeight = (screenHeight * 0.5f).coerceAtLeast(220.dp)
+    var pendingQuickInsert by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var editorCode by remember { mutableStateOf(formatEditorCodeForDisplay(buttonCode)) }
+
+    LaunchedEffect(buttonCode) {
+        val display = formatEditorCodeForDisplay(buttonCode)
+        if (display != editorCode) {
+            editorCode = display
+        }
+    }
+
+    fun quickInsertTemplate(selection: String): String {
+        return if (selection == "RAW") {
+            "type=raw; frequency=38000; data=9000 4500 560 560"
+        } else {
+            "type=parsed; protocol=$selection; address=00 FF; command=20 DF"
+        }
+    }
+
+    pendingQuickInsert?.let { (_, selection) ->
+        AlertDialog(
+            onDismissRequest = { pendingQuickInsert = null },
+            title = { Text("Replace current code?") },
+            text = { Text("This will replace your current unsaved IR code changes.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onCodeChange(quickInsertTemplate(selection))
+                        pendingQuickInsert = null
+                    }
+                ) {
+                    Text("Replace")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingQuickInsert = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -558,17 +611,13 @@ fun RemoteButtonEditorScreen(
                     )
 
                     Text("Quick insert", color = Color(0xFFB699FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+                    LazyRow(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 118.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                            .fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        val suggestions = listOf(
-                            "RAW" to "type=raw; frequency=38000; data=9000 4500 560 560",
-                            "PARSED" to "type=parsed; protocol=NEC; address=00 FF; command=20 DF",
+                        val suggestions: List<Pair<String, String>> = listOf(
+                            "RAW" to "RAW",
                             "NEC" to "NEC",
                             "RC5" to "RC5",
                             "RC5X" to "RC5X",
@@ -577,16 +626,10 @@ fun RemoteButtonEditorScreen(
                             "KASEIKYO" to "KASEIKYO",
                             "SIRC20" to "SIRC20"
                         )
-                        items(suggestions.size) { idx ->
-                            val (title, payload) = suggestions[idx]
+                        this.items(suggestions) { (title, selection) ->
                             AssistChip(
                                 onClick = {
-                                    onCodeChange(
-                                        when (title) {
-                                            "RAW", "PARSED" -> payload
-                                            else -> upsertEditorField(buttonCode, "protocol", payload)
-                                        }
-                                    )
+                                    pendingQuickInsert = title to selection
                                 },
                                 label = { Text(title, fontSize = 10.sp) }
                             )
@@ -594,15 +637,22 @@ fun RemoteButtonEditorScreen(
                     }
 
                     OutlinedTextField(
-                        value = buttonCode,
-                        onValueChange = onCodeChange,
+                        value = editorCode,
+                        onValueChange = {
+                            val displayValue = formatEditorCodeForDisplay(it)
+                            editorCode = displayValue
+                            onCodeChange(normalizeEditorCodeForSave(displayValue))
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(editorHeight),
                         label = { Text("IR code payload") },
                         isError = codeError != null,
                         visualTransformation = IrEditorSyntaxHighlight,
-                        singleLine = false
+                        singleLine = false,
+                        keyboardOptions = KeyboardOptions.Default.copy(
+                            capitalization = KeyboardCapitalization.None
+                        )
                     )
                     if (codeError != null) {
                         Text(codeError!!, color = Color(0xFFFF8A80), fontSize = 11.sp)

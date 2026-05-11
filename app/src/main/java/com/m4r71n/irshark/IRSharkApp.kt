@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -906,6 +907,32 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         screen = Screen.REMOTE_EDITOR
     }
 
+    fun sendButtonEditorPayload() {
+        val payload = editorButtonCode.trim()
+        if (payload.isBlank()) {
+            toastController.show("IR code payload is empty")
+            return
+        }
+        emitTxPulse()
+        scope.launch(Dispatchers.IO) {
+            val txResult = transmitIrCodeResult(
+                context,
+                payload,
+                modeRaw = txModeRaw,
+                bridgeEndpointRaw = bridgeEndpoint
+            )
+            if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
+                withContext(Dispatchers.Main) {
+                    toastController.show("No IR output found. Internal IR or live bridge not available.")
+                }
+            } else if (!txResult.success && txResult.message.isNotBlank()) {
+                withContext(Dispatchers.Main) {
+                    toastController.show(txResult.message)
+                }
+            }
+        }
+    }
+
     fun performEditorExit(target: Screen) {
         when (screen) {
             Screen.REMOTE_EDITOR -> {
@@ -1514,6 +1541,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             Icons.Filled.Save to { if (remoteEditorCanSave) saveRemoteEditor() }
                         )
                         Screen.REMOTE_BUTTON_EDITOR -> listOf(
+                            Icons.Filled.Send to { sendButtonEditorPayload() },
                             Icons.Filled.Close to { requestEditorExit(Screen.REMOTE_EDITOR) },
                             Icons.Filled.Save to { if (buttonEditorCanSave) saveButtonEditor() }
                         )
