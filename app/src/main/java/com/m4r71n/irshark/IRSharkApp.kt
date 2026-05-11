@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -1308,6 +1309,88 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
         view.keepScreenOn = universalAutoSend
         onDispose {
             view.keepScreenOn = false
+        }
+    }
+
+    val activity = context as? ComponentActivity
+    BackHandler(enabled = true) {
+        when {
+            remoteDbFilterPickerType != null -> {
+                remoteDbFilterSearchQuery = ""
+                remoteDbFilterPickerType = null
+            }
+
+            remoteDbShowFilterTypeDialog -> {
+                remoteDbShowFilterTypeDialog = false
+            }
+
+            showEditorDiscardDialog -> {
+                showEditorDiscardDialog = false
+                editorDiscardTarget = null
+            }
+
+            showConfirmNavDialog -> {
+                showConfirmNavDialog = false
+            }
+
+            screen == Screen.HOME -> {
+                activity?.finish()
+            }
+
+            screen == Screen.UNIVERSAL -> {
+                parentPath(universalPath)?.let {
+                    universalPath = it
+                    universalCommand = null
+                    universalCodeStep = 0
+                    universalProcessedCount = 0
+                    universalStartedAtMs = 0L
+                    universalAutoSend = false
+                    return@BackHandler
+                }
+                universalAutoSend = false
+                universalCommand = null
+                universalCodeStep = 0
+                universalProcessedCount = 0
+                universalStartedAtMs = 0L
+                screen = Screen.HOME
+            }
+
+            screen == Screen.REMOTE_CONTROL -> {
+                controlRepeatSending = false
+                controlRemoteIndex = -1
+                screen = controlReturnScreen
+            }
+
+            screen == Screen.REMOTE_EDITOR -> {
+                requestEditorExit(remoteEditorReturnScreen)
+            }
+
+            screen == Screen.REMOTE_BUTTON_EDITOR -> {
+                requestEditorExit(Screen.REMOTE_EDITOR)
+            }
+
+            screen == Screen.IR_FINDER -> {
+                if (irFinderInTestButtons) {
+                    showConfirmNavDialog = true
+                    confirmNavReason = "You're still testing buttons. Your progress will be lost. Leave anyway?"
+                } else {
+                    val onBack = irFinderOnBack
+                    if (onBack != null) onBack() else screen = Screen.HOME
+                }
+            }
+
+            screen == Screen.MACRO_RUN -> {
+                macroEngine.stop()
+                screen = Screen.MACROS
+            }
+
+            screen == Screen.MACRO_EDITOR -> {
+                screen = Screen.MACROS
+            }
+
+            else -> {
+                screen = Screen.HOME
+            }
         }
     }
 
