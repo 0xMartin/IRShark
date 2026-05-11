@@ -66,11 +66,10 @@ import com.m4r71n.irshark.data.prettyName
 import com.m4r71n.irshark.data.prettyPath
 import com.m4r71n.irshark.data.profilesUnderPath
 import com.m4r71n.irshark.ui.components.CategorySvgIcon
-import com.m4r71n.irshark.ir.transmitIrCode
 import com.m4r71n.irshark.ir.extractProtocolFromPayload
 import com.m4r71n.irshark.ir.IrTransmitStatus
 import com.m4r71n.irshark.ir.IrTransmitStatus.*
-import com.m4r71n.irshark.ir.transmitIrCodeResult
+import com.m4r71n.irshark.ir.IrTransmissionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -538,7 +537,7 @@ fun IrFinderScreen(
                         selectedButtonId = btn.id
                         val code = btn.code
                         scope.launch(Dispatchers.IO) {
-                            val txResult = transmitIrCodeResult(context, code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                            val txResult = IrTransmissionManager(context).transmitPayload(code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
                             if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(
@@ -556,7 +555,7 @@ fun IrFinderScreen(
                         val actualIdx = finderButtons.indexOfFirst { it.id == buttonId }
                         val btn = finderButtons.getOrNull(actualIdx) ?: return@TestButtonsStep
                         scope.launch(Dispatchers.IO) {
-                            val txResult = transmitIrCodeResult(context, btn.code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                            val txResult = IrTransmissionManager(context).transmitPayload(btn.code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
                             if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
                                 withContext(Dispatchers.Main) {
                                     Toast.makeText(
@@ -695,7 +694,7 @@ fun IrFinderScreen(
                                         val btn = finderButtons.getOrNull(actualIdx)
                                         if (btn != null) {
                                             scope.launch(Dispatchers.IO) {
-                                                val txResult = transmitIrCodeResult(context, btn.code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                                                val txResult = IrTransmissionManager(context).transmitPayload(btn.code, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
                                                 if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
                                                     withContext(Dispatchers.Main) {
                                                         Toast.makeText(

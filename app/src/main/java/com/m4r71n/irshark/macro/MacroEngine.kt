@@ -5,7 +5,7 @@ import com.m4r71n.irshark.data.MacroStep
 import com.m4r71n.irshark.data.SavedMacro
 import com.m4r71n.irshark.ir.IrTransmitStatus
 import com.m4r71n.irshark.ir.IrTransmitStatus.*
-import com.m4r71n.irshark.ir.transmitIrCodeResult
+import com.m4r71n.irshark.ir.IrTransmissionManager
 import com.m4r71n.irshark.ir.extractProtocolFromPayload
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
@@ -178,7 +178,7 @@ class MacroEngine(private val context: Context) {
                 _irTransmitEvent.tryEmit(entry)
                 pushProgress()  // update state with new log entry immediately
                 val txResult = withContext(Dispatchers.IO) {
-                    transmitIrCodeResult(context, step.irCode, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
+                    IrTransmissionManager(context).transmitPayload(step.irCode, modeRaw = txModeRaw, bridgeEndpointRaw = bridgeEndpoint)
                 }
                 if (txResult.status == IrTransmitStatus.NO_OUTPUT_AVAILABLE) {
                     if (!noIrOutputWarningShown) {

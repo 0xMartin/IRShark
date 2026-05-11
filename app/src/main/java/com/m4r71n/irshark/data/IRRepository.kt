@@ -1,7 +1,6 @@
 package com.m4r71n.irshark.data
 
 import android.content.Context
-import androidx.compose.runtime.Immutable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -17,10 +16,6 @@ private const val PRONTO_ROOT = "$DB_ROOT/_Converted_/Pronto"
 private const val PRONTO_PARENT_PATH = "$DB_ROOT/Other/Pronto"
 private const val CSV_ROOT = "$DB_ROOT/_Converted_/CSV"
 private const val CSV_PARENT_PATH = "$DB_ROOT/Other/CSV"
-private const val PREFS_NAME = "irshark_prefs"
-private const val KEY_SAVED_REMOTES = "saved_remotes"
-private const val KEY_REMOTE_HISTORY = "remote_history"
-private const val REMOTE_DELIMITER = "||"
 private const val DB_INDEX_CACHE_FILE_PREFIX = "db_index_cache"
 private const val DB_INDEX_CACHE_VERSION = 5
 private const val DOWNLOADED_DB_BASE_DIR = "flipper_irdb_downloaded"
@@ -76,114 +71,6 @@ private val dedupCommandsCache = object : LinkedHashMap<String, List<UniversalCo
     }
 }
 
-enum class DbSourceType {
-    DEFAULT,
-    DOWNLOADED
-}
-
-@Immutable
-data class FlipperDbUpdateResult(
-    val success: Boolean,
-    val updated: Boolean,
-    val latestTag: String?,
-    val message: String
-)
-
-@Immutable
-data class FlipperDbIndex(
-    val totalProfiles: Int = 0,
-    val folders: Map<String, List<String>> = emptyMap(),
-    val profilesByFolder: Map<String, List<FlipperProfile>> = emptyMap(),
-    val profiles: List<FlipperProfile> = emptyList(),
-    val lintConfig: FlipperLintConfig = FlipperLintConfig(),
-    val status: String = "Loading Flipper-IRDB..."
-)
-
-@Immutable
-data class FlipperProfile(
-    val path: String,
-    val parentPath: String,
-    val name: String,
-    val commands: List<String>
-)
-
-@Immutable
-data class SavedRemote(
-    val name: String,
-    val profilePath: String,
-    val commands: List<String>,
-    val buttons: List<SavedRemoteButton> = emptyList(),
-    val iconName: String? = null,
-    val sourceProfilePath: String? = null,
-    val favorite: Boolean = false,
-    val columnCount: Int = 2,
-    val groupByCategory: Boolean = true
-)
-
-@Immutable
-data class SavedRemoteButton(
-    val label: String,
-    val code: String
-)
-
-@Immutable
-data class RemoteHistoryEntry(
-    val name: String,
-    val profilePath: String,
-    val sourceProfilePath: String? = null,
-    val iconName: String? = null,
-    val openedAtEpochMs: Long,
-    val buttons: List<SavedRemoteButton> = emptyList()
-) {
-    val stableKey: String
-        get() = when {
-            !sourceProfilePath.isNullOrBlank() -> "db:$sourceProfilePath"
-            profilePath.isNotBlank() -> "path:$profilePath:${name.lowercase()}"
-            buttons.isNotEmpty() -> "custom:$name:${buttons.joinToString("|") { "${it.label}:${it.code}" }.hashCode()}"
-            else -> "name:${name.lowercase()}"
-        }
-}
-
-@Immutable
-data class DbIrCodeOption(
-    val label: String,
-    val code: String,
-    val details: String
-)
-
-data class FlipperLintConfig(
-    val groups: Map<String, List<LintMatcher>> = emptyMap(),
-    val pathRules: List<PathLintRule> = emptyList()
-)
-
-data class PathLintRule(
-    val patterns: List<String>,
-    val canonicalRules: List<CanonicalCommandRule>
-)
-
-data class CanonicalCommandRule(
-    val canonicalName: String,
-    val matchers: List<LintMatcher>
-)
-
-sealed class LintMatcher {
-    data class Literal(val value: String) : LintMatcher()
-    data class RegexPattern(val pattern: Regex) : LintMatcher()
-    data class GroupReference(val group: String) : LintMatcher()
-}
-
-@Immutable
-data class UniversalCommandItem(
-    val displayLabel: String,
-    val actualCommand: String,
-    val profileCoverage: Int
-)
-
-@Immutable
-data class DbLoadProgress(
-    val loadedFiles: Int = 0,
-    val totalFiles: Int = 0
-)
 
 private data class DbProfileDescriptor(
     val path: String,
@@ -202,36 +89,8 @@ private data class DbIndexCacheSnapshot(
     val signaturesByPath: Map<String, String>
 )
 
-private const val UNIVERSAL_OTHER_PATH = "$DB_ROOT/Other"
+internal const val UNIVERSAL_OTHER_PATH = "$DB_ROOT/Other"
 
-private data class OtherCanonicalRule(
-    val displayLabel: String,
-    val matchers: List<Regex>
-)
-
-private val OTHER_CANONICAL_RULES = listOf(
-    OtherCanonicalRule("POWER", listOf(Regex("^(power|pwr|on_off|power_toggle)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("POWER ON", listOf(Regex("^(power_on|on|turn_on|poweron)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("POWER OFF", listOf(Regex("^(power_off|off|turn_off|poweroff)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("MUTE", listOf(Regex("^mute(_toggle|_on|_off)?$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("VOL+", listOf(Regex("""^(vol(ume)?(\+|_up|_\^)|volume_\^|vol_\+|volume_up)$""", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("VOL-", listOf(Regex("^(vol(ume)?(-|_down|_v)|volume_v|vol_-|volume_down)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("CH+", listOf(Regex("""^(ch(annel)?(\+|_up|up|_next)|channelup)$""", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("CH-", listOf(Regex("^(ch(annel)?(-|_down|down|_prev)|ch_prev|channeldown)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("MENU", listOf(Regex("^(menu|setup|set_up|menu_setup)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("ENTER", listOf(Regex("^(enter|ok|select|cursor_enter|select_enter)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("UP", listOf(Regex("^(up|up_arrow|arrow_up|cursor_up)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("DOWN", listOf(Regex("^(down|dn_arrow|down_arrow|arrow_down|cursor_down)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("LEFT", listOf(Regex("^(left|left_arrow|arrow_left|cursor_left)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("RIGHT", listOf(Regex("^(right|right_arrow|arrow_right|cursor_right)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("INFO", listOf(Regex("^(info|display|status|osd)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("BACK", listOf(Regex("^(back|return|recall|last|prev_ch)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("INPUT", listOf(Regex("^(input|source|tv_video|tv_av|input_select)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("GUIDE", listOf(Regex("^(guide|epg|tv_guide)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("PLAY", listOf(Regex("^(play|play_pause|play/pause)$", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("STOP", listOf(Regex("""^(stop|stop_\[\]|stop1|stop2)$""", RegexOption.IGNORE_CASE))),
-    OtherCanonicalRule("PAUSE", listOf(Regex("^(pause|pause_|pause/still)$", RegexOption.IGNORE_CASE)))
-)
 
 suspend fun loadFlipperDbIndex(
     context: Context,
@@ -241,7 +100,9 @@ suspend fun loadFlipperDbIndex(
         runCatching {
             val sourceInfo = resolveDbStorage(context)
             val cacheKey = sourceInfo.cacheKey
-            val lintConfig = parseLintConfig(context)
+            val lintConfig = runCatching {
+                openDbInputStream(context, "$DB_ROOT/.fff-ir-lint.json").bufferedReader().use { parseLintConfig(it.readText()) }
+            }.getOrElse { FlipperLintConfig() }
             val cachedSnapshot = loadDbIndexCache(context, cacheKey)
 
             if (cachedSnapshot != null) {
@@ -520,49 +381,6 @@ fun resolveUniversalCommandsForPath(
         }
 }
 
-private fun resolveOtherDefaults(
-    folderPath: String,
-    commandStats: Map<String, Int>,
-    limit: Int
-): List<UniversalCommandItem> {
-    if (!(folderPath == UNIVERSAL_OTHER_PATH || folderPath.startsWith("$UNIVERSAL_OTHER_PATH/"))) {
-        return emptyList()
-    }
-
-    val normalizedStats = commandStats.entries.map { entry ->
-        entry.key to normalizeCommandToken(entry.key)
-    }
-
-    val resolved = mutableListOf<UniversalCommandItem>()
-    OTHER_CANONICAL_RULES.forEach { rule ->
-        val matched = normalizedStats
-            .filter { (_, normalized) -> rule.matchers.any { it.matches(normalized) } }
-            .mapNotNull { (rawKey, _) -> commandStats[rawKey]?.let { rawKey to it } }
-
-        if (matched.isNotEmpty()) {
-            val best = matched.maxByOrNull { it.second } ?: return@forEach
-            resolved += UniversalCommandItem(
-                displayLabel = rule.displayLabel,
-                actualCommand = best.first,
-                profileCoverage = matched.sumOf { it.second }
-            )
-        }
-    }
-
-    return resolved
-        .sortedByDescending { it.profileCoverage }
-        .take(limit)
-}
-
-private fun normalizeCommandToken(raw: String): String {
-    return raw.trim()
-        .lowercase()
-        .replace(' ', '_')
-        .replace('-', '_')
-        .replace('/', '_')
-        .replace(Regex("_+"), "_")
-        .trim('_')
-}
 
 fun countProfilesForCommand(dbIndex: FlipperDbIndex, folderPath: String, command: String): Int {
     return countProfilesForCommand(dbIndex, folderPath, command, includeConverted = true)
@@ -710,7 +528,7 @@ suspend fun resolveUniversalCommandsWithDedup(
 
 /**
  * Reads a specific profile asset and returns the raw key=value payload string
- * for the given [commandName], ready to pass to [transmitIrCode].
+ * for the given [commandName], ready to pass to [IrTransmissionManager.transmitPayload].
  */
 private fun getIrCodePayload(context: android.content.Context, profilePath: String, commandName: String): String? {
     val normalized = normalizeDisplayName(commandName)
@@ -793,247 +611,6 @@ fun categorySeedFromPath(path: String?): String? {
         .ifBlank { null }
 }
 
-fun loadSavedRemotes(context: Context): List<SavedRemote> {
-    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val raw = prefs.getString(KEY_SAVED_REMOTES, "").orEmpty()
-    if (raw.isBlank()) {
-        return emptyList()
-    }
-
-    parseSavedRemotesJson(raw)?.let { return it }
-
-    return raw.split(REMOTE_DELIMITER)
-        .mapNotNull { token ->
-            val row = token.trim()
-            if (row.isBlank()) return@mapNotNull null
-
-            val parts = row.split("::")
-            when {
-                parts.size >= 3 -> {
-                    val commands = parts[2].split(";;").map { it.trim() }.filter { it.isNotBlank() }
-                    SavedRemote(
-                        name = parts[0].trim(),
-                        profilePath = parts[1].trim(),
-                        commands = commands,
-                        buttons = commands.map { SavedRemoteButton(label = it, code = "") },
-                        iconName = categorySeedFromPath(parts[1].trim()),
-                        sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) },
-                        favorite = false
-                    )
-                }
-                parts.size == 2 -> {
-                    SavedRemote(
-                        name = parts[0].trim(),
-                        profilePath = parts[1].trim(),
-                        commands = emptyList(),
-                        buttons = emptyList(),
-                        iconName = categorySeedFromPath(parts[1].trim()),
-                        sourceProfilePath = parts[1].trim().takeIf { it.startsWith(DB_ROOT) },
-                        favorite = false
-                    )
-                }
-                else -> {
-                    SavedRemote(name = row, profilePath = "", commands = emptyList(), buttons = emptyList(), iconName = null, favorite = false)
-                }
-            }
-        }
-}
-
-fun saveSavedRemotes(context: Context, remotes: List<SavedRemote>) {
-    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val serialized = serializeSavedRemotesJson(remotes)
-    prefs.edit().putString(KEY_SAVED_REMOTES, serialized.toString()).apply()
-}
-
-fun loadRemoteHistory(context: Context): List<RemoteHistoryEntry> {
-    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val raw = prefs.getString(KEY_REMOTE_HISTORY, "").orEmpty().trim()
-    if (raw.isBlank() || !raw.startsWith("[")) return emptyList()
-
-    return runCatching {
-        val arr = JSONArray(raw)
-        buildList {
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val name = obj.optString("name").trim()
-                if (name.isBlank()) continue
-
-                val buttons = obj.optJSONArray("buttons")?.let { list ->
-                    buildList {
-                        for (j in 0 until list.length()) {
-                            val button = list.optJSONObject(j) ?: continue
-                            val label = button.optString("label").trim()
-                            if (label.isBlank()) continue
-                            add(
-                                SavedRemoteButton(
-                                    label = label,
-                                    code = button.optString("code").trim()
-                                )
-                            )
-                        }
-                    }
-                }.orEmpty()
-
-                add(
-                    RemoteHistoryEntry(
-                        name = name,
-                        profilePath = obj.optString("profilePath").trim(),
-                        sourceProfilePath = obj.optString("sourceProfilePath").trim().ifBlank { null },
-                        iconName = obj.optString("iconName").trim().ifBlank { null },
-                        openedAtEpochMs = obj.optLong("openedAtEpochMs", 0L),
-                        buttons = buttons
-                    )
-                )
-            }
-        }
-    }.getOrElse { emptyList() }
-}
-
-fun saveRemoteHistory(context: Context, history: List<RemoteHistoryEntry>) {
-    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-    val serialized = JSONArray().apply {
-        history.take(100).forEach { entry ->
-            put(
-                JSONObject().apply {
-                    put("name", entry.name)
-                    put("profilePath", entry.profilePath)
-                    put("sourceProfilePath", entry.sourceProfilePath ?: "")
-                    put("iconName", entry.iconName ?: "")
-                    put("openedAtEpochMs", entry.openedAtEpochMs)
-                    put(
-                        "buttons",
-                        JSONArray().apply {
-                            entry.buttons.forEach { button ->
-                                put(
-                                    JSONObject().apply {
-                                        put("label", button.label)
-                                        put("code", button.code)
-                                    }
-                                )
-                            }
-                        }
-                    )
-                }
-            )
-        }
-    }.toString()
-    prefs.edit().putString(KEY_REMOTE_HISTORY, serialized).apply()
-}
-
-fun recordRemoteHistory(
-    history: List<RemoteHistoryEntry>,
-    entry: RemoteHistoryEntry,
-    limit: Int = 100
-): List<RemoteHistoryEntry> {
-    val deduped = history.filterNot { it.stableKey == entry.stableKey }
-    return listOf(entry) + deduped.take((limit - 1).coerceAtLeast(0))
-}
-
-fun serializeSavedRemotesJson(remotes: List<SavedRemote>): String {
-    return JSONArray().apply {
-        remotes.forEach { remote ->
-            put(
-                JSONObject().apply {
-                    put("name", remote.name)
-                    put("profilePath", remote.profilePath)
-                    put("iconName", remote.iconName ?: "")
-                    put("sourceProfilePath", remote.sourceProfilePath ?: "")
-                    put("favorite", remote.favorite)
-                    put("columnCount", remote.columnCount)
-                    put("groupByCategory", remote.groupByCategory)
-                    put(
-                        "commands",
-                        JSONArray().apply {
-                            remote.commands.forEach { put(it) }
-                        }
-                    )
-                    put(
-                        "buttons",
-                        JSONArray().apply {
-                            remote.buttons.forEach { button ->
-                                put(
-                                    JSONObject().apply {
-                                        put("label", button.label)
-                                        put("code", button.code)
-                                    }
-                                )
-                            }
-                        }
-                    )
-                }
-            )
-        }
-    }.toString()
-}
-
-fun parseSavedRemotesJson(raw: String): List<SavedRemote>? {
-    val trimmed = raw.trim()
-    if (!trimmed.startsWith("[")) return null
-
-    return runCatching {
-        val arr = JSONArray(trimmed)
-        buildList {
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val name = obj.optString("name").trim()
-                if (name.isBlank()) continue
-
-                val profilePath = obj.optString("profilePath").trim()
-                val commands = obj.optJSONArray("commands")?.let { list ->
-                    buildList {
-                        for (j in 0 until list.length()) {
-                            val cmd = list.optString(j).trim()
-                            if (cmd.isNotBlank()) add(cmd)
-                        }
-                    }
-                }.orEmpty()
-
-                val buttons = obj.optJSONArray("buttons")?.let { list ->
-                    buildList {
-                        for (j in 0 until list.length()) {
-                            val b = list.optJSONObject(j) ?: continue
-                            val label = b.optString("label").trim()
-                            if (label.isBlank()) continue
-                            add(
-                                SavedRemoteButton(
-                                    label = label,
-                                    code = b.optString("code").trim()
-                                )
-                            )
-                        }
-                    }
-                }.orEmpty()
-
-                val sourceProfilePath = obj.optString("sourceProfilePath").trim().ifBlank {
-                    if (profilePath.startsWith(DB_ROOT)) profilePath else ""
-                }.ifBlank { null }
-                val iconName = obj.optString("iconName").trim().ifBlank {
-                    categorySeedFromPath(sourceProfilePath ?: profilePath)
-                }
-
-                val resolvedButtons = if (buttons.isNotEmpty()) {
-                    buttons
-                } else {
-                    commands.map { SavedRemoteButton(label = it, code = "") }
-                }
-
-                add(
-                    SavedRemote(
-                        name = name,
-                        profilePath = profilePath,
-                        commands = if (commands.isNotEmpty()) commands else resolvedButtons.map { it.label },
-                        buttons = resolvedButtons,
-                        iconName = iconName,
-                        sourceProfilePath = sourceProfilePath,
-                        favorite = obj.optBoolean("favorite", false),
-                        columnCount = obj.optInt("columnCount", 2).coerceIn(1, 3),
-                        groupByCategory = obj.optBoolean("groupByCategory", true)
-                    )
-                )
-            }
-        }
-    }.getOrElse { emptyList() }
-}
 
 suspend fun loadDbIrCodeOptions(context: Context, assetPath: String): List<DbIrCodeOption> {
     return withContext(Dispatchers.IO) {
@@ -1345,149 +922,6 @@ private fun loadDbIndexCache(context: Context, cacheKey: String): DbIndexCacheSn
     }.getOrNull()
 }
 
-private fun parseLintConfig(context: Context): FlipperLintConfig {
-    return runCatching {
-        val raw = openDbInputStream(context, "$DB_ROOT/.fff-ir-lint.json").bufferedReader().use { it.readText() }
-        val root = JSONObject(raw)
-        val nameCheck = root.optJSONObject("name-check") ?: return@runCatching FlipperLintConfig()
-
-        val groupsObj = nameCheck.optJSONObject("\$groups")
-        val groups = mutableMapOf<String, List<LintMatcher>>()
-        if (groupsObj != null) {
-            groupsObj.keys().forEach { groupName ->
-                groups[groupName] = parseMatcherArray(groupsObj.optJSONArray(groupName))
-            }
-        }
-
-        val pathRules = mutableListOf<PathLintRule>()
-        nameCheck.keys().forEach { key ->
-            if (key.startsWith("$")) return@forEach
-            val pathRuleObj = nameCheck.optJSONObject(key) ?: return@forEach
-            val canonicalRules = mutableListOf<CanonicalCommandRule>()
-
-            pathRuleObj.keys().forEach { canonicalName ->
-                val matcherArray = pathRuleObj.optJSONArray(canonicalName) ?: JSONArray()
-                canonicalRules += CanonicalCommandRule(
-                    canonicalName = canonicalName,
-                    matchers = parseMatcherArray(matcherArray)
-                )
-            }
-
-            val patterns = key.split(',').map { it.trim() }.filter { it.isNotBlank() }
-            if (patterns.isNotEmpty() && canonicalRules.isNotEmpty()) {
-                pathRules += PathLintRule(patterns = patterns, canonicalRules = canonicalRules)
-            }
-        }
-
-        FlipperLintConfig(groups = groups, pathRules = pathRules)
-    }.getOrElse { FlipperLintConfig() }
-}
-
-private fun parseMatcherArray(array: JSONArray?): List<LintMatcher> {
-    if (array == null) return emptyList()
-    val result = mutableListOf<LintMatcher>()
-    for (i in 0 until array.length()) {
-        val raw = array.optString(i).trim()
-        if (raw.isBlank()) continue
-        result += when {
-            raw.startsWith("\$group:") -> {
-                LintMatcher.GroupReference(raw.removePrefix("\$group:").trim())
-            }
-            raw.startsWith("/") && raw.endsWith("/") && raw.length > 2 -> {
-                val pattern = raw.substring(1, raw.length - 1)
-                runCatching { Regex(pattern, RegexOption.IGNORE_CASE) }
-                    .getOrElse { Regex(Regex.escape(pattern), RegexOption.IGNORE_CASE) }
-                    .let { LintMatcher.RegexPattern(it) }
-            }
-            else -> {
-                LintMatcher.Literal(raw.lowercase())
-            }
-        }
-    }
-    return result
-}
-
-private fun resolveUsingLint(
-    lintConfig: FlipperLintConfig,
-    folderPath: String,
-    commandStats: Map<String, Int>
-): List<UniversalCommandItem> {
-    val relativePath = folderPath.removePrefix("$DB_ROOT/").removePrefix(DB_ROOT)
-    if (relativePath.isBlank()) return emptyList()
-
-    val matchingRules = lintConfig.pathRules.filter { rule ->
-        rule.patterns.any { pattern -> wildcardPathMatches(pattern, relativePath) }
-    }
-    if (matchingRules.isEmpty()) return emptyList()
-
-    val resolved = mutableListOf<UniversalCommandItem>()
-    val alreadyUsed = mutableSetOf<String>()
-
-    matchingRules.forEach { rule ->
-        rule.canonicalRules.forEach { canonical ->
-            val best = commandStats.entries
-                .asSequence()
-                .filterNot { alreadyUsed.contains(it.key) }
-                .filter { entry -> matcherSetMatches(entry.key, canonical.matchers, lintConfig.groups) }
-                .maxByOrNull { it.value }
-
-            if (best != null) {
-                alreadyUsed += best.key
-                resolved += UniversalCommandItem(
-                    displayLabel = canonical.canonicalName.replace('_', ' ').uppercase(),
-                    actualCommand = best.key,
-                    profileCoverage = best.value
-                )
-            }
-        }
-    }
-
-    return resolved
-}
-
-private fun matcherSetMatches(
-    command: String,
-    matchers: List<LintMatcher>,
-    groups: Map<String, List<LintMatcher>>
-): Boolean {
-    if (matchers.isEmpty()) return false
-    return matchers.any { matcherMatches(command, it, groups) }
-}
-
-private fun matcherMatches(
-    command: String,
-    matcher: LintMatcher,
-    groups: Map<String, List<LintMatcher>>
-): Boolean {
-    val lower = command.lowercase()
-    return when (matcher) {
-        is LintMatcher.Literal -> lower == matcher.value || lower.contains(matcher.value)
-        is LintMatcher.RegexPattern -> matcher.pattern.containsMatchIn(command)
-        is LintMatcher.GroupReference -> {
-            val groupMatchers = groups[matcher.group].orEmpty()
-            groupMatchers.any { matcherMatches(command, it, groups) }
-        }
-    }
-}
-
-private fun wildcardPathMatches(pattern: String, path: String): Boolean {
-    val regexPattern = buildString {
-        append('^')
-        pattern.forEach { ch ->
-            when (ch) {
-                '*' -> append(".*")
-                '?' -> append('.')
-                '.', '(', ')', '[', ']', '{', '}', '^', '$', '+', '|', '\\' -> {
-                    append('\\')
-                    append(ch)
-                }
-                else -> append(ch)
-            }
-        }
-        append('$')
-    }
-    return Regex(regexPattern, RegexOption.IGNORE_CASE).matches(path)
-}
 
 private fun normalizeDisplayName(raw: String): String {
     return raw
@@ -1645,64 +1079,4 @@ private fun copyRecursively(source: File, target: File) {
     }
 }
 
-// ── Import / Export ───────────────────────────────────────────────────────────
 
-fun exportRemotesToJson(remotes: List<SavedRemote>): String {
-    val array = JSONArray()
-    for (remote in remotes) {
-        val obj = JSONObject()
-        obj.put("name", remote.name)
-        obj.put("profilePath", remote.profilePath)
-        obj.put("iconName", remote.iconName ?: "")
-        obj.put("sourceProfilePath", remote.sourceProfilePath ?: "")
-        obj.put("favorite", remote.favorite)
-        val buttonsArray = JSONArray()
-        for (button in remote.buttons) {
-            val b = JSONObject()
-            b.put("label", button.label)
-            b.put("code", button.code)
-            buttonsArray.put(b)
-        }
-        obj.put("buttons", buttonsArray)
-        array.put(obj)
-    }
-    return array.toString(2)
-}
-
-fun importRemotesFromJson(json: String): List<SavedRemote> {
-    return runCatching {
-        val trimmed = json.trim()
-        val array = when {
-            trimmed.startsWith("[") -> JSONArray(trimmed)
-            trimmed.startsWith("{") -> {
-                val root = JSONObject(trimmed)
-                root.optJSONArray("remotes") ?: JSONArray().apply { put(root) }
-            }
-            else -> JSONArray()
-        }
-
-        (0 until array.length()).mapNotNull { i ->
-            val obj = array.optJSONObject(i) ?: return@mapNotNull null
-            val name = obj.optString("name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val buttonsArray = obj.optJSONArray("buttons") ?: JSONArray()
-            val buttons = (0 until buttonsArray.length()).mapNotNull { j ->
-                val b = buttonsArray.optJSONObject(j) ?: return@mapNotNull null
-                val label = b.optString("label").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                SavedRemoteButton(label = label, code = b.optString("code"))
-            }
-            SavedRemote(
-                name = name,
-                profilePath = obj.optString("profilePath"),
-                commands = buttons.map { it.label },
-                buttons = buttons,
-                iconName = obj.optString("iconName").takeIf { it.isNotBlank() }
-                    ?: categorySeedFromPath(obj.optString("sourceProfilePath").takeIf { it.isNotBlank() }
-                        ?: obj.optString("profilePath")),
-                sourceProfilePath = obj.optString("sourceProfilePath").takeIf { it.isNotBlank() },
-                favorite = obj.optBoolean("favorite", false)
-            )
-        }
-    }.getOrElse {
-        emptyList()
-    }
-}

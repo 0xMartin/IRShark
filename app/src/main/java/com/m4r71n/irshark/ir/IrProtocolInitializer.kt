@@ -32,6 +32,7 @@ fun initializeIrProtocolRegistry() {
     IrProtocolRegistry.register(SonyProtocol(totalBits = 12))
     IrProtocolRegistry.register(SonyProtocol(totalBits = 15))
     IrProtocolRegistry.register(SonyProtocol(totalBits = 20))
+    IrProtocolRegistry.registerAlias("sirc", "sirc12") // Flipper IRDB uses "SIRC" for 12-bit variant
 
     // RC5 / RC5x
     IrProtocolRegistry.register(Rc5Protocol(extended = false))

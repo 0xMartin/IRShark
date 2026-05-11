@@ -69,7 +69,7 @@ import com.m4r71n.irshark.ui.macro.MacroNode
 import com.m4r71n.irshark.ui.macro.blockLabel
 import com.m4r71n.irshark.ir.IrTransmitStatus
 import com.m4r71n.irshark.ir.IrTransmitStatus.*
-import com.m4r71n.irshark.ir.transmitIrCodeResult
+import com.m4r71n.irshark.ir.IrTransmissionManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -369,8 +369,7 @@ fun MacroEditorScreen(
             onSendIrPreview = { irParams ->
                 scope.launch {
                     withContext(Dispatchers.IO) {
-                        val txResult = transmitIrCodeResult(
-                            context,
+                        val txResult = IrTransmissionManager(context).transmitPayload(
                             irParams.irCode,
                             modeRaw = txModeRaw,
                             bridgeEndpointRaw = bridgeEndpoint
