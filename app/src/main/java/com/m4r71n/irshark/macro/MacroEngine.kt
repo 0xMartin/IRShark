@@ -3,8 +3,10 @@ package com.m4r71n.irshark.macro
 import android.content.Context
 import com.m4r71n.irshark.data.MacroStep
 import com.m4r71n.irshark.data.SavedMacro
-import com.m4r71n.irshark.util.IrTransmitStatus
-import com.m4r71n.irshark.util.transmitIrCodeResult
+import com.m4r71n.irshark.ir.IrTransmitStatus
+import com.m4r71n.irshark.ir.IrTransmitStatus.*
+import com.m4r71n.irshark.ir.transmitIrCodeResult
+import com.m4r71n.irshark.ir.extractProtocolFromPayload
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -170,7 +172,7 @@ class MacroEngine(private val context: Context) {
         return when (step) {
             is MacroStep.IrSend -> {
                 val elapsed = System.currentTimeMillis() - macroStartTime
-                val protocol = com.m4r71n.irshark.util.extractProtocolFromPayload(step.irCode)
+                val protocol = extractProtocolFromPayload(step.irCode)
                 val entry = IrLogEntry(step.displayLabel, step.remoteName, step.buttonLabel, step.irSource, elapsed, protocol.orEmpty())
                 irLog = irLog + entry
                 _irTransmitEvent.tryEmit(entry)

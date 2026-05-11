@@ -71,10 +71,11 @@ import com.m4r71n.irshark.data.saveSavedMacros
 import com.m4r71n.irshark.data.SavedMacro
 import com.m4r71n.irshark.data.recordRemoteHistory
 import com.m4r71n.irshark.data.resolveEffectiveDbSource
-import com.m4r71n.irshark.util.transmitIrCode
-import com.m4r71n.irshark.util.getIrCompatibilityReport
-import com.m4r71n.irshark.util.IrTransmitStatus
-import com.m4r71n.irshark.util.transmitIrCodeResult
+import com.m4r71n.irshark.ir.transmitIrCode
+import com.m4r71n.irshark.ir.IrTransmitStatus
+import com.m4r71n.irshark.ir.transmitIrCodeResult
+import com.m4r71n.irshark.ir.IrTransmissionManager
+import com.m4r71n.irshark.ir.getIrCompatibilityReport
 import com.m4r71n.irshark.data.loadDbIrCodeOptions
 import com.m4r71n.irshark.data.loadFlipperDbIndex
 import com.m4r71n.irshark.data.loadSavedRemotes

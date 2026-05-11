@@ -52,7 +52,7 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.m4r71n.irshark.R
-import com.m4r71n.irshark.util.transmitIrCode
+import com.m4r71n.irshark.ir.transmitIrCode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -153,6 +153,7 @@ private fun WidgetContent() {
     // 2x1 should use regular spacing so horizontal gaps stay consistent.
     val compactMode = (columns == 1 && rows == 1)
     // Read the system font scale so we can compensate in sp calculations.
+    @Suppress("LocalContextConfigurationRead")
     val fontScale = LocalContext.current.resources.configuration.fontScale.coerceAtLeast(1f)
     val isConfigured = columns > 0 && rows > 0 && prefs[keyButtonLabel(0)]?.isNotBlank() == true
 

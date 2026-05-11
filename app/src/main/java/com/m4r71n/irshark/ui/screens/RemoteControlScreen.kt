@@ -47,7 +47,7 @@ import com.m4r71n.irshark.data.SavedRemoteButton
 import com.m4r71n.irshark.ui.components.Badge
 import com.m4r71n.irshark.ui.components.CategorySvgIcon
 import com.m4r71n.irshark.ui.components.RemoteCommandButton
-import com.m4r71n.irshark.util.extractProtocolFromPayload
+import com.m4r71n.irshark.ir.extractProtocolFromPayload
 
 private data class ButtonGroup(
     val category: String,

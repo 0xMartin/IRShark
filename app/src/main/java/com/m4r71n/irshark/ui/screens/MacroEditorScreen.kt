@@ -67,8 +67,9 @@ import com.m4r71n.irshark.ui.macro.MacroGraph
 import com.m4r71n.irshark.ui.macro.MacroGraphCanvas
 import com.m4r71n.irshark.ui.macro.MacroNode
 import com.m4r71n.irshark.ui.macro.blockLabel
-import com.m4r71n.irshark.util.IrTransmitStatus
-import com.m4r71n.irshark.util.transmitIrCodeResult
+import com.m4r71n.irshark.ir.IrTransmitStatus
+import com.m4r71n.irshark.ir.IrTransmitStatus.*
+import com.m4r71n.irshark.ir.transmitIrCodeResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
