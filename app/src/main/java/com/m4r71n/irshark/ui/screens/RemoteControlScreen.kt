@@ -1,6 +1,7 @@
 package com.m4r71n.irshark.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -40,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -187,6 +191,43 @@ private fun groupButtonsByCategory(buttons: List<SavedRemoteButton>): List<Butto
 }
 
 @Composable
+private fun HeroMarqueeBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    marquee: Boolean = false
+) {
+    val violet = MaterialTheme.colorScheme.primary
+    val pillShape = RoundedCornerShape(50)
+    Box(
+        modifier = modifier
+            .height(24.dp)
+            .clip(pillShape)
+            .background(violet.copy(alpha = 0.15f))
+            .border(1.dp, violet.copy(alpha = 0.35f), pillShape)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = text,
+            color = violet,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            softWrap = false,
+            modifier = if (marquee) {
+                Modifier
+                    .fillMaxWidth()
+                    .wrapContentHeight(Alignment.CenterVertically)
+                    .basicMarquee(iterations = Int.MAX_VALUE)
+            } else {
+                Modifier.wrapContentHeight(Alignment.CenterVertically)
+            }
+        )
+    }
+}
+
+@Composable
 fun RemoteControlScreen(
     title: String,
     deviceIconName: String?,
@@ -231,65 +272,85 @@ fun RemoteControlScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                val columnSelectorPillWidth = 78.dp
+                val dualActionButtonWidth = 35.dp
+                val saveActionWidth = columnSelectorPillWidth
+                val editActionWidth = if (showEditButton && onShare != null) dualActionButtonWidth else columnSelectorPillWidth
+                val shareActionWidth = if (showEditButton && onShare != null) dualActionButtonWidth else columnSelectorPillWidth
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                Badge(typeBadge)
-                Badge(countBadge)
-                Spacer(modifier = Modifier.weight(1f))
-                if (showSaveButton) {
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .height(30.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (saveButtonEnabled) violet.copy(alpha = 0.14f) else Color(0xFF2A2540))
-                            .border(1.dp, if (saveButtonEnabled) violet.copy(alpha = 0.35f) else Color(0xFF2A2540), RoundedCornerShape(8.dp))
-                            .clickable(enabled = saveButtonEnabled, onClick = onSave)
-                            .padding(horizontal = 10.dp),
-                        contentAlignment = Alignment.Center
+                            .weight(1f)
+                            .widthIn(min = 0.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = saveButtonLabel,
-                            color = if (saveButtonEnabled) violet else Color(0xFF8A8899),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
+                        HeroMarqueeBadge(
+                            text = typeBadge,
+                            marquee = true,
+                            modifier = Modifier
+                                .weight(1f)
+                                .widthIn(min = 0.dp)
                         )
+                        HeroMarqueeBadge(text = countBadge)
                     }
-                }
-                if (showEditButton) {
-                    Box(
-                        modifier = Modifier
-                            .height(30.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(violet.copy(alpha = 0.14f))
-                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                            .clickable(onClick = onEdit)
-                            .padding(horizontal = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Edit", color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+
+                    if (showSaveButton) {
+                        Box(
+                            modifier = Modifier
+                                .width(saveActionWidth)
+                                .height(30.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (saveButtonEnabled) violet.copy(alpha = 0.14f) else Color(0xFF2A2540))
+                                .border(1.dp, if (saveButtonEnabled) violet.copy(alpha = 0.35f) else Color(0xFF2A2540), RoundedCornerShape(8.dp))
+                                .clickable(enabled = saveButtonEnabled, onClick = onSave),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = saveButtonLabel,
+                                color = if (saveButtonEnabled) violet else Color(0xFF8A8899),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
-                }
-                if (onShare != null) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(violet.copy(alpha = 0.14f))
-                            .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
-                            .clickable(onClick = onShare),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Share,
-                            contentDescription = "Share",
-                            tint = violet,
-                            modifier = Modifier.size(16.dp)
-                        )
+                    if (showEditButton) {
+                        Box(
+                            modifier = Modifier
+                                .width(editActionWidth)
+                                .height(30.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(violet.copy(alpha = 0.14f))
+                                .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .clickable(onClick = onEdit),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Edit", color = violet, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
-                }
+                    if (onShare != null) {
+                        Box(
+                            modifier = Modifier
+                                .width(shareActionWidth)
+                                .height(30.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(violet.copy(alpha = 0.14f))
+                                .border(1.dp, violet.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
+                                .clickable(onClick = onShare),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Filled.Share,
+                                contentDescription = "Share",
+                                tint = violet,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
 
                 Row(
