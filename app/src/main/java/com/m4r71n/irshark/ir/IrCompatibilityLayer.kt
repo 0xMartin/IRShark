@@ -86,24 +86,7 @@ fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String,
 
     if (fields.isNotEmpty()) {
         val explicitType = fields["type"]?.lowercase().orEmpty()
-
         val rawData = fields["data"].orEmpty()
-        if (explicitType == "raw" || rawData.isNotBlank()) {
-            Log.d(TAG, "Using RAW protocol")
-            val rawParams = mutableMapOf<String, Any>(
-                "pattern" to rawData
-            )
-            fields["frequency"]?.takeIf { it.isNotBlank() }?.let {
-                rawParams["frequency"] = it
-            }
-            return manager.transmitCode(
-                protocolId = "raw",
-                params = rawParams,
-                modeRaw = modeRaw,
-                bridgeEndpointRaw = bridgeEndpointRaw
-            )
-        }
-
         val protocol = fields["protocol"].orEmpty()
         if (explicitType == "parsed" || protocol.isNotBlank()) {
             val address = fields["address"].orEmpty()
@@ -122,6 +105,22 @@ fun transmitIrCodeResult(context: Context, codePayload: String, modeRaw: String,
                     "address" to address,
                     "command" to command
                 ),
+                modeRaw = modeRaw,
+                bridgeEndpointRaw = bridgeEndpointRaw
+            )
+        }
+
+        if (explicitType == "raw" || rawData.isNotBlank()) {
+            Log.d(TAG, "Using RAW protocol")
+            val rawParams = mutableMapOf<String, Any>(
+                "pattern" to rawData
+            )
+            fields["frequency"]?.takeIf { it.isNotBlank() }?.let {
+                rawParams["frequency"] = it
+            }
+            return manager.transmitCode(
+                protocolId = "raw",
+                params = rawParams,
                 modeRaw = modeRaw,
                 bridgeEndpointRaw = bridgeEndpointRaw
             )

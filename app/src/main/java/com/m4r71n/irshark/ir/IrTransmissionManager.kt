@@ -34,6 +34,11 @@ fun extractProtocolFromPayload(payload: String): String? {
     // Check if it's a raw payload (space-separated integers)
     val isRaw = trimmed.split(Regex("\\s+")).all { it.toIntOrNull() != null }
     if (isRaw) return "RAW"
+
+    val lower = payload.lowercase()
+    val explicitRawType = Regex("""type\s*=\s*raw(?:\s*;|\s*$)""", RegexOption.IGNORE_CASE).containsMatchIn(payload)
+    val hasRawData = Regex("""(?:^|;)\s*data\s*=""", RegexOption.IGNORE_CASE).containsMatchIn(payload)
+    if (explicitRawType || hasRawData || lower.startsWith("raw|")) return "RAW"
     
     val match = Regex("""protocol\s*=\s*([^;\s]+)""", RegexOption.IGNORE_CASE).find(payload)
     return match?.groupValues?.get(1)?.uppercase()?.trim(';')
