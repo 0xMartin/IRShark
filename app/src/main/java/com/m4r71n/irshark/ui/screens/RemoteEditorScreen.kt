@@ -537,7 +537,7 @@ fun RemoteButtonEditorScreen(
     onLabelChange: (String) -> Unit,
     onCodeChange: (String) -> Unit,
     onProfileSearchChange: (String) -> Unit,
-    onSelectProfile: (String) -> Unit,
+    onSelectProfile: (String?) -> Unit,
     onSelectDbCode: (Int) -> Unit,
     onBack: () -> Unit,
     onApply: () -> Unit,
@@ -545,8 +545,10 @@ fun RemoteButtonEditorScreen(
 ) {
     val violet = MaterialTheme.colorScheme.primary
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val editorHeight = (screenHeight * 0.5f).coerceAtLeast(220.dp)
+    val editorHeight = (screenHeight * 0.35f).coerceAtLeast(154.dp)
+    val importListMaxHeight = (screenHeight * 0.5f).coerceAtLeast(200.dp)
     var pendingQuickInsert by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var pendingDbInsertIdx by remember { mutableIntStateOf(-1) }
     var editorCode by remember { mutableStateOf(formatEditorCodeForDisplay(buttonCode)) }
 
     LaunchedEffect(buttonCode) {
@@ -581,6 +583,29 @@ fun RemoteButtonEditorScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingQuickInsert = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (pendingDbInsertIdx >= 0) {
+        AlertDialog(
+            onDismissRequest = { pendingDbInsertIdx = -1 },
+            title = { Text("Replace current code?") },
+            text = { Text("This will replace your current unsaved IR code changes.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onSelectDbCode(pendingDbInsertIdx)
+                        pendingDbInsertIdx = -1
+                    }
+                ) {
+                    Text("Replace")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDbInsertIdx = -1 }) {
                     Text("Cancel")
                 }
             }
@@ -683,58 +708,77 @@ fun RemoteButtonEditorScreen(
                         label = { Text("Search remote profile") }
                     )
 
-                    if (filteredProfiles.isEmpty()) {
-                        EmptyCard("No profile matched your query.")
-                    } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            filteredProfiles.forEach { profile ->
-                                val selected = selectedProfilePath == profile.path
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
-                                        .border(1.dp, Color.White.copy(alpha = if (selected) 0.24f else 0.10f), RoundedCornerShape(10.dp))
-                                        .clickable { onSelectProfile(profile.path) }
-                                        .padding(8.dp)
-                                ) {
-                                    Column {
-                                        Text(profile.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                        Text(profile.parentPath, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
-                                    }
-                                }
+                    if (selectedProfilePath != null) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Selected remote", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            TextButton(onClick = { onSelectProfile(null) }) {
+                                Text("Change remote")
                             }
                         }
                     }
 
-                    when {
-                        loadingCodes -> Text("Loading IR codes...", color = Color(0xFF8A8899), fontSize = 11.sp)
-                        selectedProfilePath != null && dbCodes.isEmpty() -> EmptyCard("No IR entries found in selected profile.")
-                        dbCodes.isNotEmpty() -> {
-                            Text("Select button code", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                dbCodes.forEachIndexed { idx, item ->
-                                    val selected = selectedCodeIdx == idx
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = importListMaxHeight),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (selectedProfilePath == null) {
+                            if (filteredProfiles.isEmpty()) {
+                                item { EmptyCard("No profile matched your query.") }
+                            } else {
+                                items(filteredProfiles) { profile ->
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(10.dp))
-                                            .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
-                                            .border(1.dp, Color.White.copy(alpha = if (selected) 0.24f else 0.10f), RoundedCornerShape(10.dp))
-                                            .clickable {
-                                                onSelectDbCode(idx)
-                                            }
+                                            .background(Color(0xFF181327))
+                                            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                                            .clickable { onSelectProfile(profile.path) }
                                             .padding(8.dp)
                                     ) {
                                         Column {
-                                            Text(item.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                            Text(
-                                                item.code,
-                                                color = Color(0xFF8A8899),
-                                                fontSize = 10.sp,
-                                                maxLines = 1,
-                                                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-                                            )
+                                            Text(profile.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                            Text(profile.parentPath, color = Color(0xFF8A8899), fontSize = 10.sp, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            when {
+                                loadingCodes -> item {
+                                    Text("Loading IR codes...", color = Color(0xFF8A8899), fontSize = 11.sp)
+                                }
+                                dbCodes.isEmpty() -> item {
+                                    EmptyCard("No IR entries found in selected profile.")
+                                }
+                                else -> {
+                                    items(dbCodes.size) { idx ->
+                                        val item = dbCodes[idx]
+                                        val selected = selectedCodeIdx == idx
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(if (selected) Color(0xFF2A1E4A) else Color(0xFF181327))
+                                                .border(1.dp, Color.White.copy(alpha = if (selected) 0.24f else 0.10f), RoundedCornerShape(10.dp))
+                                                .clickable { pendingDbInsertIdx = idx }
+                                                .padding(8.dp)
+                                        ) {
+                                            Column {
+                                                Text(item.label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                                Text(
+                                                    item.code,
+                                                    color = Color(0xFF8A8899),
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                                                )
+                                            }
                                         }
                                     }
                                 }

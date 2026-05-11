@@ -87,6 +87,13 @@ Main sections in the app:
   <img src="doc/img/macro_editor.jpg" alt="Macro Editor" width="30%" />
 </p>
 
+Button Editor supports clear, structured editing of both whole remotes and individual IR payload codes sent by each button.
+
+<p align="center">
+  <img src="doc/img/remote_editor.jpg" alt="Remote Editor" width="45%" />
+  <img src="doc/img/button_editor.jpg" alt="Button Editor" width="45%" />
+</p>
+
 ### Widget Preview
 
 IRShark also includes a home screen widget for quick access to saved IR actions without opening the full app.
