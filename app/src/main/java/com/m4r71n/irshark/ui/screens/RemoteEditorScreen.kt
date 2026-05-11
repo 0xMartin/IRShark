@@ -151,7 +151,7 @@ private fun validateEditorButtonCode(code: String): String? {
     val supportedProtocols = setOf(
         "RC5", "RC5X", "RC6", "NEC", "NECext", "NEC16", "NEC42",
         "Samsung", "Samsung32", "Samsung36",
-        "SIRC12", "SIRC15", "SIRC20",
+        "SIRC", "SIRC12", "SIRC15", "SIRC20",
         "Kaseikyo", "RCA", "Pioneer", "Denon", "JVC"
     ).map { it.lowercase() }.toSet()
 
