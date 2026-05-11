@@ -17,7 +17,7 @@ import com.m4r71n.irshark.ir.IrProtocolUtils
  */
 class SonyProtocol(private val totalBits: Int = 12) : IrProtocolEncoder {
     override val protocolId: String = when (totalBits) {
-        12 -> "sirc"
+        12 -> "sirc12"
         15 -> "sirc15"
         20 -> "sirc20"
         else -> throw IllegalArgumentException("Unsupported SIRC variant: $totalBits bits")

@@ -45,7 +45,7 @@ private fun toProtocolId(protocolRaw: String): String {
         "SAMSUNG" -> "samsung"
         "SAMSUNG32" -> "samsung32"
         "SAMSUNG36" -> "samsung36"
-        "SIRC" -> "sirc"
+        "SIRC", "SIRC12" -> "sirc12"
         "SIRC15" -> "sirc15"
         "SIRC20" -> "sirc20"
         "KASEIKYO" -> "kaseikyo"
