@@ -92,7 +92,7 @@ fun RemotesListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 items(items.indices.toList()) { index ->
                     val item = items[index]
