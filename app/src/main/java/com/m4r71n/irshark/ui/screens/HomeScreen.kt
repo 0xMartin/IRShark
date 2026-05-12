@@ -175,7 +175,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                HomeGridCard("IR Finder",   Icons.Filled.FindInPage, "Find signal in DB",    onIrFinder,  Modifier.weight(1f))
+                HomeGridCard("IR Finder",   Icons.Filled.FindInPage, "Identify your remote", onIrFinder,  Modifier.weight(1f))
                 HomeGridCard("Macros",      Icons.Filled.AutoAwesome,"Automate IR sequences", onMacros,   Modifier.weight(1f))
             }
 
