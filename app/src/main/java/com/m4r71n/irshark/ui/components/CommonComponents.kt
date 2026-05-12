@@ -28,8 +28,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -710,17 +714,35 @@ fun SectionNavBar(
                             .height(40.dp)
                             .clip(RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
                             .background(violet.copy(alpha = 0.08f))
-                            .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
-                            .padding(horizontal = 14.dp),
+                            .border(1.dp, violet.copy(alpha = 0.18f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp)),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        Text(
-                            text = breadcrumb,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
+                        val segments = breadcrumb.split(" > ")
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            segments.forEachIndexed { i, seg ->
+                                if (i > 0) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = violet.copy(alpha = 0.45f),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                                Text(
+                                    text = seg,
+                                    color = if (i == segments.lastIndex) Color.White else Color(0xFF9B8EC4),
+                                    fontSize = if (i == segments.lastIndex) 13.sp else 11.sp,
+                                    fontWeight = if (i == segments.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -964,17 +986,35 @@ fun UniversalRemoteHeader(
                         .height(40.dp)
                         .clip(RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
                         .background(violet.copy(alpha = 0.08f))
-                        .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
-                        .padding(horizontal = 14.dp),
+                        .border(1.dp, violet.copy(alpha = 0.18f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp)),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(
-                        text = currentPath,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1
-                    )
+                    val segments = currentPath.split(" > ")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        segments.forEachIndexed { i, seg ->
+                            if (i > 0) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = violet.copy(alpha = 0.45f),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                            Text(
+                                text = seg,
+                                color = if (i == segments.lastIndex) Color.White else Color(0xFF9B8EC4),
+                                fontSize = if (i == segments.lastIndex) 13.sp else 11.sp,
+                                fontWeight = if (i == segments.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
             }
 
