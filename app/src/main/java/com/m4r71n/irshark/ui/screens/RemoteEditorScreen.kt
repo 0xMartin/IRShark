@@ -535,18 +535,18 @@ fun RemoteEditorScreen(
                                         )
                                     }
 
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                         Icon(
                                             imageVector = Icons.Filled.Edit,
                                             contentDescription = "Edit",
                                             tint = Color(0xFF9B6DFF),
-                                            modifier = Modifier.size(18.dp).clickable { onEditButton(index) }
+                                            modifier = Modifier.size(22.dp).clickable { onEditButton(index) }
                                         )
                                         Icon(
                                             imageVector = Icons.Filled.Delete,
                                             contentDescription = "Delete",
                                             tint = Color(0xFFFF7B9D),
-                                            modifier = Modifier.size(18.dp).clickable { onDeleteButton(index) }
+                                            modifier = Modifier.size(22.dp).clickable { onDeleteButton(index) }
                                         )
                                     }
                                 }
