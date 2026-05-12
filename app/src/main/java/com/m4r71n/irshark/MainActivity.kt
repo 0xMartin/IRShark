@@ -1894,22 +1894,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 }
                                 remote.name to subtitle
                             },
-                            badgeTextsForItem = { idx ->
-                                val remote = indexedFiltered[idx].value
-                                val deviceBadge = if (remote.sourceProfilePath != null) {
-                                    val profile = dbIndex.profiles.firstOrNull { it.path == remote.sourceProfilePath }
-                                    if (profile != null) remoteDbManufacturerDeviceBadge(profile)
-                                    else prettyPath(remote.sourceProfilePath)
-                                } else {
-                                    "Custom"
-                                }
-                                val protocols = remote.buttons
-                                    .mapNotNull { extractProtocolFromCodePayload(it.code) }
-                                    .distinct()
-                                    .take(3)
-                                val protocolBadge = if (protocols.isEmpty()) "Unknown" else protocols.joinToString(", ")
-                                listOf(deviceBadge, protocolBadge)
-                            },
+                            useGridLayout = true,
                             iconNameForItem = { idx ->
                                 val remote = indexedFiltered[idx].value
                                 remote.iconName ?: categorySeedFromPath(remote.sourceProfilePath ?: remote.profilePath)

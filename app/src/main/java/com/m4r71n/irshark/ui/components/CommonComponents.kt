@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -517,6 +519,138 @@ fun ListRow(
                             color = if (actionEnabled) violet else Color(0xFF6E6B82),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Remote grid tile (2-column card view for My Remotes) ────────────────────
+
+@Composable
+fun RemoteGridItem(
+    title: String,
+    iconName: String? = null,
+    isFavorite: Boolean = false,
+    onFavoriteToggle: (() -> Unit)? = null,
+    onOpen: () -> Unit,
+    onAction: () -> Unit,
+    actionIcon: ImageVector? = null,
+    onDuplicate: (() -> Unit)? = null
+) {
+    val violet = MaterialTheme.colorScheme.primary
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF100D1C))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onOpen)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Icon area — centred, takes remaining vertical space
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!iconName.isNullOrBlank()) {
+                    CategorySvgIcon(name = iconName, tint = violet, size = 46.dp)
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Home,
+                        contentDescription = null,
+                        tint = violet.copy(alpha = 0.5f),
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+            }
+
+            // Name (marquee-scrolls when too long)
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .basicMarquee()
+                    .padding(vertical = 6.dp),
+                textAlign = TextAlign.Center
+            )
+
+            // Bottom action row: star  ·  [duplicate]  [action]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onFavoriteToggle != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(39.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF181327))
+                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                            .clickable(onClick = onFavoriteToggle),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = if (isFavorite) "Unpin" else "Pin",
+                            tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF3D3A52),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.size(39.dp))
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (onDuplicate != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(39.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF181327))
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                                .clickable(onClick = onDuplicate),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ContentCopy,
+                                contentDescription = "Duplicate",
+                                tint = Color(0xFF6E6B82),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(39.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1A0F0F))
+                            .border(1.dp, Color(0xFF3D1A1A), RoundedCornerShape(10.dp))
+                            .clickable(onClick = onAction),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = actionIcon ?: Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = Color(0xFFAA5555),
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }

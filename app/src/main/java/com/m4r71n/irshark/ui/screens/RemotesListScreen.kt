@@ -11,6 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import com.m4r71n.irshark.ui.components.RemoteGridItem
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,10 +54,12 @@ fun RemotesListScreen(
     onDuplicateForItem: ((Int) -> Unit)? = null,
     secondaryActionIcon: ImageVector? = null,
     iconNameForItem: ((Int) -> String?)? = null,
-    onEndReached: (() -> Unit)? = null
+    onEndReached: (() -> Unit)? = null,
+    useGridLayout: Boolean = false
 ) {
     val violet = MaterialTheme.colorScheme.primary
     val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
 
     LaunchedEffect(items.size, onEndReached) {
         if (onEndReached == null || items.isEmpty()) return@LaunchedEffect
@@ -86,6 +93,29 @@ fun RemotesListScreen(
 
         if (items.isEmpty()) {
             EmptyCard(emptyText)
+        } else if (useGridLayout) {
+            LazyVerticalGrid(
+                state = gridState,
+                columns = GridCells.Fixed(2),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(items.indices.toList()) { index ->
+                    RemoteGridItem(
+                        title = items[index].first,
+                        iconName = iconNameForItem?.invoke(index),
+                        isFavorite = isFavoriteForItem?.invoke(index) ?: false,
+                        onFavoriteToggle = onFavoriteToggleForItem?.let { { it(index) } },
+                        onOpen = { onOpen(index) },
+                        onAction = { onSecondaryAction(index) },
+                        actionIcon = secondaryActionIcon,
+                        onDuplicate = onDuplicateForItem?.let { { it(index) } }
+                    )
+                }
+            }
         } else {
             LazyColumn(
                 state = listState,
