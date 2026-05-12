@@ -27,7 +27,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.OpenWith
 import androidx.compose.material.icons.filled.ViewList
@@ -52,7 +55,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -62,15 +64,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.OffsetMapping
-import androidx.compose.ui.text.input.TransformedText
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.m4r71n.irshark.data.DbIrCodeOption
@@ -94,137 +90,17 @@ private val editorIconOptions = listOf(
     "Other"
 )
 
-private object IrEditorSyntaxHighlight : VisualTransformation {
-    private val keyStyle = SpanStyle(color = Color(0xFF8AB4F8), fontWeight = FontWeight.SemiBold)
-    private val protocolValueStyle = SpanStyle(color = Color(0xFFFFB86C), fontWeight = FontWeight.Medium)
-    private val hexValueStyle = SpanStyle(color = Color(0xFF6EE7B7))
-    private val numValueStyle = SpanStyle(color = Color(0xFF93C5FD))
-    private val symbolStyle = SpanStyle(color = Color(0xFF8A8899))
-
-    override fun filter(text: AnnotatedString): TransformedText {
-        val source = text.text
-        val out = buildAnnotatedString {
-            var i = 0
-            while (i < source.length) {
-                val ch = source[i]
-                if (ch == ';' || ch == '\n') {
-                    withStyle(symbolStyle) { append(ch) }
-                    i++
-                    continue
-                }
-
-                val eq = source.indexOf('=', i)
-                if (eq == -1) {
-                    append(source.substring(i))
-                    break
-                }
-
-                val nextSepSemi = source.indexOf(';', eq + 1)
-                val nextSepNl = source.indexOf('\n', eq + 1)
-                val end = listOf(nextSepSemi, nextSepNl).filter { it >= 0 }.minOrNull() ?: source.length
-
-                val key = source.substring(i, eq)
-                val value = source.substring(eq + 1, end)
-
-                withStyle(keyStyle) { append(key) }
-                withStyle(symbolStyle) { append('=') }
-
-                val trimmedKey = key.trim().lowercase()
-                val trimmedValue = value.trim()
-                val valueStyle = when {
-                    trimmedKey == "protocol" -> protocolValueStyle
-                    trimmedValue.matches(Regex("""(0x)?[0-9a-fA-F ]+""")) -> hexValueStyle
-                    trimmedValue.matches(Regex("""-?\d+(\s+-?\d+)*""")) -> numValueStyle
-                    else -> SpanStyle(color = Color(0xFFE4D7FF))
-                }
-                withStyle(valueStyle) { append(value) }
-                i = end
-            }
-        }
-        return TransformedText(out, OffsetMapping.Identity)
-    }
-}
-
-private fun validateEditorButtonCode(code: String): String? {
-    if (code.trim().isEmpty()) return "Code cannot be empty."
-
-    val supportedProtocols = setOf(
-        "RC5", "RC5X", "RC6", "NEC", "NECext", "NEC16", "NEC42",
-        "Samsung", "Samsung32", "Samsung36",
-        "SIRC", "SIRC12", "SIRC15", "SIRC20",
-        "Kaseikyo", "RCA", "Pioneer", "Denon", "JVC"
-    ).map { it.lowercase() }.toSet()
-
-    val pairs = code
+private fun parseIrFields(code: String): Map<String, String> {
+    return code
         .split(';', '\n')
         .mapNotNull { segment ->
             val token = segment.trim()
             if (token.isEmpty()) return@mapNotNull null
             val idx = token.indexOf('=')
-            if (idx <= 0) return@mapNotNull Triple("invalid", "", token)
-            val k = token.substring(0, idx).trim().lowercase()
-            val v = token.substring(idx + 1).trim()
-            Triple(k, v, token)
+            if (idx <= 0) return@mapNotNull null
+            token.substring(0, idx).trim().lowercase() to token.substring(idx + 1).trim()
         }
-
-    if (pairs.isEmpty()) return "No key=value pairs found."
-
-    val fields = mutableMapOf<String, String>()
-    for ((k, v, _) in pairs) {
-        if (k == "invalid") return "Invalid syntax: Each line must contain key=value pair."
-        if (v.isEmpty()) return "Value for key '$k' cannot be empty."
-        if (!listOf("type", "protocol", "address", "command", "data", "frequency").contains(k)) {
-            return "Unknown key '$k'. Valid keys: type, protocol, address, command, data, frequency."
-        }
-        fields[k] = v
-    }
-
-    val type = fields["type"]?.lowercase()
-    when (type) {
-        "raw" -> {
-            if (!fields.containsKey("data")) return "RAW code must contain 'data=...'."
-            val data = fields["data"]!!
-            if (!data.matches(Regex("""^-?\d+([\s]+-?\d+)*$"""))) {
-                return "RAW data must contain only integers separated by spaces."
-            }
-            if (!fields.containsKey("frequency")) return "RAW code should contain 'frequency=...'."
-            val freq = fields["frequency"]!!
-            if (!freq.matches(Regex("""^\d+$"""))) return "Frequency must be a number."
-        }
-        "parsed" -> {
-            if (!fields.containsKey("protocol")) return "Parsed code must contain 'protocol=...'."
-            val protocol = fields["protocol"]!!.lowercase()
-            if (!supportedProtocols.contains(protocol)) {
-                return "Protocol '$protocol' not supported. Use: ${supportedProtocols.joinToString(", ")}."
-            }
-            if (!fields.containsKey("address")) return "Parsed code must contain 'address=...'."
-            val addr = fields["address"]!!
-            if (!addr.matches(Regex("""^(?:0x)?[0-9A-Fa-f]+([\s]+(?:0x)?[0-9A-Fa-f]+)*$"""))) {
-                return "Address must be hex values, space-separated."
-            }
-            if (!fields.containsKey("command")) return "Parsed code must contain 'command=...'."
-            val cmd = fields["command"]!!
-            if (!cmd.matches(Regex("""^(?:0x)?[0-9A-Fa-f]+([\s]+(?:0x)?[0-9A-Fa-f]+)*$"""))) {
-                return "Command must be hex values, space-separated."
-            }
-        }
-        else -> return "Type must be 'raw' or 'parsed'."
-    }
-
-    return null
-}
-
-private fun normalizeEditorCodeForSave(input: String): String {
-    return input
-        .split(';', '\n')
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .joinToString("; ")
-}
-
-private fun formatEditorCodeForDisplay(input: String): String {
-    val normalized = normalizeEditorCodeForSave(input)
-    return if (normalized.isEmpty()) "" else normalized.replace("; ", ";\n")
+        .toMap()
 }
 
 @Composable
@@ -572,6 +448,7 @@ fun RemoteEditorScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RemoteButtonEditorScreen(
     buttonLabel: String,
@@ -593,54 +470,54 @@ fun RemoteButtonEditorScreen(
     canApply: Boolean
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val editorHeight = (screenHeight * 0.35f).coerceAtLeast(154.dp)
-    val importListMaxHeight = (screenHeight * 0.5f).coerceAtLeast(200.dp)
-    var pendingQuickInsert by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val importListMaxHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.5f).coerceAtLeast(200.dp)
     var pendingDbInsertIdx by remember { mutableIntStateOf(-1) }
-    var editorCode by remember { mutableStateOf(formatEditorCodeForDisplay(buttonCode)) }
-    var localCodeError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(editorCode) {
-        localCodeError = validateEditorButtonCode(normalizeEditorCodeForSave(editorCode))
-    }
-
-    LaunchedEffect(buttonCode) {
-        val display = formatEditorCodeForDisplay(buttonCode)
-        if (display != editorCode) {
-            editorCode = display
-        }
-    }
-
-    fun quickInsertTemplate(selection: String): String {
-        return if (selection == "RAW") {
-            "type=raw; frequency=38000; data=9000 4500 560 560"
-        } else {
-            "type=parsed; protocol=$selection; address=00 FF; command=20 DF"
-        }
-    }
-
-    pendingQuickInsert?.let { (_, selection) ->
-        AlertDialog(
-            onDismissRequest = { pendingQuickInsert = null },
-            title = { Text("Replace current code?") },
-            text = { Text("This will replace your current unsaved IR code changes.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onCodeChange(quickInsertTemplate(selection))
-                        pendingQuickInsert = null
-                    }
-                ) {
-                    Text("Replace")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingQuickInsert = null }) {
-                    Text("Cancel")
-                }
-            }
+    val supportedProtocols = remember {
+        listOf(
+            "NEC", "NECext", "NEC16", "NEC42",
+            "Samsung", "Samsung32", "Samsung36",
+            "RC5", "RC5X", "RC6",
+            "SIRC", "SIRC12", "SIRC15", "SIRC20",
+            "Kaseikyo", "RCA", "Pioneer", "Denon", "JVC"
         )
+    }
+
+    val initialFields = remember { parseIrFields(buttonCode) }
+    var irType by remember { mutableStateOf(initialFields["type"]?.lowercase()?.takeIf { it == "raw" } ?: "parsed") }
+    var protocol by remember { mutableStateOf(initialFields["protocol"] ?: "NEC") }
+    var address by remember { mutableStateOf(initialFields["address"] ?: "00 FF") }
+    var command by remember { mutableStateOf(initialFields["command"] ?: "20 DF") }
+    var frequency by remember { mutableStateOf(initialFields["frequency"] ?: "38000") }
+    var dutyCycle by remember { mutableStateOf(initialFields["duty_cycle"] ?: "") }
+    var rawData by remember { mutableStateOf(initialFields["data"] ?: "") }
+    var protocolExpanded by remember { mutableStateOf(false) }
+
+    fun buildCode(): String = if (irType == "raw") {
+        buildString {
+            append("type=raw")
+            append("; frequency=$frequency")
+            if (dutyCycle.isNotBlank()) append("; duty_cycle=$dutyCycle")
+            append("; data=$rawData")
+        }
+    } else {
+        "type=parsed; protocol=$protocol; address=$address; command=$command"
+    }
+
+    // Sync local fields when buttonCode changes externally (e.g. DB import)
+    LaunchedEffect(buttonCode) {
+        val f = parseIrFields(buttonCode)
+        val t = f["type"]?.lowercase()?.takeIf { it == "raw" } ?: "parsed"
+        irType = t
+        if (t == "raw") {
+            frequency = f["frequency"] ?: "38000"
+            dutyCycle = f["duty_cycle"] ?: ""
+            rawData = f["data"] ?: ""
+        } else {
+            protocol = f["protocol"] ?: "NEC"
+            address = f["address"] ?: "00 FF"
+            command = f["command"] ?: "20 DF"
+        }
     }
 
     if (pendingDbInsertIdx >= 0) {
@@ -689,65 +566,129 @@ fun RemoteButtonEditorScreen(
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
                     )
 
-                    Text("Quick insert", color = Color(0xFFB699FF), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    LazyRow(
+                    // Type selector: PARSED | RAW
+                    Row(
                         modifier = Modifier
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, violet.copy(alpha = 0.30f), RoundedCornerShape(8.dp))
                     ) {
-                        val suggestions: List<Pair<String, String>> = listOf(
-                            "NEC" to "NEC",
-                            "NECext" to "NECext",
-                            "NEC16" to "NEC16",
-                            "NEC42" to "NEC42",
-                            "Samsung" to "Samsung",
-                            "Samsung32" to "Samsung32",
-                            "Samsung36" to "Samsung36",
-                            "RC5" to "RC5",
-                            "RC5X" to "RC5X",
-                            "RC6" to "RC6",
-                            "SIRC12" to "SIRC12",
-                            "SIRC15" to "SIRC15",
-                            "SIRC20" to "SIRC20",
-                            "Kaseikyo" to "Kaseikyo",
-                            "RCA" to "RCA",
-                            "Pioneer" to "Pioneer",
-                            "Denon" to "Denon",
-                            "JVC" to "JVC",
-                            "RAW" to "RAW"
-                        )
-                        this.items(suggestions) { (title, selection) ->
-                            AssistChip(
-                                onClick = {
-                                    pendingQuickInsert = title to selection
-                                },
-                                label = { Text(title, fontSize = 10.sp) }
-                            )
+                        listOf("parsed", "raw").forEach { t ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (irType == t) violet.copy(alpha = 0.22f) else Color.Transparent)
+                                    .clickable {
+                                        irType = t
+                                        onCodeChange(buildCode())
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    t.uppercase(),
+                                    color = if (irType == t) violet else Color(0xFF8A8899),
+                                    fontSize = 12.sp,
+                                    fontWeight = if (irType == t) FontWeight.SemiBold else FontWeight.Normal
+                                )
+                            }
                         }
                     }
 
-                    OutlinedTextField(
-                        value = editorCode,
-                        onValueChange = {
-                            val displayValue = formatEditorCodeForDisplay(it)
-                            editorCode = displayValue
-                            onCodeChange(normalizeEditorCodeForSave(displayValue))
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(editorHeight),
-                        label = { Text("IR code payload") },
-                        isError = codeError != null,
-                        visualTransformation = IrEditorSyntaxHighlight,
-                        singleLine = false,
-                        keyboardOptions = KeyboardOptions.Default.copy(
-                            capitalization = KeyboardCapitalization.None
+                    if (irType == "parsed") {
+                        ExposedDropdownMenuBox(
+                            expanded = protocolExpanded,
+                            onExpandedChange = { protocolExpanded = it }
+                        ) {
+                            OutlinedTextField(
+                                value = protocol,
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Protocol") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = protocolExpanded) },
+                                modifier = Modifier
+                                    .menuAnchor()
+                                    .fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = protocolExpanded,
+                                onDismissRequest = { protocolExpanded = false }
+                            ) {
+                                supportedProtocols.forEach { p ->
+                                    DropdownMenuItem(
+                                        text = { Text(p) },
+                                        onClick = {
+                                            protocol = p
+                                            protocolExpanded = false
+                                            onCodeChange(buildCode())
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = address,
+                            onValueChange = { input ->
+                                address = input.uppercase().filter { c -> c in "0123456789ABCDEF " }
+                                onCodeChange(buildCode())
+                            },
+                            label = { Text("Address (hex)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
                         )
-                    )
-                    if (localCodeError != null) {
-                        Text(localCodeError!!, color = Color(0xFFFF8A80), fontSize = 11.sp)
+
+                        OutlinedTextField(
+                            value = command,
+                            onValueChange = { input ->
+                                command = input.uppercase().filter { c -> c in "0123456789ABCDEF " }
+                                onCodeChange(buildCode())
+                            },
+                            label = { Text("Command (hex)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
+                        )
                     } else {
-                        Text("Valid", color = Color(0xFF81C995), fontSize = 11.sp)
+                        OutlinedTextField(
+                            value = frequency,
+                            onValueChange = { input ->
+                                frequency = input.filter { c -> c.isDigit() }
+                                onCodeChange(buildCode())
+                            },
+                            label = { Text("Frequency (Hz)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+
+                        OutlinedTextField(
+                            value = dutyCycle,
+                            onValueChange = { input ->
+                                dutyCycle = input.filter { c -> c.isDigit() || c == '.' }
+                                onCodeChange(buildCode())
+                            },
+                            label = { Text("Duty cycle (optional, e.g. 0.33)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                        )
+
+                        OutlinedTextField(
+                            value = rawData,
+                            onValueChange = { input ->
+                                rawData = input.filter { c -> c.isDigit() || c == '-' || c == ' ' || c == '\n' }
+                                onCodeChange(buildCode())
+                            },
+                            label = { Text("Data (space-separated integers)") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 100.dp),
+                            singleLine = false,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
                     }
                 }
             }

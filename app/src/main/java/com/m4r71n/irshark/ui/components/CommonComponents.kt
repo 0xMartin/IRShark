@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,8 +30,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -40,15 +46,19 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import com.m4r71n.irshark.R
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -202,12 +212,19 @@ fun EmptyCard(message: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFF13101E))
-            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
-            .padding(12.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF0D0B18))
+            .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
+            .padding(vertical = 20.dp, horizontal = 16.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Text(message, color = Color(0xFF8A8899), fontSize = 11.sp)
+        Text(
+            message,
+            color = Color(0xFF6E6B82),
+            fontSize = 12.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 17.sp
+        )
     }
 }
 
@@ -224,22 +241,22 @@ fun RemoteCommandButton(
     modifier: Modifier = Modifier
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    val stripeColor = if (isActive) Color(0xFFFF4D4D) else violet.copy(alpha = 0.7f)
-    val secondaryLabelColor = Color(0xFF9AA0B5)
+    val stripeColor = if (isActive) Color(0xFFE57373) else violet.copy(alpha = 0.65f)
+    val secondaryLabelColor = Color(0xFF7A7A96)
 
     Box(
         modifier = modifier
             .height(72.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF181327), Color(0xFF0F0D1A))
+                    colors = listOf(Color(0xFF16122A), Color(0xFF0D0B1A))
                 )
             )
             .border(
                 1.dp,
-                violet.copy(alpha = 0.22f),
-                RoundedCornerShape(16.dp)
+                if (isActive) Color(0xFFE57373).copy(alpha = 0.50f) else violet.copy(alpha = 0.18f),
+                RoundedCornerShape(14.dp)
             )
             .then(
                 if (onLongPressRepeat != null) {
@@ -378,11 +395,17 @@ fun ListRow(
     onDuplicate: (() -> Unit)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    Column {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF100D1C))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(12.dp))
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -390,18 +413,18 @@ fun ListRow(
                 Icon(
                     imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
                     contentDescription = if (isFavorite) "Unpin" else "Pin",
-                    tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF5A5870),
+                    tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF3D3A52),
                     modifier = Modifier
                         .size(20.dp)
                         .clickable(onClick = onFavoriteToggle)
                 )
+                Spacer(Modifier.size(8.dp))
             }
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
                     .clickable(onClick = onOpen)
-                    .padding(6.dp)
+                    .padding(end = 4.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -450,7 +473,7 @@ fun ListRow(
                         }
                     }
                 } else {
-                    Text(subtitle, color = Color(0xFF8A8899), fontSize = 11.sp, maxLines = 1)
+                    Text(subtitle, color = Color(0xFF6E6B82), fontSize = 11.sp, maxLines = 1)
                 }
             }
             Row(
@@ -460,29 +483,29 @@ fun ListRow(
                 if (onDuplicate != null) {
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(34.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF1A1726))
-                            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(8.dp))
+                            .background(Color(0xFF181327))
+                            .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
                             .clickable(onClick = onDuplicate),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Filled.ContentCopy,
                             contentDescription = "Duplicate",
-                            tint = Color(0xFF8A8899),
-                            modifier = Modifier.size(18.dp)
+                            tint = Color(0xFF6E6B82),
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(34.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (actionEnabled) violet.copy(alpha = 0.18f) else Color(0xFF1A1726))
+                        .background(if (actionEnabled) violet.copy(alpha = 0.15f) else Color(0xFF181327))
                         .border(
                             1.dp,
-                            if (actionEnabled) violet else Color.White.copy(alpha = 0.12f),
+                            if (actionEnabled) violet.copy(alpha = 0.55f) else Color.White.copy(alpha = 0.08f),
                             RoundedCornerShape(8.dp)
                         )
                         .clickable(enabled = actionEnabled, onClick = onAction),
@@ -492,13 +515,13 @@ fun ListRow(
                         Icon(
                             imageVector = actionIcon,
                             contentDescription = actionLabel,
-                            tint = if (actionEnabled) violet else Color(0xFF8A8899),
-                            modifier = Modifier.size(18.dp)
+                            tint = if (actionEnabled) violet else Color(0xFF6E6B82),
+                            modifier = Modifier.size(16.dp)
                         )
                     } else {
                         Text(
                             actionLabel,
-                            color = if (actionEnabled) violet else Color(0xFF8A8899),
+                            color = if (actionEnabled) violet else Color(0xFF6E6B82),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -506,7 +529,159 @@ fun ListRow(
                 }
             }
         }
-        HorizontalDivider(color = Color.White.copy(alpha = 0.07f))
+    }
+}
+
+// ── Remote grid tile (2-column card view for My Remotes) ────────────────────
+
+@Composable
+fun RemoteGridItem(
+    title: String,
+    iconName: String? = null,
+    isFavorite: Boolean = false,
+    onFavoriteToggle: (() -> Unit)? = null,
+    onOpen: () -> Unit,
+    onAction: () -> Unit,
+    actionIcon: ImageVector? = null,
+    onDuplicate: (() -> Unit)? = null,
+    itemIndex: Int = 0
+) {
+    val violet = MaterialTheme.colorScheme.primary
+
+    // Staggered fade-in
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(itemIndex * 40L)
+        visible = true
+    }
+    val itemAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "gridItemAlpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .alpha(itemAlpha)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF100D1C))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onOpen)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Icon area — centred with colour circle backdrop
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                // Coloured circle behind icon
+                Box(
+                    modifier = Modifier
+                        .size(85.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(violet.copy(alpha = 0.09f))
+                )
+                if (!iconName.isNullOrBlank()) {
+                    CategorySvgIcon(name = iconName, tint = violet, size = 46.dp)
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Home,
+                        contentDescription = null,
+                        tint = violet.copy(alpha = 0.5f),
+                        modifier = Modifier.size(40.dp)
+                    )
+                }
+            }
+
+            // Name (marquee-scrolls when too long)
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .basicMarquee()
+                    .padding(vertical = 6.dp),
+                textAlign = TextAlign.Center
+            )
+
+            // Bottom action row: star  ·  [duplicate]  [action]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onFavoriteToggle != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(39.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF181327))
+                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                            .clickable(onClick = onFavoriteToggle),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                            contentDescription = if (isFavorite) "Unpin" else "Pin",
+                            tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF3D3A52),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.size(39.dp))
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (onDuplicate != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(39.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF181327))
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+                                .clickable(onClick = onDuplicate),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ContentCopy,
+                                contentDescription = "Duplicate",
+                                tint = Color(0xFF6E6B82),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(39.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF1A0F0F))
+                            .border(1.dp, Color(0xFF3D1A1A), RoundedCornerShape(10.dp))
+                            .clickable(onClick = onAction),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = actionIcon ?: Icons.Filled.Delete,
+                            contentDescription = null,
+                            tint = Color(0xFFAA5555),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -699,17 +874,35 @@ fun SectionNavBar(
                             .height(40.dp)
                             .clip(RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
                             .background(violet.copy(alpha = 0.08f))
-                            .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
-                            .padding(horizontal = 14.dp),
+                            .border(1.dp, violet.copy(alpha = 0.18f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp)),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        Text(
-                            text = breadcrumb,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                        )
+                        val segments = breadcrumb.split(" > ")
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            segments.forEachIndexed { i, seg ->
+                                if (i > 0) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = violet.copy(alpha = 0.45f),
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                }
+                                Text(
+                                    text = seg,
+                                    color = if (i == segments.lastIndex) Color.White else Color(0xFF9B8EC4),
+                                    fontSize = if (i == segments.lastIndex) 13.sp else 11.sp,
+                                    fontWeight = if (i == segments.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -953,17 +1146,35 @@ fun UniversalRemoteHeader(
                         .height(40.dp)
                         .clip(RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
                         .background(violet.copy(alpha = 0.08f))
-                        .border(1.dp, violet.copy(alpha = 0.2f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp))
-                        .padding(horizontal = 14.dp),
+                        .border(1.dp, violet.copy(alpha = 0.18f), RoundedCornerShape(0.dp, 20.dp, 20.dp, 0.dp)),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    Text(
-                        text = currentPath,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1
-                    )
+                    val segments = currentPath.split(" > ")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        segments.forEachIndexed { i, seg ->
+                            if (i > 0) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = violet.copy(alpha = 0.45f),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                            Text(
+                                text = seg,
+                                color = if (i == segments.lastIndex) Color.White else Color(0xFF9B8EC4),
+                                fontSize = if (i == segments.lastIndex) 13.sp else 11.sp,
+                                fontWeight = if (i == segments.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines = 1
+                            )
+                        }
+                    }
                 }
             }
 

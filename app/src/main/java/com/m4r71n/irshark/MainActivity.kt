@@ -1894,6 +1894,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 }
                                 remote.name to subtitle
                             },
+                            useGridLayout = true,
                             iconNameForItem = { idx ->
                                 val remote = indexedFiltered[idx].value
                                 remote.iconName ?: categorySeedFromPath(remote.sourceProfilePath ?: remote.profilePath)
