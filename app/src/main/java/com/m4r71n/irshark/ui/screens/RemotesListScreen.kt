@@ -112,7 +112,8 @@ fun RemotesListScreen(
                         onOpen = { onOpen(index) },
                         onAction = { onSecondaryAction(index) },
                         actionIcon = secondaryActionIcon,
-                        onDuplicate = onDuplicateForItem?.let { { it(index) } }
+                        onDuplicate = onDuplicateForItem?.let { { it(index) } },
+                        itemIndex = index
                     )
                 }
             }

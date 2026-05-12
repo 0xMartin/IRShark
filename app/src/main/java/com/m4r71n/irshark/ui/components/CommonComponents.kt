@@ -52,8 +52,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -538,14 +543,28 @@ fun RemoteGridItem(
     onOpen: () -> Unit,
     onAction: () -> Unit,
     actionIcon: ImageVector? = null,
-    onDuplicate: (() -> Unit)? = null
+    onDuplicate: (() -> Unit)? = null,
+    itemIndex: Int = 0
 ) {
     val violet = MaterialTheme.colorScheme.primary
+
+    // Staggered fade-in
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(itemIndex * 40L)
+        visible = true
+    }
+    val itemAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "gridItemAlpha"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
+            .alpha(itemAlpha)
             .clip(RoundedCornerShape(14.dp))
             .background(Color(0xFF100D1C))
             .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(14.dp))
@@ -558,13 +577,20 @@ fun RemoteGridItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Icon area — centred, takes remaining vertical space
+            // Icon area — centred with colour circle backdrop
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
+                // Coloured circle behind icon
+                Box(
+                    modifier = Modifier
+                        .size(85.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(violet.copy(alpha = 0.09f))
+                )
                 if (!iconName.isNullOrBlank()) {
                     CategorySvgIcon(name = iconName, tint = violet, size = 46.dp)
                 } else {
