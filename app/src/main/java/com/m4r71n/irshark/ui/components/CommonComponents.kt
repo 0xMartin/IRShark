@@ -29,6 +29,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -61,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -70,6 +73,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.lerp
@@ -241,21 +246,44 @@ fun RemoteCommandButton(
     modifier: Modifier = Modifier
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    val stripeColor = if (isActive) Color(0xFFE57373) else violet.copy(alpha = 0.65f)
+    val stripeColor = if (isActive) Color(0xFFE57373) else violet
     val secondaryLabelColor = Color(0xFF7A7A96)
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressedFromInteraction by interactionSource.collectIsPressedAsState()
+    var isPressedManual by remember { mutableStateOf(false) }
+    val isPressed = if (onLongPressRepeat != null) isPressedManual else isPressedFromInteraction
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.93f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessHigh
+        ),
+        label = "buttonScale"
+    )
 
     Box(
         modifier = modifier
             .height(72.dp)
+            .scale(scale)
             .clip(RoundedCornerShape(14.dp))
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF16122A), Color(0xFF0D0B1A))
+                    colors = when {
+                        isActive  -> listOf(Color(0xFF22112A), Color(0xFF100A18))
+                        isPressed -> listOf(Color(0xFF201A38), Color(0xFF100F1E))
+                        else      -> listOf(Color(0xFF17132A), Color(0xFF0D0B1A))
+                    }
                 )
             )
             .border(
                 1.dp,
-                if (isActive) Color(0xFFE57373).copy(alpha = 0.50f) else violet.copy(alpha = 0.18f),
+                when {
+                    isActive  -> Color(0xFFE57373).copy(alpha = 0.55f)
+                    isPressed -> violet.copy(alpha = 0.40f)
+                    else      -> violet.copy(alpha = 0.18f)
+                },
                 RoundedCornerShape(14.dp)
             )
             .then(
@@ -268,6 +296,7 @@ fun RemoteCommandButton(
                         coroutineScope {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
+                                isPressedManual = true
                                 val shortPressDelayMs = 140L
                                 val repeatStartDelayMs = 1_000L
                                 val repeatIntervalMs = 100L
@@ -321,6 +350,7 @@ fun RemoteCommandButton(
 
                                 singleJob.cancel()
                                 repeatJob.cancel()
+                                isPressedManual = false
 
                                 if (repeating) {
                                     onLongPressRepeatStateChange?.invoke(false)
@@ -334,7 +364,11 @@ fun RemoteCommandButton(
                         }
                     }
                 } else {
-                    Modifier.clickable(onClick = onClick)
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick
+                    )
                 }
             )
             .padding(horizontal = 10.dp, vertical = 8.dp)
@@ -344,12 +378,24 @@ fun RemoteCommandButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 22.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(stripeColor)
-            )
+            // Stripe indicator with radial glow
+            Box(contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 44.dp, height = 14.dp)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(stripeColor.copy(alpha = 0.38f), Color.Transparent)
+                            )
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .size(width = 28.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(stripeColor)
+                )
+            }
 
             Text(
                 text = label,
@@ -358,7 +404,7 @@ fun RemoteCommandButton(
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
 
