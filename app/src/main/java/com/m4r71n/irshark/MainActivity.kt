@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
@@ -332,6 +333,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
     var downloadedDbAvailable by remember { mutableStateOf(false) }
     var effectiveDbSourceLabel by remember { mutableStateOf("Default") }
     var irFinderLastTested by rememberSaveable { mutableStateOf<String?>(null) }
+    var myRemotesEditMode by rememberSaveable { mutableStateOf(false) }
 
     // ── Loading & runtime state ───────────────────────────────────────────────────
     var txPulseActive by remember { mutableStateOf(false) }
@@ -1560,6 +1562,7 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                             Icons.Filled.Save to { if (buttonEditorCanSave) saveButtonEditor() }
                         )
                         Screen.MY_REMOTES -> listOf(
+                            (if (myRemotesEditMode) Icons.Filled.Close else Icons.Filled.Edit) to { myRemotesEditMode = !myRemotesEditMode },
                             Icons.Filled.Add to {
                                 startRemoteEditor(remoteIndex = null, returnScreen = Screen.MY_REMOTES)
                             },
@@ -1895,6 +1898,31 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 remote.name to subtitle
                             },
                             useGridLayout = true,
+                            editMode = myRemotesEditMode,
+                            badgesForGridItem = { idx ->
+                                val remote = indexedFiltered[idx].value
+                                val btnCount = remote.buttons.size.takeIf { it > 0 }
+                                    ?: remote.commands.size
+                                val protocols = remote.buttons
+                                    .mapNotNull { btn ->
+                                        val fields = btn.code.split(";").map { it.trim() }
+                                        val type = fields.find { it.startsWith("type=") }?.removePrefix("type=")?.trim()
+                                        if (type == "raw") {
+                                            "RAW"
+                                        } else {
+                                            fields.find { it.startsWith("protocol=") }
+                                                ?.removePrefix("protocol=")
+                                                ?.trim()
+                                                ?.uppercase()
+                                        }
+                                    }
+                                    .toSortedSet()
+                                    .take(2)
+                                buildList {
+                                    if (btnCount > 0) add("$btnCount btn")
+                                    addAll(protocols)
+                                }
+                            },
                             iconNameForItem = { idx ->
                                 val remote = indexedFiltered[idx].value
                                 remote.iconName ?: categorySeedFromPath(remote.sourceProfilePath ?: remote.profilePath)
@@ -1907,12 +1935,12 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                     it[originalIndex] = remote.copy(favorite = !remote.favorite)
                                 }
                             },
-                            onDuplicateForItem = { idx ->
+                            onDuplicateForItem = if (myRemotesEditMode) ({ idx ->
                                 val remote = indexedFiltered[idx].value
                                 val newName = uniqueRemoteName(remote.name + " copy")
                                 savedRemotes = savedRemotes + remote.copy(name = newName, favorite = false)
                                 toastController.show("Duplicated as \"$newName\"")
-                            },
+                            }) else null,
                             onOpen = { index ->
                                 val originalIndex = indexedFiltered[index].index
                                 val remote = indexedFiltered[index].value
@@ -1952,8 +1980,10 @@ fun IRSharkApp(modifier: Modifier = Modifier) {
                                 }
                             },
                             onSecondaryAction = { index ->
-                                val originalIndex = indexedFiltered[index].index
-                                pendingDeleteRemoteIndex = originalIndex
+                                if (myRemotesEditMode) {
+                                    val originalIndex = indexedFiltered[index].index
+                                    pendingDeleteRemoteIndex = originalIndex
+                                }
                             },
                             secondaryActionLabel = "Delete",
                             secondaryActionIcon = Icons.Filled.Delete

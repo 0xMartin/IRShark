@@ -29,6 +29,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -61,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -70,6 +73,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.lerp
@@ -241,21 +246,44 @@ fun RemoteCommandButton(
     modifier: Modifier = Modifier
 ) {
     val violet = MaterialTheme.colorScheme.primary
-    val stripeColor = if (isActive) Color(0xFFE57373) else violet.copy(alpha = 0.65f)
+    val stripeColor = if (isActive) Color(0xFFE57373) else violet
     val secondaryLabelColor = Color(0xFF7A7A96)
+
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressedFromInteraction by interactionSource.collectIsPressedAsState()
+    var isPressedManual by remember { mutableStateOf(false) }
+    val isPressed = if (onLongPressRepeat != null) isPressedManual else isPressedFromInteraction
+
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.93f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessHigh
+        ),
+        label = "buttonScale"
+    )
 
     Box(
         modifier = modifier
             .height(72.dp)
+            .scale(scale)
             .clip(RoundedCornerShape(14.dp))
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF16122A), Color(0xFF0D0B1A))
+                    colors = when {
+                        isActive  -> listOf(Color(0xFF22112A), Color(0xFF100A18))
+                        isPressed -> listOf(Color(0xFF201A38), Color(0xFF100F1E))
+                        else      -> listOf(Color(0xFF17132A), Color(0xFF0D0B1A))
+                    }
                 )
             )
             .border(
                 1.dp,
-                if (isActive) Color(0xFFE57373).copy(alpha = 0.50f) else violet.copy(alpha = 0.18f),
+                when {
+                    isActive  -> Color(0xFFE57373).copy(alpha = 0.55f)
+                    isPressed -> violet.copy(alpha = 0.40f)
+                    else      -> violet.copy(alpha = 0.18f)
+                },
                 RoundedCornerShape(14.dp)
             )
             .then(
@@ -268,6 +296,7 @@ fun RemoteCommandButton(
                         coroutineScope {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
+                                isPressedManual = true
                                 val shortPressDelayMs = 140L
                                 val repeatStartDelayMs = 1_000L
                                 val repeatIntervalMs = 100L
@@ -321,6 +350,7 @@ fun RemoteCommandButton(
 
                                 singleJob.cancel()
                                 repeatJob.cancel()
+                                isPressedManual = false
 
                                 if (repeating) {
                                     onLongPressRepeatStateChange?.invoke(false)
@@ -334,7 +364,11 @@ fun RemoteCommandButton(
                         }
                     }
                 } else {
-                    Modifier.clickable(onClick = onClick)
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        onClick = onClick
+                    )
                 }
             )
             .padding(horizontal = 10.dp, vertical = 8.dp)
@@ -344,12 +378,24 @@ fun RemoteCommandButton(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 22.dp, height = 4.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(stripeColor)
-            )
+            // Stripe indicator with radial glow
+            Box(contentAlignment = Alignment.Center) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 44.dp, height = 14.dp)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(stripeColor.copy(alpha = 0.38f), Color.Transparent)
+                            )
+                        )
+                )
+                Box(
+                    modifier = Modifier
+                        .size(width = 28.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(stripeColor)
+                )
+            }
 
             Text(
                 text = label,
@@ -358,7 +404,7 @@ fun RemoteCommandButton(
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
 
@@ -544,7 +590,9 @@ fun RemoteGridItem(
     onAction: () -> Unit,
     actionIcon: ImageVector? = null,
     onDuplicate: (() -> Unit)? = null,
-    itemIndex: Int = 0
+    itemIndex: Int = 0,
+    editMode: Boolean = true,
+    badges: List<String> = emptyList()
 ) {
     val violet = MaterialTheme.colorScheme.primary
 
@@ -565,121 +613,143 @@ fun RemoteGridItem(
             .fillMaxWidth()
             .aspectRatio(1f)
             .alpha(itemAlpha)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF100D1C))
-            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, violet.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
             .clickable(onClick = onOpen)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Icon area — centred with colour circle backdrop
+        // ── Top section: icon area with gradient background ──────────────────
+        Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xFF1C1535), Color(0xFF100D1C))
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                // Coloured circle behind icon
+                // Glowing circle behind icon
                 Box(
                     modifier = Modifier
-                        .size(85.dp)
+                        .size(72.dp)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(violet.copy(alpha = 0.09f))
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    violet.copy(alpha = 0.22f),
+                                    violet.copy(alpha = 0.04f)
+                                )
+                            )
+                        )
                 )
                 if (!iconName.isNullOrBlank()) {
-                    CategorySvgIcon(name = iconName, tint = violet, size = 46.dp)
+                    CategorySvgIcon(name = iconName, tint = violet, size = 54.dp)
                 } else {
                     Icon(
                         imageVector = Icons.Filled.Home,
                         contentDescription = null,
                         tint = violet.copy(alpha = 0.5f),
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(48.dp)
                     )
                 }
             }
 
-            // Name (marquee-scrolls when too long)
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
+            // ── Bottom footer strip ──────────────────────────────────────────
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .basicMarquee()
-                    .padding(vertical = 6.dp),
-                textAlign = TextAlign.Center
-            )
-
-            // Bottom action row: star  ·  [duplicate]  [action]
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .background(Color(0xFF0C0A18))
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
-                if (onFavoriteToggle != null) {
-                    Box(
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
                         modifier = Modifier
-                            .size(39.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF181327))
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                            .clickable(onClick = onFavoriteToggle),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .basicMarquee(),
+                        textAlign = TextAlign.Start
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                            contentDescription = if (isFavorite) "Unpin" else "Pin",
-                            tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF3D3A52),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                } else {
-                    Spacer(modifier = Modifier.size(39.dp))
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    if (onDuplicate != null) {
-                        Box(
-                            modifier = Modifier
-                                .size(39.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF181327))
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                                .clickable(onClick = onDuplicate),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.ContentCopy,
-                                contentDescription = "Duplicate",
-                                tint = Color(0xFF6E6B82),
-                                modifier = Modifier.size(17.dp)
-                            )
+                        // Badges or action buttons depending on editMode
+                        if (editMode) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                if (onDuplicate != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF181327))
+                                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                            .clickable(onClick = onDuplicate),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.ContentCopy,
+                                            contentDescription = "Duplicate",
+                                            tint = Color(0xFF6E6B82),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF1A0F0F))
+                                        .border(1.dp, Color(0xFF3D1A1A), RoundedCornerShape(8.dp))
+                                        .clickable(onClick = onAction),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = actionIcon ?: Icons.Filled.Delete,
+                                        contentDescription = null,
+                                        tint = Color(0xFFAA5555),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                badges.take(3).forEach { Badge(text = it) }
+                            }
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .size(39.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF1A0F0F))
-                            .border(1.dp, Color(0xFF3D1A1A), RoundedCornerShape(10.dp))
-                            .clickable(onClick = onAction),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = actionIcon ?: Icons.Filled.Delete,
-                            contentDescription = null,
-                            tint = Color(0xFFAA5555),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
                 }
+            }
+        }
+
+        // ── Star button — top-left overlay ────────────────────────────────────
+        if (onFavoriteToggle != null) {
+            Box(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF13101E).copy(alpha = 0.85f))
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
+                    .clickable(onClick = onFavoriteToggle)
+                    .align(Alignment.TopStart),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    contentDescription = if (isFavorite) "Unpin" else "Pin",
+                    tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF3D3A52),
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }
