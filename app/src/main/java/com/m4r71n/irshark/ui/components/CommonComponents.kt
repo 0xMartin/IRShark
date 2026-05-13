@@ -544,7 +544,9 @@ fun RemoteGridItem(
     onAction: () -> Unit,
     actionIcon: ImageVector? = null,
     onDuplicate: (() -> Unit)? = null,
-    itemIndex: Int = 0
+    itemIndex: Int = 0,
+    editMode: Boolean = true,
+    badges: List<String> = emptyList()
 ) {
     val violet = MaterialTheme.colorScheme.primary
 
@@ -565,121 +567,143 @@ fun RemoteGridItem(
             .fillMaxWidth()
             .aspectRatio(1f)
             .alpha(itemAlpha)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFF100D1C))
-            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, violet.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
             .clickable(onClick = onOpen)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            // Icon area — centred with colour circle backdrop
+        // ── Top section: icon area with gradient background ──────────────────
+        Column(modifier = Modifier.fillMaxSize()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xFF1C1535), Color(0xFF100D1C))
+                        )
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                // Coloured circle behind icon
+                // Glowing circle behind icon
                 Box(
                     modifier = Modifier
-                        .size(85.dp)
+                        .size(72.dp)
                         .clip(RoundedCornerShape(999.dp))
-                        .background(violet.copy(alpha = 0.09f))
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    violet.copy(alpha = 0.22f),
+                                    violet.copy(alpha = 0.04f)
+                                )
+                            )
+                        )
                 )
                 if (!iconName.isNullOrBlank()) {
-                    CategorySvgIcon(name = iconName, tint = violet, size = 46.dp)
+                    CategorySvgIcon(name = iconName, tint = violet, size = 40.dp)
                 } else {
                     Icon(
                         imageVector = Icons.Filled.Home,
                         contentDescription = null,
                         tint = violet.copy(alpha = 0.5f),
-                        modifier = Modifier.size(40.dp)
+                        modifier = Modifier.size(36.dp)
                     )
                 }
             }
 
-            // Name (marquee-scrolls when too long)
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
+            // ── Bottom footer strip ──────────────────────────────────────────
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .basicMarquee()
-                    .padding(vertical = 6.dp),
-                textAlign = TextAlign.Center
-            )
-
-            // Bottom action row: star  ·  [duplicate]  [action]
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .background(Color(0xFF0C0A18))
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
-                if (onFavoriteToggle != null) {
-                    Box(
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(
+                        text = title,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
                         modifier = Modifier
-                            .size(39.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF181327))
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                            .clickable(onClick = onFavoriteToggle),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .basicMarquee(),
+                        textAlign = TextAlign.Start
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                            contentDescription = if (isFavorite) "Unpin" else "Pin",
-                            tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF3D3A52),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                } else {
-                    Spacer(modifier = Modifier.size(39.dp))
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    if (onDuplicate != null) {
-                        Box(
-                            modifier = Modifier
-                                .size(39.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF181327))
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
-                                .clickable(onClick = onDuplicate),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.ContentCopy,
-                                contentDescription = "Duplicate",
-                                tint = Color(0xFF6E6B82),
-                                modifier = Modifier.size(17.dp)
-                            )
+                        // Badges or action buttons depending on editMode
+                        if (editMode) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                if (onDuplicate != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF181327))
+                                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                            .clickable(onClick = onDuplicate),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.ContentCopy,
+                                            contentDescription = "Duplicate",
+                                            tint = Color(0xFF6E6B82),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF1A0F0F))
+                                        .border(1.dp, Color(0xFF3D1A1A), RoundedCornerShape(8.dp))
+                                        .clickable(onClick = onAction),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = actionIcon ?: Icons.Filled.Delete,
+                                        contentDescription = null,
+                                        tint = Color(0xFFAA5555),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                badges.take(3).forEach { Badge(text = it) }
+                            }
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .size(39.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF1A0F0F))
-                            .border(1.dp, Color(0xFF3D1A1A), RoundedCornerShape(10.dp))
-                            .clickable(onClick = onAction),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = actionIcon ?: Icons.Filled.Delete,
-                            contentDescription = null,
-                            tint = Color(0xFFAA5555),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
                 }
+            }
+        }
+
+        // ── Star button — top-left overlay ────────────────────────────────────
+        if (onFavoriteToggle != null) {
+            Box(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .size(30.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF13101E).copy(alpha = 0.85f))
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(8.dp))
+                    .clickable(onClick = onFavoriteToggle)
+                    .align(Alignment.TopStart),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Filled.Star else Icons.Filled.StarBorder,
+                    contentDescription = if (isFavorite) "Unpin" else "Pin",
+                    tint = if (isFavorite) Color(0xFFFFD54F) else Color(0xFF3D3A52),
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }

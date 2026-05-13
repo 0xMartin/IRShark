@@ -55,7 +55,9 @@ fun RemotesListScreen(
     secondaryActionIcon: ImageVector? = null,
     iconNameForItem: ((Int) -> String?)? = null,
     onEndReached: (() -> Unit)? = null,
-    useGridLayout: Boolean = false
+    useGridLayout: Boolean = false,
+    editMode: Boolean = true,
+    badgesForGridItem: ((Int) -> List<String>)? = null
 ) {
     val violet = MaterialTheme.colorScheme.primary
     val listState = rememberLazyListState()
@@ -113,7 +115,9 @@ fun RemotesListScreen(
                         onAction = { onSecondaryAction(index) },
                         actionIcon = secondaryActionIcon,
                         onDuplicate = onDuplicateForItem?.let { { it(index) } },
-                        itemIndex = index
+                        itemIndex = index,
+                        editMode = editMode,
+                        badges = badgesForGridItem?.invoke(index) ?: emptyList()
                     )
                 }
             }
