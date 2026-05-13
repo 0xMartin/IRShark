@@ -599,13 +599,13 @@ fun RemoteGridItem(
                         )
                 )
                 if (!iconName.isNullOrBlank()) {
-                    CategorySvgIcon(name = iconName, tint = violet, size = 40.dp)
+                    CategorySvgIcon(name = iconName, tint = violet, size = 54.dp)
                 } else {
                     Icon(
                         imageVector = Icons.Filled.Home,
                         contentDescription = null,
                         tint = violet.copy(alpha = 0.5f),
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(48.dp)
                     )
                 }
             }
